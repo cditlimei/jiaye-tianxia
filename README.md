@@ -8,6 +8,7 @@
 npm install
 npm run dev
 npm run build
+npx playwright install chromium
 npm run smoke
 npm run smoke:live
 ```
@@ -25,3 +26,4 @@ https://cditlimei.github.io/jiaye-tianxia/
 - 完整流程包含标题页、主公选择、主城经营、伴侣招募、兵器库、自动回合战斗和战斗结算。
 - 主城包含家业目标、府中纪事、离线收益结算、设置面板与本地存档恢复。
 - 已包含 PWA manifest、Service Worker 应用壳缓存和安装入口；线上版本可用 `npm run smoke:live` 验证主流程。
+- Smoke 默认使用 Playwright Chromium，避免 Codex 沙箱里启动 macOS 系统 Chrome 时弹出崩溃报告；确需系统 Chrome 时用 `npm run smoke:chrome`。

@@ -99,10 +99,10 @@ async function expectText(page, text, timeout = 5000) {
 }
 
 async function launchBrowser() {
-  const launchTargets = [
-    { label: 'system Chrome', options: { channel: 'chrome', headless: true } },
-    { label: 'bundled Chromium', options: { headless: true } }
-  ];
+  const launchTargets = [{ label: 'Playwright Chromium', options: { headless: true } }];
+  if (process.env.JIAYE_USE_SYSTEM_CHROME === '1') {
+    launchTargets.push({ label: 'system Chrome', options: { channel: 'chrome', headless: true } });
+  }
   const errors = [];
 
   for (const target of launchTargets) {
@@ -115,7 +115,8 @@ async function launchBrowser() {
 
   console.error('smoke_browser_launch_failed');
   console.error('Unable to start a Playwright browser. The published game may still be healthy.');
-  console.error('Run the smoke command outside the sandbox, or install Playwright Chromium with `npx playwright install chromium`.');
+  console.error('Install the bundled browser with `npx playwright install chromium`.');
+  console.error('System Chrome is disabled by default to avoid macOS crash reports under Codex; opt in with `JIAYE_USE_SYSTEM_CHROME=1` only outside the sandbox.');
   for (const item of errors) {
     console.error(`- ${item.label}: ${firstErrorLine(item.error)}`);
   }
