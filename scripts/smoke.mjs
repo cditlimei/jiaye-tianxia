@@ -26,6 +26,10 @@ try {
   await expectText(page, '群雄入局');
   await page.getByRole('button', { name: '确认选择' }).click();
   await expectText(page, '升级宅邸', 7000);
+  await page.getByRole('button', { name: '招募伴侣' }).click();
+  await expectText(page, '伴侣招募');
+  await expectEnabled(page.getByRole('button', { name: /召集/ }).first());
+  await page.getByRole('button', { name: '关闭' }).click();
 
   await page.getByRole('button', { name: /升级宅邸/ }).click();
   await expectText(page, '木屋', 4000);
@@ -76,7 +80,7 @@ try {
   await page.getByRole('button', { name: '关闭' }).click();
   await page.getByRole('button', { name: '招募伴侣' }).click();
   await expectText(page, '伴侣招募');
-  await page.getByRole('button', { name: '2,000 金' }).first().click();
+  await page.getByRole('button', { name: /召集/ }).first().click();
   await expectText(page, '已招募');
   await page.getByRole('button', { name: '关闭' }).click();
 
@@ -124,6 +128,14 @@ try {
 
 async function expectText(page, text, timeout = 5000) {
   await page.getByText(text).first().waitFor({ state: 'visible', timeout });
+}
+
+async function expectEnabled(locator, timeout = 5000) {
+  await locator.waitFor({ state: 'visible', timeout });
+  const enabled = await locator.isEnabled();
+  if (!enabled) {
+    throw new Error('smoke_expected_enabled_partner_button');
+  }
 }
 
 async function launchBrowser() {

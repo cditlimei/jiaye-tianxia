@@ -788,6 +788,16 @@ button:disabled {
   padding: 12px;
 }
 
+.partner-grid__notice {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.24);
+  color: var(--gold-light);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+}
+
 .partner-card {
   border: 1px solid rgba(212, 168, 67, 0.25);
   background: rgba(12, 12, 20, 0.82);

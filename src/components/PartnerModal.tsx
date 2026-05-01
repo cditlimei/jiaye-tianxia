@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Lord } from '../data/gameData';
 import { partners } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
@@ -10,16 +11,20 @@ interface PartnerModalProps {
   state: GameState;
   lord: Lord;
   onClose: () => void;
-  onRecruit: (partnerId: string) => void;
+  onRecruit: (partnerId: string) => boolean;
 }
 
 export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalProps) {
+  const [notice, setNotice] = useState('');
+
   return (
     <ModalShell title="伴侣招募" onClose={onClose}>
       <div className="partner-grid">
+        {notice && <p className="partner-grid__notice">{notice}</p>}
         {partners.map((partner) => {
           const owned = state.ownedPartnerIds.includes(partner.id);
           const best = partner.bestMatchLordId === lord.id;
+          const missingGold = Math.max(0, partner.recruitCost - state.gold);
           const bonusCopy = Object.entries(partner.bonus)
             .map(([key, value]) => `${translateBonus(key)} +${best ? Math.round((value ?? 0) * 1.3) : value}`)
             .join(' · ');
@@ -36,10 +41,20 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
                 <strong>{bonusCopy}</strong>
                 <GameButton
                   variant={owned ? 'ghost' : 'primary'}
-                  disabled={owned || state.gold < partner.recruitCost}
-                  onClick={() => onRecruit(partner.id)}
+                  disabled={owned}
+                  onClick={() => {
+                    if (onRecruit(partner.id)) {
+                      setNotice(`${partner.name}已入府。`);
+                      return;
+                    }
+                    setNotice(missingGold > 0 ? `金不足，还差 ${missingGold.toLocaleString()} 金。` : `${partner.name}已在府中。`);
+                  }}
                 >
-                  {owned ? '已招募' : `${partner.recruitCost.toLocaleString()} 金`}
+                  {owned
+                    ? '已招募'
+                    : missingGold > 0
+                      ? `差 ${missingGold.toLocaleString()} 金`
+                      : `召集 · ${partner.recruitCost.toLocaleString()} 金`}
                 </GameButton>
               </div>
             </article>

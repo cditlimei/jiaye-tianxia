@@ -78,12 +78,14 @@ export function App() {
 
   const handleRecruit = (partnerId: string) => {
     const partner = partners.find((item) => item.id === partnerId);
-    if (!partner) return;
+    if (!partner) return false;
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
     if (game.recruitPartner(partner)) {
       audio.playSfx('audio/sfx/sfx_partner_appear.mp3', 0.55);
+      return true;
     }
+    return false;
   };
 
   const handleEquip = (weaponId: string) => {
