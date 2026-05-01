@@ -3,6 +3,7 @@ import { partners, weapons } from './data/gameData';
 import { useAudioManager } from './hooks/useAudioManager';
 import { useEffectOverlay } from './hooks/useEffectOverlay';
 import { useGameState } from './hooks/useGameState';
+import { parseImportedGameState } from './lib/storage';
 import { BattleScreen } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
 import { HomeScreen } from './components/HomeScreen';
@@ -109,6 +110,18 @@ export function App() {
     audio.playSfx('audio/sfx/sfx_button.mp3', 0.28);
   };
 
+  const importSave = (payload: string) => {
+    try {
+      const imported = parseImportedGameState(payload);
+      game.restoreGame(imported);
+      audio.playSfx('audio/sfx/sfx_coins.mp3', 0.32);
+      return { ok: true, message: `已导入第 ${imported.day} 天存档。` };
+    } catch (error) {
+      audio.playSfx('audio/sfx/sfx_button.mp3', 0.18);
+      return { ok: false, message: error instanceof Error ? error.message : '存档导入失败。' };
+    }
+  };
+
   const returnTitle = () => {
     setModal(null);
     game.setScreen('title');
@@ -209,6 +222,7 @@ export function App() {
             onClose={() => setModal(null)}
             onToggleSound={game.toggleSound}
             onCopySave={copySave}
+            onImportSave={importSave}
             canInstall={Boolean(installPrompt)}
             onInstall={installApp}
             onReturnTitle={returnTitle}

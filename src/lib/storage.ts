@@ -1,11 +1,13 @@
 import type { GameState, Screen } from '../types';
-import { findHomeLevel } from '../data/gameData';
+import { findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
+import { quests } from '../data/progression';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'home'];
 const OFFLINE_TICK_MS = 3000;
 const OFFLINE_MIN_MS = 30000;
 const OFFLINE_MAX_TICKS = 240;
+const MAX_EVENT_LOG = 18;
 
 export const defaultGameState: GameState = {
   screen: 'title',
@@ -37,25 +39,36 @@ export function loadGameState(): GameState {
 
   try {
     const parsed = JSON.parse(raw) as Partial<GameState>;
-    const safeScreen = sanitizeScreen(parsed.lastScreen ?? parsed.screen);
-    const restored: GameState = {
-      ...defaultGameState,
-      ...parsed,
-      screen: parsed.selectedLordId ? safeScreen : 'title',
-      lastScreen: safeScreen,
-      selectedLordId: parsed.selectedLordId ?? null,
-      ownedPartnerIds: Array.isArray(parsed.ownedPartnerIds) ? parsed.ownedPartnerIds : [],
-      claimedQuestIds: Array.isArray(parsed.claimedQuestIds) ? parsed.claimedQuestIds : [],
-      eventLog: Array.isArray(parsed.eventLog) ? parsed.eventLog : [],
-      equippedWeaponId: parsed.equippedWeaponId ?? defaultGameState.equippedWeaponId,
-      soundEnabled: parsed.soundEnabled ?? true,
-      tutorialDone: Boolean(parsed.tutorialDone),
-      lastSavedAt: typeof parsed.lastSavedAt === 'number' ? parsed.lastSavedAt : Date.now()
-    };
+    const restored = normalizeGameState(parsed);
     return applyOfflineIncome(restored);
   } catch {
     return defaultGameState;
   }
+}
+
+export function parseImportedGameState(raw: string): GameState {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('存档不是有效 JSON。');
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('存档内容格式不正确。');
+  }
+
+  const normalized = normalizeGameState(parsed as Partial<GameState>, Date.now());
+  if (!normalized.selectedLordId) {
+    throw new Error('存档缺少有效主公。');
+  }
+
+  return {
+    ...normalized,
+    screen: 'home',
+    lastScreen: 'home',
+    lastSavedAt: Date.now()
+  };
 }
 
 export function saveGameState(state: GameState) {
@@ -84,6 +97,72 @@ function sanitizeScreen(screen: Screen | undefined): Screen {
     return screen;
   }
   return 'home';
+}
+
+function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameState {
+  const selectedLordId = isKnownId(parsed.selectedLordId, lords) ? parsed.selectedLordId : null;
+  const safeScreen = selectedLordId ? sanitizeScreen(parsed.lastScreen ?? parsed.screen) : 'title';
+  const homeLevel = homeLevels.some((home) => home.level === parsed.homeLevel) ? Number(parsed.homeLevel) : defaultGameState.homeLevel;
+  const equippedWeaponId = isKnownId(parsed.equippedWeaponId, weapons) ? parsed.equippedWeaponId : defaultGameState.equippedWeaponId;
+
+  return {
+    ...defaultGameState,
+    screen: safeScreen,
+    selectedLordId,
+    gold: sanitizeNumber(parsed.gold, defaultGameState.gold, 0),
+    homeLevel,
+    equippedWeaponId,
+    ownedPartnerIds: sanitizeIds(parsed.ownedPartnerIds, partners),
+    claimedQuestIds: sanitizeIds(parsed.claimedQuestIds, quests),
+    day: sanitizeNumber(parsed.day, defaultGameState.day, 1),
+    battleWins: sanitizeNumber(parsed.battleWins, defaultGameState.battleWins, 0),
+    battleLosses: sanitizeNumber(parsed.battleLosses, defaultGameState.battleLosses, 0),
+    soundEnabled: typeof parsed.soundEnabled === 'boolean' ? parsed.soundEnabled : true,
+    tutorialDone: Boolean(parsed.tutorialDone),
+    lastScreen: safeScreen,
+    eventLog: sanitizeEventLog(parsed.eventLog),
+    lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now
+  };
+}
+
+function sanitizeNumber(value: unknown, fallback: number, min: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(value));
+}
+
+function sanitizeIds<T extends { id: string }>(value: unknown, catalog: T[]) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const validIds = new Set(catalog.map((item) => item.id));
+  return [...new Set(value.filter((item): item is string => typeof item === 'string' && validIds.has(item)))];
+}
+
+function isKnownId<T extends { id: string }>(value: unknown, catalog: T[]): value is string {
+  return typeof value === 'string' && catalog.some((item) => item.id === value);
+}
+
+function sanitizeEventLog(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((event) => event && typeof event === 'object')
+    .map((event) => {
+      const item = event as Partial<GameState['eventLog'][number]>;
+      return {
+        id: typeof item.id === 'string' ? item.id : `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        day: sanitizeNumber(item.day, 1, 1),
+        title: typeof item.title === 'string' ? item.title.slice(0, 24) : '府中纪事',
+        detail: typeof item.detail === 'string' ? item.detail.slice(0, 80) : '',
+        goldDelta: typeof item.goldDelta === 'number' && Number.isFinite(item.goldDelta) ? Math.floor(item.goldDelta) : undefined
+      };
+    })
+    .slice(0, MAX_EVENT_LOG);
 }
 
 function applyOfflineIncome(state: GameState): GameState {
@@ -116,7 +195,7 @@ function applyOfflineIncome(state: GameState): GameState {
         goldDelta: offlineGold
       },
       ...state.eventLog
-    ].slice(0, 18),
+    ].slice(0, MAX_EVENT_LOG),
     lastSavedAt: Date.now()
   };
 }

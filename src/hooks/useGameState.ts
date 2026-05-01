@@ -17,6 +17,7 @@ type Action =
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
+  | { type: 'restore'; state: GameState }
   | { type: 'reset' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -163,6 +164,19 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         tutorialDone: true
       };
+    case 'restore':
+      return {
+        ...action.state,
+        eventLog: [
+          {
+            id: `restore-${Date.now()}`,
+            day: action.state.day,
+            title: '存档恢复',
+            detail: '已从备份导入本地存档。'
+          },
+          ...action.state.eventLog
+        ].slice(0, 18)
+      };
     case 'reset':
       clearGameState();
       return {
@@ -242,6 +256,7 @@ export function useGameState() {
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),
+    restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
     resetGame: () => dispatch({ type: 'reset' })
   };
 }

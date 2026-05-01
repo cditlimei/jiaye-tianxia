@@ -46,6 +46,27 @@ try {
   await expectText(page, '离线经营');
   await page.getByRole('button', { name: '设置与存档' }).click();
   await expectText(page, '当前存档');
+  await page.getByLabel('粘贴存档 JSON').fill(
+    JSON.stringify({
+      screen: 'home',
+      selectedLordId: 'sunquan',
+      gold: 6600,
+      homeLevel: 3,
+      equippedWeaponId: 'qinggang',
+      ownedPartnerIds: ['daqiao'],
+      claimedQuestIds: ['upgrade-wood'],
+      day: 12,
+      battleWins: 1,
+      battleLosses: 0,
+      soundEnabled: false,
+      tutorialDone: true,
+      lastScreen: 'home',
+      eventLog: [],
+      lastSavedAt: Date.now()
+    })
+  );
+  await page.getByRole('button', { name: '导入存档' }).click();
+  await expectText(page, '已导入第 12 天存档。');
   await page.getByRole('button', { name: '关闭' }).click();
   await page.getByRole('button', { name: '招募伴侣' }).click();
   await expectText(page, '伴侣招募');
