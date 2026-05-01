@@ -12,7 +12,11 @@
   --line: rgba(212, 168, 67, 0.42);
   --panel: rgba(20, 18, 28, 0.88);
   --panel-soft: rgba(31, 28, 42, 0.72);
-  font-family: 'Noto Serif SC', serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    'Noto Sans SC', sans-serif;
+  --font-title: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', serif;
+  --font-number: 'DIN Alternate', 'Avenir Next Condensed', 'Arial Narrow', var(--font-ui);
+  font-family: var(--font-ui);
   background: var(--black);
 }
 
@@ -99,7 +103,8 @@ button:disabled {
 .home-estate h2,
 .lord-detail h3,
 .title-screen h1 {
-  font-family: 'Ma Shan Zheng', serif;
+  font-family: var(--font-title);
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -111,7 +116,8 @@ button:disabled {
 
 .eyebrow,
 .camp-line {
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 700;
   color: var(--gold);
   font-size: 15px;
 }
@@ -138,8 +144,9 @@ button:disabled {
   color: #241303;
   min-height: 44px;
   padding: 10px 18px;
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
-  font-size: 18px;
+  font-family: var(--font-ui);
+  font-size: 17px;
+  font-weight: 800;
   letter-spacing: 0;
   background: linear-gradient(180deg, #f5d984, #ba7c25);
   clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%);
@@ -201,7 +208,8 @@ button:disabled {
   padding: 7px 10px;
   border: 1px solid rgba(212, 168, 67, 0.56);
   color: var(--gold-light);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 800;
 }
 
 .title-screen h1 {
@@ -215,8 +223,9 @@ button:disabled {
 .title-screen__subtitle {
   margin: -10px 0 0;
   color: var(--gold);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
   font-size: 22px;
+  font-weight: 700;
 }
 
 .title-screen__save {
@@ -310,7 +319,8 @@ button:disabled {
   text-align: center;
   border: 1px solid currentColor;
   padding: 2px 6px;
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 800;
 }
 
 .lord-detail {
@@ -427,8 +437,9 @@ button:disabled {
   gap: 2px;
   text-align: right;
   color: var(--gold-light);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-number);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .home-estate {
@@ -519,8 +530,9 @@ button:disabled {
   justify-content: space-between;
   gap: 10px;
   color: var(--gold-light);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
   font-size: 17px;
+  font-weight: 800;
 }
 
 .section-title strong {
@@ -584,7 +596,8 @@ button:disabled {
   border: 1px solid rgba(212, 168, 67, 0.5);
   color: var(--gold-light);
   background: rgba(13, 13, 26, 0.72);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 700;
 }
 
 .quest-list,
@@ -635,7 +648,8 @@ button:disabled {
   border: 1px solid rgba(212, 168, 67, 0.6);
   color: #241303;
   background: linear-gradient(180deg, #f5d984, #ba7c25);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 800;
 }
 
 .event-list p {
@@ -690,7 +704,8 @@ button:disabled {
 
 .settings-panel span {
   color: var(--gold);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 700;
 }
 
 .settings-panel strong {
@@ -776,8 +791,9 @@ button:disabled {
 .modal-shell__header h2 {
   margin: 0;
   color: var(--gold-light);
-  font-family: 'Ma Shan Zheng', serif;
+  font-family: var(--font-title);
   font-size: 30px;
+  font-weight: 700;
 }
 
 .partner-market {
@@ -818,8 +834,9 @@ button:disabled {
   margin-top: 2px;
   overflow: hidden;
   color: var(--gold-light);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-number);
   font-size: 15px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -891,8 +908,9 @@ button:disabled {
   padding: 3px 7px;
   color: #1a1103;
   background: linear-gradient(180deg, #f5d984, #c99635);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
+  font-weight: 800;
 }
 
 .partner-card.is-best .partner-card__portrait {
@@ -928,9 +946,10 @@ button:disabled {
   color: #211401;
   background: var(--gold);
   padding: 2px 6px;
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-number);
   font-size: 12px;
   font-style: normal;
+  font-weight: 700;
 }
 
 .partner-card p,
@@ -999,7 +1018,8 @@ button:disabled {
 
 .weapon-card__top span {
   color: var(--gold);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-ui);
+  font-weight: 700;
 }
 
 .battle-screen {
@@ -1010,7 +1030,8 @@ button:disabled {
 
 .battle-record {
   color: var(--gold-light);
-  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-family: var(--font-number);
+  font-weight: 700;
 }
 
 .battle-arena {
@@ -1024,8 +1045,9 @@ button:disabled {
 .battle-vs {
   text-align: center;
   color: var(--red-bright);
-  font-family: 'Ma Shan Zheng', serif;
+  font-family: var(--font-title);
   font-size: 36px;
+  font-weight: 700;
   text-shadow: 0 0 18px rgba(200, 67, 50, 0.52);
 }
 
@@ -1155,8 +1177,9 @@ button:disabled {
   bottom: 18px;
   text-align: center;
   color: var(--gold-light);
-  font-family: 'Ma Shan Zheng', serif;
+  font-family: var(--font-title);
   font-size: 32px;
+  font-weight: 700;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9);
 }
 
