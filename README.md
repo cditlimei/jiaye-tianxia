@@ -13,7 +13,7 @@ npm run smoke
 
 ## 发布地址
 
-推送到 `main` 后，GitHub Actions 会自动构建并发布到：
+推送到 `main` 后，GitHub Actions 会自动构建并更新 `gh-pages` 分支。仓库 Pages 发布源选择 `gh-pages / root` 后，访问：
 
 https://cditlimei.github.io/jiaye-tianxia/
 
