@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 const baseUrl = process.env.JIAYE_URL ?? 'http://127.0.0.1:5173/';
 const storageKey = 'jiaye-tianxia-save-v1';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await launchBrowser();
 const context = await browser.newContext({
   viewport: { width: 390, height: 844 },
   colorScheme: 'dark'
@@ -96,6 +96,34 @@ try {
 
 async function expectText(page, text, timeout = 5000) {
   await page.getByText(text).first().waitFor({ state: 'visible', timeout });
+}
+
+async function launchBrowser() {
+  const launchTargets = [
+    { label: 'system Chrome', options: { channel: 'chrome', headless: true } },
+    { label: 'bundled Chromium', options: { headless: true } }
+  ];
+  const errors = [];
+
+  for (const target of launchTargets) {
+    try {
+      return await chromium.launch(target.options);
+    } catch (error) {
+      errors.push({ label: target.label, error });
+    }
+  }
+
+  console.error('smoke_browser_launch_failed');
+  console.error('Unable to start a Playwright browser. The published game may still be healthy.');
+  console.error('Run the smoke command outside the sandbox, or install Playwright Chromium with `npx playwright install chromium`.');
+  for (const item of errors) {
+    console.error(`- ${item.label}: ${firstErrorLine(item.error)}`);
+  }
+  process.exit(1);
+}
+
+function firstErrorLine(error) {
+  return error instanceof Error ? error.message.split('\n')[0] : String(error);
 }
 
 async function setSave(page, save) {
