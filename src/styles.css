@@ -780,47 +780,132 @@ button:disabled {
   font-size: 30px;
 }
 
-.partner-grid {
-  overflow: auto;
+.partner-market {
+  min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background:
+    linear-gradient(135deg, rgba(46, 204, 113, 0.1), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent);
 }
 
-.partner-grid__notice {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px solid rgba(212, 168, 67, 0.24);
+.partner-market__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(212, 168, 67, 0.22);
+}
+
+.partner-market__summary div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(212, 168, 67, 0.22);
+  background: rgba(7, 7, 15, 0.54);
+}
+
+.partner-market__summary span,
+.partner-market__summary strong {
+  display: block;
+}
+
+.partner-market__summary span {
+  color: rgba(245, 230, 200, 0.56);
+  font-size: 11px;
+}
+
+.partner-market__summary strong {
+  margin-top: 2px;
+  overflow: hidden;
   color: var(--gold-light);
-  background: rgba(255, 255, 255, 0.04);
+  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partner-market__notice {
+  margin: 0 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.32);
+  color: var(--gold-light);
+  background: rgba(139, 26, 26, 0.24);
   font-size: 12px;
 }
 
+.partner-grid {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 12px;
+  align-content: start;
+}
+
 .partner-card {
-  border: 1px solid rgba(212, 168, 67, 0.25);
-  background: rgba(12, 12, 20, 0.82);
   min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 146px;
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 42%),
+    rgba(12, 12, 20, 0.86);
 }
 
 .partner-card.is-best {
+  grid-template-columns: 132px minmax(0, 1fr);
+  min-height: 166px;
   border-color: rgba(240, 214, 138, 0.72);
-  box-shadow: 0 0 18px rgba(212, 168, 67, 0.18);
+  background:
+    linear-gradient(135deg, rgba(212, 168, 67, 0.16), transparent 46%),
+    linear-gradient(180deg, rgba(23, 45, 37, 0.88), rgba(12, 12, 20, 0.94));
+  box-shadow: 0 0 24px rgba(212, 168, 67, 0.2);
+}
+
+.partner-card.is-owned {
+  opacity: 0.72;
+}
+
+.partner-card__portrait {
+  position: relative;
+  overflow: hidden;
+  min-height: 100%;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .partner-card__image {
   width: 100%;
-  aspect-ratio: 3 / 4;
+  height: 100%;
   object-fit: cover;
+  object-position: top center;
   display: block;
-  background: rgba(255, 255, 255, 0.04);
+}
+
+.partner-card__portrait span {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 7px;
+  color: #1a1103;
+  background: linear-gradient(180deg, #f5d984, #c99635);
+  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
+  font-size: 12px;
+}
+
+.partner-card.is-best .partner-card__portrait {
+  min-height: 166px;
 }
 
 .partner-card__body {
-  padding: 9px;
+  min-width: 0;
+  min-height: 100%;
+  padding: 10px 10px 11px;
   display: grid;
-  gap: 7px;
+  gap: 6px;
+  align-content: stretch;
 }
 
 .partner-card__title {
@@ -834,10 +919,10 @@ button:disabled {
 .weapon-card h3 {
   margin: 0;
   color: var(--gold-light);
-  font-size: 18px;
+  font-size: 20px;
 }
 
-.partner-card__title span,
+.partner-card__title em,
 .weapon-card__top strong {
   flex: 0 0 auto;
   color: #211401;
@@ -845,6 +930,7 @@ button:disabled {
   padding: 2px 6px;
   font-family: 'ZCOOL QingKe HuangYou', sans-serif;
   font-size: 12px;
+  font-style: normal;
 }
 
 .partner-card p,
@@ -853,11 +939,20 @@ button:disabled {
   margin: 0;
   color: rgba(245, 230, 200, 0.78);
   font-size: 12px;
-  line-height: 1.42;
+  line-height: 1.38;
 }
 
 .partner-card strong {
   color: var(--gold-light);
+  align-self: end;
+}
+
+.partner-card .game-button {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 0;
+  padding-inline: 12px;
+  font-size: 16px;
 }
 
 .weapon-list {
@@ -1120,7 +1215,7 @@ button:disabled {
   }
 
   .partner-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .battle-arena {
