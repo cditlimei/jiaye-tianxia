@@ -7,11 +7,13 @@ interface SettingsModalProps {
   onClose: () => void;
   onToggleSound: () => void;
   onCopySave: () => void;
+  canInstall: boolean;
+  onInstall: () => void;
   onReturnTitle: () => void;
   onReset: () => void;
 }
 
-export function SettingsModal({ state, onClose, onToggleSound, onCopySave, onReturnTitle, onReset }: SettingsModalProps) {
+export function SettingsModal({ state, onClose, onToggleSound, onCopySave, canInstall, onInstall, onReturnTitle, onReset }: SettingsModalProps) {
   return (
     <ModalShell title="设置" onClose={onClose}>
       <div className="settings-panel">
@@ -27,6 +29,11 @@ export function SettingsModal({ state, onClose, onToggleSound, onCopySave, onRet
           <GameButton variant="secondary" onClick={onCopySave}>
             复制存档
           </GameButton>
+          {canInstall && (
+            <GameButton variant="secondary" onClick={onInstall}>
+              安装应用
+            </GameButton>
+          )}
           <GameButton variant="ghost" onClick={onReturnTitle}>
             返回标题
           </GameButton>

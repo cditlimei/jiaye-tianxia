@@ -16,6 +16,7 @@ type Action =
   | { type: 'recordBattle'; win: boolean; rewardGold: number }
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
+  | { type: 'completeTutorial' }
   | { type: 'reset' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -157,6 +158,11 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         soundEnabled: !state.soundEnabled
       };
+    case 'completeTutorial':
+      return {
+        ...state,
+        tutorialDone: true
+      };
     case 'reset':
       clearGameState();
       return {
@@ -235,6 +241,7 @@ export function useGameState() {
     recordBattle: (win: boolean, rewardGold: number) => dispatch({ type: 'recordBattle', win, rewardGold }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
+    completeTutorial: () => dispatch({ type: 'completeTutorial' }),
     resetGame: () => dispatch({ type: 'reset' })
   };
 }

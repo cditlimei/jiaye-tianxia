@@ -537,12 +537,51 @@ button:disabled {
 }
 
 .quest-panel,
-.event-panel {
+.event-panel,
+.starter-panel {
   display: grid;
   gap: 9px;
   padding: 12px;
   border: 1px solid rgba(212, 168, 67, 0.28);
   background: rgba(10, 10, 18, 0.58);
+}
+
+.starter-panel {
+  border-color: rgba(240, 214, 138, 0.42);
+  background:
+    linear-gradient(135deg, rgba(139, 26, 26, 0.22), transparent 58%),
+    rgba(10, 10, 18, 0.7);
+}
+
+.starter-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.starter-list span {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(212, 168, 67, 0.18);
+  color: rgba(245, 230, 200, 0.72);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 12px;
+}
+
+.starter-list span.is-done {
+  color: var(--gold-light);
+  border-color: rgba(46, 204, 113, 0.38);
+  background: rgba(46, 204, 113, 0.1);
+}
+
+.starter-panel button {
+  justify-self: end;
+  min-width: 62px;
+  min-height: 30px;
+  border: 1px solid rgba(212, 168, 67, 0.5);
+  color: var(--gold-light);
+  background: rgba(13, 13, 26, 0.72);
+  font-family: 'ZCOOL QingKe HuangYou', sans-serif;
 }
 
 .quest-list,

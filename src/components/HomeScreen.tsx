@@ -23,6 +23,7 @@ interface HomeScreenProps {
   onOpenWeapon: () => void;
   onBattle: () => void;
   onClaimQuest: (questId: string) => void;
+  onCompleteTutorial: () => void;
   onOpenSettings: () => void;
   onIncomeSfx: () => void;
   onUpgradeEffect: () => void;
@@ -50,6 +51,7 @@ export function HomeScreen({
   onOpenWeapon,
   onBattle,
   onClaimQuest,
+  onCompleteTutorial,
   onOpenSettings,
   onIncomeSfx,
   onUpgradeEffect,
@@ -58,6 +60,16 @@ export function HomeScreen({
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
   const partnerNames = useMemo(() => ownedPartners.map((partner) => partner.name).join('、') || '尚未招募', [ownedPartners]);
+  const starterOrders = useMemo(
+    () => [
+      { label: '宅邸升至木屋', done: state.homeLevel >= 2 },
+      { label: '良缘入府', done: state.ownedPartnerIds.length >= 1 },
+      { label: '更换兵器', done: state.equippedWeaponId !== 'xuanjian' },
+      { label: '初战告捷', done: state.battleWins >= 1 }
+    ],
+    [state.battleWins, state.equippedWeaponId, state.homeLevel, state.ownedPartnerIds.length]
+  );
+  const completedStarterOrders = starterOrders.filter((order) => order.done).length;
   const visibleQuests = useMemo(() => {
     const ready = questStatuses.filter((quest) => quest.complete && !quest.claimed);
     const active = questStatuses.filter((quest) => !quest.claimed && !ready.includes(quest));
@@ -124,6 +136,23 @@ export function HomeScreen({
         <StatBar label="智谋" value={intelligence} max={150} tone="blue" />
         <StatBar label="声望" value={charisma} max={150} tone="green" />
       </section>
+
+      {!state.tutorialDone && (
+        <section className="starter-panel">
+          <div className="section-title">
+            <span>开局军令</span>
+            <strong>{completedStarterOrders}/{starterOrders.length}</strong>
+          </div>
+          <div className="starter-list">
+            {starterOrders.map((order) => (
+              <span key={order.label} className={order.done ? 'is-done' : ''}>
+                {order.done ? '已成' : '待办'} · {order.label}
+              </span>
+            ))}
+          </div>
+          <button onClick={onCompleteTutorial}>{completedStarterOrders === starterOrders.length ? '收令' : '暂收'}</button>
+        </section>
+      )}
 
       <section className="action-grid">
         <GameButton onClick={handleUpgrade} disabled={!canUpgrade}>

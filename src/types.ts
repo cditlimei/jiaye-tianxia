@@ -12,6 +12,7 @@ export interface GameState {
   battleWins: number;
   battleLosses: number;
   soundEnabled: boolean;
+  tutorialDone: boolean;
   lastScreen: Screen;
   eventLog: GameEvent[];
   lastSavedAt: number;

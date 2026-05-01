@@ -1,0 +1,19 @@
+{
+  "name": "家业天下",
+  "short_name": "家业天下",
+  "description": "三国题材竖屏经营策略 Web 游戏。",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0d1a",
+  "theme_color": "#0d0d1a",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

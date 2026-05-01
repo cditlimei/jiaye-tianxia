@@ -19,6 +19,7 @@ export const defaultGameState: GameState = {
   battleWins: 0,
   battleLosses: 0,
   soundEnabled: true,
+  tutorialDone: false,
   lastScreen: 'title',
   eventLog: [],
   lastSavedAt: Date.now()
@@ -48,6 +49,7 @@ export function loadGameState(): GameState {
       eventLog: Array.isArray(parsed.eventLog) ? parsed.eventLog : [],
       equippedWeaponId: parsed.equippedWeaponId ?? defaultGameState.equippedWeaponId,
       soundEnabled: parsed.soundEnabled ?? true,
+      tutorialDone: Boolean(parsed.tutorialDone),
       lastSavedAt: typeof parsed.lastSavedAt === 'number' ? parsed.lastSavedAt : Date.now()
     };
     return applyOfflineIncome(restored);

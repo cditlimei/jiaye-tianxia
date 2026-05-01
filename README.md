@@ -9,6 +9,7 @@ npm install
 npm run dev
 npm run build
 npm run smoke
+npm run smoke:live
 ```
 
 ## 发布地址
@@ -23,3 +24,4 @@ https://cditlimei.github.io/jiaye-tianxia/
 - 音频和视频按触发节点从 GitHub raw 地址加载，失败时不会阻断主流程。
 - 完整流程包含标题页、主公选择、主城经营、伴侣招募、兵器库、自动回合战斗和战斗结算。
 - 主城包含家业目标、府中纪事、离线收益结算、设置面板与本地存档恢复。
+- 已包含 PWA manifest、Service Worker 应用壳缓存和安装入口；线上版本可用 `npm run smoke:live` 验证主流程。

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { partners, weapons } from './data/gameData';
 import { useAudioManager } from './hooks/useAudioManager';
 import { useEffectOverlay } from './hooks/useEffectOverlay';
@@ -15,11 +15,27 @@ import './styles.css';
 
 type Modal = 'partner' | 'weapon' | 'settings' | null;
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
 export function App() {
   const game = useGameState();
   const audio = useAudioManager(game.state.screen, game.state.soundEnabled);
   const effects = useEffectOverlay();
   const [modal, setModal] = useState<Modal>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
 
   const handleContinue = () => {
     audio.unlock();
@@ -103,6 +119,19 @@ export function App() {
     setModal(null);
   };
 
+  const installApp = async () => {
+    if (!installPrompt) {
+      return;
+    }
+
+    audio.playSfx('audio/sfx/sfx_button.mp3', 0.28);
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice.catch(() => null);
+    if (choice?.outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
+
   const renderScreen = () => {
     if (game.state.screen === 'title') {
       return (
@@ -163,6 +192,7 @@ export function App() {
             game.claimQuest(questId);
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.36);
           }}
+          onCompleteTutorial={game.completeTutorial}
           onOpenSettings={() => setModal('settings')}
           onIncomeSfx={() => audio.playSfx('audio/sfx/sfx_coins.mp3', 0.28)}
           onUpgradeEffect={handleUpgradeEffect}
@@ -179,6 +209,8 @@ export function App() {
             onClose={() => setModal(null)}
             onToggleSound={game.toggleSound}
             onCopySave={copySave}
+            canInstall={Boolean(installPrompt)}
+            onInstall={installApp}
             onReturnTitle={returnTitle}
             onReset={resetGame}
           />
