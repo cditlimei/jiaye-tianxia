@@ -9,6 +9,12 @@ const context = await browser.newContext({
   colorScheme: 'dark'
 });
 const page = await context.newPage();
+const imageRequests = [];
+page.on('request', (request) => {
+  if (request.resourceType() === 'image') {
+    imageRequests.push(request.url());
+  }
+});
 
 try {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
@@ -109,6 +115,7 @@ try {
     await page.getByRole('button', { name: '返回家业' }).click();
   }
   await expectText(page, '宅邸等级');
+  assertOptimizedImages(imageRequests);
 
   console.log('smoke_ok');
 } finally {
@@ -146,6 +153,18 @@ async function launchBrowser() {
 
 function firstErrorLine(error) {
   return error instanceof Error ? error.message.split('\n')[0] : String(error);
+}
+
+function assertOptimizedImages(imageRequests) {
+  const slowProxyRequests = imageRequests.filter((url) => url.includes('wsrv.nl'));
+  if (slowProxyRequests.length > 0) {
+    throw new Error(`smoke_slow_image_proxy_requests ${slowProxyRequests.slice(0, 3).join(', ')}`);
+  }
+
+  const optimizedRequests = imageRequests.filter((url) => url.includes('/optimized/'));
+  if (optimizedRequests.length === 0) {
+    throw new Error('smoke_missing_optimized_image_requests');
+  }
 }
 
 async function setSave(page, save) {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
-import { wsrvUrl } from '../lib/assets';
+import { imageUrl } from '../lib/assets';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -98,7 +98,7 @@ export function HomeScreen({
     <main className="screen home-screen">
       <header className="home-hud">
         <div className="home-hud__lord">
-          <ImageWithFallback src={wsrvUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
+          <ImageWithFallback src={imageUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
           <div>
             <strong>{lord.name}</strong>
             <span>{lord.title}</span>
@@ -116,7 +116,7 @@ export function HomeScreen({
 
       <section className="home-estate">
         <div className="home-estate__image-wrap">
-          <ImageWithFallback src={wsrvUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
+          <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
           <div className="income-floats">
             {floating.map((item) => (
               <span key={item.id}>+{item.amount}金</span>

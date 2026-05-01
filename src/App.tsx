@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { partners, weapons } from './data/gameData';
+import { homeLevels, lords, partners, weapons } from './data/gameData';
 import { useAudioManager } from './hooks/useAudioManager';
 import { useEffectOverlay } from './hooks/useEffectOverlay';
 import { useGameState } from './hooks/useGameState';
+import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
 import { BattleScreen } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
@@ -36,6 +37,18 @@ export function App() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      preloadImages(lords.map((lord) => lord.imagePath), 320);
+      preloadImages(partners.map((partner) => partner.imagePath), 320);
+      preloadImages(homeLevels.map((home) => home.imagePath), 640);
+      preloadImages(weapons.map((weapon) => weapon.imagePath), 384);
+      preloadImages(['assets/ui/ui_entrance_effect.png', 'assets/ui/ui_upgrade_effect.png', 'assets/ui/ui_assets_increase.png'], 384);
+    }, 350);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleContinue = () => {

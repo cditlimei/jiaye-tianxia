@@ -1,7 +1,7 @@
 import type { Lord } from '../data/gameData';
 import { weapons } from '../data/gameData';
 import { weaponBonusForLord } from '../lib/battle';
-import { wsrvUrl } from '../lib/assets';
+import { imageUrl } from '../lib/assets';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { ModalShell } from './common/ModalShell';
@@ -22,7 +22,7 @@ export function WeaponModal({ lord, equippedWeaponId, onClose, onEquip }: Weapon
           const exclusive = weapon.bestMatchLordId === lord.id;
           return (
             <article key={weapon.id} className={`weapon-card weapon-card--${weapon.rarity}`}>
-              <ImageWithFallback src={wsrvUrl(weapon.imagePath, 384)} alt={weapon.name} className="weapon-card__image" />
+              <ImageWithFallback src={imageUrl(weapon.imagePath, 384)} alt={weapon.name} className="weapon-card__image" />
               <div className="weapon-card__body">
                 <div className="weapon-card__top">
                   <div>
@@ -49,4 +49,3 @@ function rarityLabel(rarity: string) {
   if (rarity === 'epic') return '史诗';
   return '普通';
 }
-

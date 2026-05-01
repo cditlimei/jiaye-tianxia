@@ -18,6 +18,5 @@ export function ImageWithFallback({ src, alt, className = '', loading = 'lazy' }
     );
   }
 
-  return <img className={className} src={src} alt={alt} loading={loading} onError={() => setFailed(true)} />;
+  return <img className={className} src={src} alt={alt} loading={loading} decoding="async" onError={() => setFailed(true)} />;
 }
-

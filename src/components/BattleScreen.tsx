@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Lord, Weapon } from '../data/gameData';
 import { matchEnemy, rollDamage } from '../lib/battle';
-import { wsrvUrl } from '../lib/assets';
+import { imageUrl } from '../lib/assets';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
@@ -180,9 +180,9 @@ export function BattleScreen({
       </header>
 
       <section className="battle-arena">
-        <BattleFighter name={lord.name} title={weapon.name} image={wsrvUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
+        <BattleFighter name={lord.name} title={weapon.name} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
         <div className="battle-vs">VS</div>
-        <BattleFighter name={enemy.name} title={enemy.description} image={wsrvUrl('assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
+        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl('assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
       </section>
 
       <section className="battle-info">
@@ -238,4 +238,3 @@ function BattleFighter({ name, title, image, hp, maxHp, enemy = false }: BattleF
     </article>
   );
 }
-

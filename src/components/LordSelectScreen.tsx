@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CAMP_META, lords } from '../data/gameData';
-import { wsrvUrl } from '../lib/assets';
+import { imageUrl } from '../lib/assets';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { StatBar } from './common/StatBar';
@@ -37,7 +37,7 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
               style={{ borderColor: lord.id === selectedId ? lordCamp.color : undefined }}
               onClick={() => setSelectedId(lord.id)}
             >
-              <ImageWithFallback src={wsrvUrl(lord.imagePath, 256)} alt={lord.name} className="lord-card__image" />
+              <ImageWithFallback src={imageUrl(lord.imagePath, 256)} alt={lord.name} className="lord-card__image" />
               <span className="camp-badge" style={{ color: lordCamp.color, background: lordCamp.softColor }}>
                 {lordCamp.name}
               </span>
@@ -69,4 +69,3 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
     </main>
   );
 }
-

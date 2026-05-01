@@ -1,5 +1,5 @@
-const CACHE_NAME = 'jiaye-tianxia-v5';
-const MEDIA_CACHE_NAME = 'jiaye-tianxia-media-v2';
+const CACHE_NAME = 'jiaye-tianxia-v6';
+const MEDIA_CACHE_NAME = 'jiaye-tianxia-media-v3';
 const BASE_PATH = self.location.pathname.replace(/sw\.js$/, '');
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}icon.svg`];
 const MEDIA_DESTINATIONS = new Set(['audio', 'font', 'image', 'video']);

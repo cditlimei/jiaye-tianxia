@@ -1,6 +1,6 @@
 import type { Lord } from '../data/gameData';
 import { partners } from '../data/gameData';
-import { wsrvUrl } from '../lib/assets';
+import { imageUrl } from '../lib/assets';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -26,7 +26,7 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
 
           return (
             <article key={partner.id} className={`partner-card ${best ? 'is-best' : ''}`}>
-              <ImageWithFallback src={wsrvUrl(partner.imagePath, 256)} alt={partner.name} className="partner-card__image" />
+              <ImageWithFallback src={imageUrl(partner.imagePath, 256)} alt={partner.name} className="partner-card__image" />
               <div className="partner-card__body">
                 <div className="partner-card__title">
                   <h3>{partner.name}</h3>
@@ -55,4 +55,3 @@ function translateBonus(key: string) {
   if (key === 'intelligence') return '智谋';
   return '声望';
 }
-

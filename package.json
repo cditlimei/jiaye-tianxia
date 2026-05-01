@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "assets:optimize": "node scripts/generate-optimized-assets.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:live": "JIAYE_URL=https://cditlimei.github.io/jiaye-tianxia/ node scripts/smoke.mjs",
     "smoke:chrome": "JIAYE_USE_SYSTEM_CHROME=1 node scripts/smoke.mjs"

@@ -6,6 +6,7 @@
 
 ```bash
 npm install
+npm run assets:optimize
 npm run dev
 npm run build
 npx playwright install chromium
@@ -21,7 +22,7 @@ https://cditlimei.github.io/jiaye-tianxia/
 
 ## 运行说明
 
-- 图片通过 `https://raw.githubusercontent.com/cditlimei/jiaye-tianxia/main` 读取，并统一使用 `wsrv.nl` 做移动端压缩。
+- 原始图片保留在 `assets/`，运行时读取 `public/optimized/` 里的本地压缩图；新增或替换素材后运行 `npm run assets:optimize` 重新生成。
 - 音频和视频按触发节点从 GitHub raw 地址加载，失败时不会阻断主流程。
 - 完整流程包含标题页、主公选择、主城经营、伴侣招募、兵器库、自动回合战斗和战斗结算。
 - 主城包含家业目标、府中纪事、离线收益结算、设置面板与本地存档恢复。

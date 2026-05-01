@@ -282,6 +282,7 @@ button:disabled {
   aspect-ratio: 3 / 4;
   object-fit: cover;
   display: block;
+  background: rgba(255, 255, 255, 0.04);
   filter: saturate(1.04) contrast(1.02);
 }
 
@@ -404,6 +405,7 @@ button:disabled {
   height: 48px;
   object-fit: cover;
   border: 1px solid rgba(212, 168, 67, 0.5);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .home-hud__lord strong,
@@ -446,6 +448,7 @@ button:disabled {
   height: 100%;
   object-fit: cover;
   display: block;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .home-estate__image-wrap::after {
@@ -801,6 +804,7 @@ button:disabled {
   aspect-ratio: 3 / 4;
   object-fit: cover;
   display: block;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .partner-card__body {
@@ -936,6 +940,7 @@ button:disabled {
   aspect-ratio: 3 / 4;
   object-fit: cover;
   display: block;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .battle-fighter__panel {
