@@ -8,7 +8,14 @@
 npm install
 npm run dev
 npm run build
+npm run smoke
 ```
+
+## 发布地址
+
+推送到 `main` 后，GitHub Actions 会自动构建并发布到：
+
+https://cditlimei.github.io/jiaye-tianxia/
 
 ## 运行说明
 
