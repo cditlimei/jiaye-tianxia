@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer } from 'react';
 import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner } from '../data/gameData';
+import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
 import { calculateCharisma, calculateIntelligence, calculateTotalPower } from '../lib/battle';
 import { clearGameState, defaultGameState, loadGameState, saveGameState } from '../lib/storage';
 import type { GameState, Screen } from '../types';
@@ -13,6 +14,7 @@ type Action =
   | { type: 'recruitPartner'; partner: Partner }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'recordBattle'; win: boolean; rewardGold: number }
+  | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
   | { type: 'reset' };
 
@@ -30,19 +32,52 @@ function reducer(state: GameState, action: Action): GameState {
         selectedLordId: action.lordId,
         screen: 'home',
         lastScreen: 'home',
-        soundEnabled: state.soundEnabled
+        soundEnabled: state.soundEnabled,
+        eventLog: [
+          {
+            id: `lord-${Date.now()}`,
+            day: 1,
+            title: '择主立业',
+            detail: '乱世基业已定，宅邸经营正式开始。'
+          }
+        ]
       };
-    case 'collectIncome':
+    case 'collectIncome': {
+      const nextDay = state.day + 1;
+      const dailyEvent = getDailyEvent(nextDay, action.amount);
+      const eventLog = dailyEvent
+        ? [
+            {
+              id: `daily-${nextDay}`,
+              day: nextDay,
+              title: dailyEvent.title,
+              detail: dailyEvent.detail,
+              goldDelta: dailyEvent.goldDelta
+            },
+            ...state.eventLog
+          ].slice(0, 18)
+        : state.eventLog;
       return {
         ...state,
-        gold: state.gold + action.amount,
-        day: state.day + 1
+        gold: state.gold + action.amount + (dailyEvent?.goldDelta ?? 0),
+        day: nextDay,
+        eventLog
       };
+    }
     case 'upgradeHome':
       return {
         ...state,
         gold: state.gold - action.cost,
-        homeLevel: action.nextLevel
+        homeLevel: action.nextLevel,
+        eventLog: [
+          {
+            id: `home-${action.nextLevel}-${Date.now()}`,
+            day: state.day,
+            title: '宅邸升阶',
+            detail: `宅邸已提升至 ${findHomeLevel(action.nextLevel).name}。`
+          },
+          ...state.eventLog
+        ].slice(0, 18)
       };
     case 'recruitPartner':
       if (state.ownedPartnerIds.includes(action.partner.id)) {
@@ -51,20 +86,72 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...state,
         gold: state.gold - action.partner.recruitCost,
-        ownedPartnerIds: [...state.ownedPartnerIds, action.partner.id]
+        ownedPartnerIds: [...state.ownedPartnerIds, action.partner.id],
+        eventLog: [
+          {
+            id: `partner-${action.partner.id}-${Date.now()}`,
+            day: state.day,
+            title: '良缘入府',
+            detail: `${action.partner.name}已入府辅佐家业。`
+          },
+          ...state.eventLog
+        ].slice(0, 18)
       };
     case 'equipWeapon':
       return {
         ...state,
-        equippedWeaponId: action.weaponId
+        equippedWeaponId: action.weaponId,
+        eventLog: [
+          {
+            id: `weapon-${action.weaponId}-${Date.now()}`,
+            day: state.day,
+            title: '兵器更替',
+            detail: `已装备 ${findWeapon(action.weaponId).name}。`
+          },
+          ...state.eventLog
+        ].slice(0, 18)
       };
     case 'recordBattle':
       return {
         ...state,
         gold: action.win ? state.gold + action.rewardGold : state.gold,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
-        battleLosses: action.win ? state.battleLosses : state.battleLosses + 1
+        battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
+        eventLog: [
+          {
+            id: `battle-${Date.now()}`,
+            day: state.day,
+            title: action.win ? '讨伐得胜' : '整军再战',
+            detail: action.win ? `军中缴获 ${action.rewardGold.toLocaleString()} 金。` : '此战未竟，需回府整顿。',
+            goldDelta: action.win ? action.rewardGold : undefined
+          },
+          ...state.eventLog
+        ].slice(0, 18)
       };
+    case 'claimQuest': {
+      if (state.claimedQuestIds.includes(action.questId)) {
+        return state;
+      }
+      const quest = quests.find((item) => item.id === action.questId);
+      if (!quest) {
+        return state;
+      }
+      return {
+        ...state,
+        gold: state.gold + quest.rewardGold,
+        claimedQuestIds: [...state.claimedQuestIds, action.questId],
+        eventLog: [
+          {
+            id: `quest-${quest.id}-${Date.now()}`,
+            day: state.day,
+            title: '目标达成',
+            detail: `${quest.title}已领赏。`,
+            goldDelta: quest.rewardGold
+          },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
     case 'toggleSound':
       return {
         ...state,
@@ -100,6 +187,7 @@ export function useGameState() {
   const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome) : 0;
   const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners) : 0;
   const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
+  const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
 
   const collectIncome = useCallback(() => {
     const amount = currentHome.dailyIncome;
@@ -136,6 +224,7 @@ export function useGameState() {
     totalPower,
     intelligence,
     charisma,
+    questStatuses,
     hasSave: Boolean(state.selectedLordId),
     setScreen: (screen: Screen) => dispatch({ type: 'setScreen', screen }),
     selectLord: (lordId: string) => dispatch({ type: 'selectLord', lordId }),
@@ -144,8 +233,8 @@ export function useGameState() {
     recruitPartner,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number) => dispatch({ type: 'recordBattle', win, rewardGold }),
+    claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     resetGame: () => dispatch({ type: 'reset' })
   };
 }
-

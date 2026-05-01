@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
+import type { QuestStatus } from '../data/progression';
 import { wsrvUrl } from '../lib/assets';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
@@ -21,10 +22,11 @@ interface HomeScreenProps {
   onOpenPartner: () => void;
   onOpenWeapon: () => void;
   onBattle: () => void;
+  onClaimQuest: (questId: string) => void;
+  onOpenSettings: () => void;
   onIncomeSfx: () => void;
   onUpgradeEffect: () => void;
-  onReset: () => void;
-  onToggleSound: () => void;
+  questStatuses: QuestStatus[];
 }
 
 interface FloatingIncome {
@@ -47,14 +49,21 @@ export function HomeScreen({
   onOpenPartner,
   onOpenWeapon,
   onBattle,
+  onClaimQuest,
+  onOpenSettings,
   onIncomeSfx,
   onUpgradeEffect,
-  onReset,
-  onToggleSound
+  questStatuses
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
   const partnerNames = useMemo(() => ownedPartners.map((partner) => partner.name).join('、') || '尚未招募', [ownedPartners]);
+  const visibleQuests = useMemo(() => {
+    const ready = questStatuses.filter((quest) => quest.complete && !quest.claimed);
+    const active = questStatuses.filter((quest) => !quest.claimed && !ready.includes(quest));
+    const claimed = questStatuses.filter((quest) => quest.claimed);
+    return [...ready, ...active, ...claimed].slice(0, 3);
+  }, [questStatuses]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -88,8 +97,8 @@ export function HomeScreen({
           <span>{totalPower} 战力</span>
           <span>第 {state.day} 天</span>
         </div>
-        <button className="sound-toggle sound-toggle--inset" onClick={onToggleSound} aria-label="切换声音">
-          {state.soundEnabled ? '音' : '静'}
+        <button className="sound-toggle sound-toggle--inset" onClick={onOpenSettings} aria-label="打开设置">
+          设
         </button>
       </header>
 
@@ -131,11 +140,53 @@ export function HomeScreen({
         </GameButton>
       </section>
 
+      <section className="quest-panel">
+        <div className="section-title">
+          <span>家业目标</span>
+          <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
+        </div>
+        <div className="quest-list">
+          {visibleQuests.map((quest) => (
+            <article key={quest.id} className={`quest-item ${quest.complete ? 'is-complete' : ''} ${quest.claimed ? 'is-claimed' : ''}`}>
+              <div>
+                <strong>{quest.title}</strong>
+                <span>{quest.description}</span>
+              </div>
+              {quest.claimed ? (
+                <em>已领</em>
+              ) : quest.complete ? (
+                <button onClick={() => onClaimQuest(quest.id)}>领赏</button>
+              ) : (
+                <em>{quest.rewardGold.toLocaleString()}金</em>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="event-panel">
+        <div className="section-title">
+          <span>府中纪事</span>
+          <strong>近事</strong>
+        </div>
+        <div className="event-list">
+          {state.eventLog.length === 0 ? (
+            <p>尚无纪事，经营数日后会有府中回报。</p>
+          ) : (
+            state.eventLog.slice(0, 4).map((event) => (
+              <article key={event.id}>
+                <span>第{event.day}天 · {event.title}</span>
+                <p>{event.detail}{event.goldDelta ? ` +${event.goldDelta.toLocaleString()}金` : ''}</p>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
       <footer className="home-footer">
         <span>胜 {state.battleWins} · 负 {state.battleLosses}</span>
-        <button onClick={onReset}>重置存档</button>
+        <button onClick={onOpenSettings}>设置与存档</button>
       </footer>
     </main>
   );
 }
-

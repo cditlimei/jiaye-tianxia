@@ -23,6 +23,9 @@ try {
 
   await page.getByRole('button', { name: /升级宅邸/ }).click();
   await expectText(page, '木屋', 4000);
+  await expectText(page, '家业目标');
+  await page.getByRole('button', { name: '领赏' }).first().click();
+  await expectText(page, '目标达成');
 
   await setSave(page, {
     screen: 'home',
@@ -35,10 +38,15 @@ try {
     battleWins: 0,
     battleLosses: 0,
     soundEnabled: false,
-    lastScreen: 'home'
+    lastScreen: 'home',
+    lastSavedAt: Date.now() - 120000
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await expectText(page, '离线经营');
+  await page.getByRole('button', { name: '设置与存档' }).click();
+  await expectText(page, '当前存档');
+  await page.getByRole('button', { name: '关闭' }).click();
   await page.getByRole('button', { name: '招募伴侣' }).click();
   await expectText(page, '伴侣招募');
   await page.getByRole('button', { name: '2,000 金' }).first().click();
@@ -62,7 +70,10 @@ try {
     battleWins: 1,
     battleLosses: 0,
     soundEnabled: false,
-    lastScreen: 'home'
+    lastScreen: 'home',
+    claimedQuestIds: ['first-win'],
+    eventLog: [],
+    lastSavedAt: Date.now()
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });

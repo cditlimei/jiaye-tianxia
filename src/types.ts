@@ -7,12 +7,22 @@ export interface GameState {
   homeLevel: number;
   equippedWeaponId: string;
   ownedPartnerIds: string[];
+  claimedQuestIds: string[];
   day: number;
   battleWins: number;
   battleLosses: number;
   soundEnabled: boolean;
   lastScreen: Screen;
+  eventLog: GameEvent[];
+  lastSavedAt: number;
 }
 
 export type BattleOutcome = 'win' | 'loss' | 'retreat';
 
+export interface GameEvent {
+  id: string;
+  day: number;
+  title: string;
+  detail: string;
+  goldDelta?: number;
+}

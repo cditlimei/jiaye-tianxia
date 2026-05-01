@@ -8,11 +8,12 @@ import { EffectOverlay } from './components/common/EffectOverlay';
 import { HomeScreen } from './components/HomeScreen';
 import { LordSelectScreen } from './components/LordSelectScreen';
 import { PartnerModal } from './components/PartnerModal';
+import { SettingsModal } from './components/SettingsModal';
 import { TitleScreen } from './components/TitleScreen';
 import { WeaponModal } from './components/WeaponModal';
 import './styles.css';
 
-type Modal = 'partner' | 'weapon' | null;
+type Modal = 'partner' | 'weapon' | 'settings' | null;
 
 export function App() {
   const game = useGameState();
@@ -86,6 +87,22 @@ export function App() {
     game.setScreen('battle');
   };
 
+  const copySave = () => {
+    const payload = JSON.stringify(game.state, null, 2);
+    void navigator.clipboard?.writeText(payload).catch(() => undefined);
+    audio.playSfx('audio/sfx/sfx_button.mp3', 0.28);
+  };
+
+  const returnTitle = () => {
+    setModal(null);
+    game.setScreen('title');
+  };
+
+  const resetGame = () => {
+    game.resetGame();
+    setModal(null);
+  };
+
   const renderScreen = () => {
     if (game.state.screen === 'title') {
       return (
@@ -136,24 +153,35 @@ export function App() {
           totalPower={game.totalPower}
           intelligence={game.intelligence}
           charisma={game.charisma}
+          questStatuses={game.questStatuses}
           onCollectIncome={game.collectIncome}
           onUpgrade={game.upgradeHome}
           onOpenPartner={() => setModal('partner')}
           onOpenWeapon={() => setModal('weapon')}
           onBattle={handleBattle}
+          onClaimQuest={(questId) => {
+            game.claimQuest(questId);
+            audio.playSfx('audio/sfx/sfx_coins.mp3', 0.36);
+          }}
+          onOpenSettings={() => setModal('settings')}
           onIncomeSfx={() => audio.playSfx('audio/sfx/sfx_coins.mp3', 0.28)}
           onUpgradeEffect={handleUpgradeEffect}
-          onReset={() => {
-            game.resetGame();
-            setModal(null);
-          }}
-          onToggleSound={game.toggleSound}
         />
         {modal === 'partner' && (
           <PartnerModal state={game.state} lord={game.selectedLord} onClose={() => setModal(null)} onRecruit={handleRecruit} />
         )}
         {modal === 'weapon' && (
           <WeaponModal lord={game.selectedLord} equippedWeaponId={game.state.equippedWeaponId} onClose={() => setModal(null)} onEquip={handleEquip} />
+        )}
+        {modal === 'settings' && (
+          <SettingsModal
+            state={game.state}
+            onClose={() => setModal(null)}
+            onToggleSound={game.toggleSound}
+            onCopySave={copySave}
+            onReturnTitle={returnTitle}
+            onReset={resetGame}
+          />
         )}
       </>
     );
@@ -166,4 +194,3 @@ export function App() {
     </div>
   );
 }
-
