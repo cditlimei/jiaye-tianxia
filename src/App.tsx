@@ -10,12 +10,14 @@ import { EffectOverlay } from './components/common/EffectOverlay';
 import { HomeScreen } from './components/HomeScreen';
 import { LordSelectScreen } from './components/LordSelectScreen';
 import { PartnerModal } from './components/PartnerModal';
+import { PartnerSelectScreen } from './components/PartnerSelectScreen';
+import { PartnerTalkModal } from './components/PartnerTalkModal';
 import { SettingsModal } from './components/SettingsModal';
 import { TitleScreen } from './components/TitleScreen';
 import { WeaponModal } from './components/WeaponModal';
 import './styles.css';
 
-type Modal = 'partner' | 'weapon' | 'settings' | null;
+type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | null;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -54,7 +56,7 @@ export function App() {
   const handleContinue = () => {
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
-    game.setScreen(game.selectedLord ? 'home' : 'lordSelect');
+    game.setScreen(game.selectedLord ? (game.state.ownedPartnerIds.length > 0 ? 'home' : 'partnerSelect') : 'lordSelect');
   };
 
   const handleNew = () => {
@@ -74,6 +76,14 @@ export function App() {
       fallbackMs: 1800
     });
     game.selectLord(lordId);
+  };
+
+  const handleStarterPartnerConfirm = (partnerId: string) => {
+    const partner = partners.find((item) => item.id === partnerId);
+    if (!partner) return;
+    audio.unlock();
+    audio.playSfx('audio/sfx/sfx_partner_appear.mp3', 0.55);
+    game.selectStarterPartner(partner);
   };
 
   const handleRecruit = (partnerId: string) => {
@@ -178,6 +188,16 @@ export function App() {
       return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} />;
     }
 
+    if (game.state.screen === 'partnerSelect' && game.selectedLord) {
+      return (
+        <PartnerSelectScreen
+          lord={game.selectedLord}
+          onConfirm={handleStarterPartnerConfirm}
+          onBack={() => game.setScreen('lordSelect')}
+        />
+      );
+    }
+
     if (game.state.screen === 'battle' && game.selectedLord) {
       return (
         <BattleScreen
@@ -214,6 +234,7 @@ export function App() {
           onCollectIncome={game.collectIncome}
           onUpgrade={game.upgradeHome}
           onOpenPartner={() => setModal('partner')}
+          onOpenPartnerTalk={() => setModal('partnerTalk')}
           onOpenWeapon={() => setModal('weapon')}
           onBattle={handleBattle}
           onClaimQuest={(questId) => {
@@ -227,6 +248,9 @@ export function App() {
         />
         {modal === 'partner' && (
           <PartnerModal state={game.state} lord={game.selectedLord} onClose={() => setModal(null)} onRecruit={handleRecruit} />
+        )}
+        {modal === 'partnerTalk' && (
+          <PartnerTalkModal lord={game.selectedLord} ownedPartners={game.ownedPartners} onClose={() => setModal(null)} />
         )}
         {modal === 'weapon' && (
           <WeaponModal lord={game.selectedLord} equippedWeaponId={game.state.equippedWeaponId} onClose={() => setModal(null)} onEquip={handleEquip} />

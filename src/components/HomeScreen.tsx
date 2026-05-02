@@ -20,6 +20,7 @@ interface HomeScreenProps {
   onCollectIncome: () => number;
   onUpgrade: () => boolean;
   onOpenPartner: () => void;
+  onOpenPartnerTalk: () => void;
   onOpenWeapon: () => void;
   onBattle: () => void;
   onClaimQuest: (questId: string) => void;
@@ -48,6 +49,7 @@ export function HomeScreen({
   onCollectIncome,
   onUpgrade,
   onOpenPartner,
+  onOpenPartnerTalk,
   onOpenWeapon,
   onBattle,
   onClaimQuest,
@@ -174,6 +176,24 @@ export function HomeScreen({
           出征讨伐
         </GameButton>
       </section>
+
+      <nav className="home-tabbar" aria-label="主城导航">
+        <button type="button" className="is-active" aria-current="page">
+          <span>家业</span>
+        </button>
+        <button type="button" onClick={onBattle}>
+          <span>出征</span>
+        </button>
+        <button type="button" onClick={onOpenPartnerTalk}>
+          <span>伴侣</span>
+        </button>
+        <button type="button" onClick={onOpenWeapon}>
+          <span>兵器</span>
+        </button>
+        <button type="button" onClick={onOpenSettings}>
+          <span>主公</span>
+        </button>
+      </nav>
 
       {!state.tutorialDone && (
         <section className="starter-panel">

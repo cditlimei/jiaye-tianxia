@@ -1,4 +1,4 @@
-export type Screen = 'title' | 'lordSelect' | 'home' | 'battle';
+export type Screen = 'title' | 'lordSelect' | 'partnerSelect' | 'home' | 'battle';
 
 export interface GameState {
   screen: Screen;

@@ -5,6 +5,7 @@ import type { Screen } from '../types';
 const BGM_BY_SCREEN: Record<Screen, string> = {
   title: 'audio/bgm/bgm_select.mp3',
   lordSelect: 'audio/bgm/bgm_select.mp3',
+  partnerSelect: 'audio/bgm/bgm_select.mp3',
   home: 'audio/bgm/bgm_home.mp3',
   battle: 'audio/bgm/bgm_battle.mp3'
 };
@@ -66,4 +67,3 @@ export function useAudioManager(screen: Screen, soundEnabled: boolean) {
 
   return { unlock, playSfx };
 }
-

@@ -25,6 +25,8 @@ try {
   await page.getByRole('button', { name: '开始游戏' }).click();
   await expectText(page, '乱世择主');
   await page.getByRole('button', { name: '确认选择' }).click();
+  await expectText(page, '良缘入府', 7000);
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
   await expectText(page, '升级宅邸', 7000);
   await page.getByRole('button', { name: '招募伴侣' }).click();
   await expectText(page, '伴侣招募');
@@ -109,6 +111,8 @@ try {
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '出征讨伐' }).click();
+  await expectText(page, '九州征途');
+  await page.getByRole('button', { name: '携伴侣出征' }).click();
   await expectText(page, '匹配敌军', 9000);
   await expectText(page, /返回家业|鸣金收兵/, 30000);
   const returnButton = page.getByRole('button', { name: '返回家业' });

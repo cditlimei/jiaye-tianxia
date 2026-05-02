@@ -18,6 +18,7 @@ interface BattleScreenProps {
 }
 
 type BattlePhase = 'intro' | 'battle' | 'result';
+type VenueId = 'beginner' | 'middle' | 'high';
 
 interface BattleRuntime {
   phase: BattlePhase;
@@ -27,6 +28,20 @@ interface BattleRuntime {
   logs: string[];
   result: 'win' | 'loss' | 'retreat' | null;
 }
+
+const MAP_REGIONS = [
+  { id: 'jingzhou', name: '荆州', state: '斗地主', x: 46, y: 54, available: true },
+  { id: 'jiangdong', name: '江东', state: '水战筹备', x: 67, y: 66, available: false },
+  { id: 'xuchang', name: '许都', state: '未开', x: 55, y: 36, available: false },
+  { id: 'xishu', name: '西蜀', state: '未开', x: 27, y: 59, available: false },
+  { id: 'beijiang', name: '北疆', state: '未开', x: 42, y: 20, available: false }
+];
+
+const VENUES: Array<{ id: VenueId; name: string; limit: string; prize: string; locked?: boolean }> = [
+  { id: 'beginner', name: '初级场', limit: '推荐战力 80+', prize: '胜利可得基础缴获' },
+  { id: 'middle', name: '中级场', limit: '推荐战力 180+', prize: '更高金币奖励' },
+  { id: 'high', name: '高级场', limit: '推荐战力 320+', prize: '名望与重赏', locked: true }
+];
 
 export function BattleScreen({
   lord,
@@ -44,6 +59,8 @@ export function BattleScreen({
   const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
   const settledRef = useRef(false);
   const startedRef = useRef(false);
+  const [mapOpen, setMapOpen] = useState(true);
+  const [venueId, setVenueId] = useState<VenueId>('beginner');
   const [runtime, setRuntime] = useState<BattleRuntime>({
     phase: 'intro',
     playerHp: maxPlayerHp,
@@ -54,7 +71,7 @@ export function BattleScreen({
   });
 
   useEffect(() => {
-    if (startedRef.current) {
+    if (mapOpen || startedRef.current) {
       return;
     }
     startedRef.current = true;
@@ -87,7 +104,7 @@ export function BattleScreen({
     return () => {
       cancelled = true;
     };
-  }, [lord.name, onPlayEffect, onSfx, weapon]);
+  }, [lord.name, mapOpen, onPlayEffect, onSfx, weapon]);
 
   useEffect(() => {
     if (runtime.phase !== 'battle') {
@@ -168,6 +185,71 @@ export function BattleScreen({
   };
 
   const resultTitle = runtime.result === 'win' ? '讨伐得胜' : runtime.result === 'retreat' ? '鸣金收兵' : '败退整军';
+
+  if (mapOpen) {
+    return (
+      <main className="screen battle-screen expedition-screen">
+        <header className="screen-header">
+          <div>
+            <span className="eyebrow">第五屏 · 出征地图</span>
+            <h2>九州征途</h2>
+          </div>
+          <GameButton variant="ghost" onClick={onReturnHome}>
+            回府
+          </GameButton>
+        </header>
+
+        <section className="expedition-map" aria-label="三国地图">
+          <div className="expedition-map__terrain" />
+          {MAP_REGIONS.map((region) => (
+            <button
+              key={region.id}
+              type="button"
+              className={`map-node ${region.available ? 'is-available' : 'is-locked'}`}
+              style={{ left: `${region.x}%`, top: `${region.y}%` }}
+              disabled={!region.available}
+            >
+              <strong>{region.name}</strong>
+              <span>{region.state}</span>
+            </button>
+          ))}
+        </section>
+
+        <section className="venue-panel" aria-label="场次选择">
+          <div className="section-title">
+            <span>荆州 · 斗地主</span>
+            <strong>选择场次</strong>
+          </div>
+          <div className="venue-grid">
+            {VENUES.map((venue) => (
+              <button
+                key={venue.id}
+                type="button"
+                className={`venue-card ${venue.id === venueId ? 'is-selected' : ''}`}
+                disabled={venue.locked}
+                onClick={() => setVenueId(venue.id)}
+              >
+                <strong>{venue.name}</strong>
+                <span>{venue.limit}</span>
+                <em>{venue.locked ? '未开放' : venue.prize}</em>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <GameButton
+          block
+          variant="danger"
+          onClick={() => {
+            onSfx('audio/sfx/sfx_button.mp3', 0.35);
+            setMapOpen(false);
+          }}
+        >
+          携伴侣出征
+        </GameButton>
+      </main>
+    );
+  }
 
   return (
     <main className="screen battle-screen">

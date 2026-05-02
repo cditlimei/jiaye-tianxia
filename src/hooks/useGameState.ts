@@ -9,6 +9,7 @@ import type { GameState, Screen } from '../types';
 type Action =
   | { type: 'setScreen'; screen: Screen }
   | { type: 'selectLord'; lordId: string }
+  | { type: 'selectStarterPartner'; partner: Partner }
   | { type: 'collectIncome'; amount: number }
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'recruitPartner'; partner: Partner }
@@ -32,17 +33,35 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...defaultGameState,
         selectedLordId: action.lordId,
-        screen: 'home',
-        lastScreen: 'home',
+        screen: 'partnerSelect',
+        lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
         eventLog: [
           {
             id: `lord-${Date.now()}`,
             day: 1,
             title: '择主立业',
-            detail: '乱世基业已定，宅邸经营正式开始。'
+            detail: '乱世基业已定，待择良缘共理家业。'
           }
         ]
+      };
+    case 'selectStarterPartner':
+      return {
+        ...state,
+        screen: 'home',
+        lastScreen: 'home',
+        ownedPartnerIds: state.ownedPartnerIds.includes(action.partner.id)
+          ? state.ownedPartnerIds
+          : [...state.ownedPartnerIds, action.partner.id],
+        eventLog: [
+          {
+            id: `starter-partner-${action.partner.id}-${Date.now()}`,
+            day: state.day,
+            title: '良缘入府',
+            detail: `${action.partner.name}已入府，与主公共创家业。`
+          },
+          ...state.eventLog
+        ].slice(0, 18)
       };
     case 'collectIncome': {
       const nextDay = state.day + 1;
@@ -248,6 +267,7 @@ export function useGameState() {
     hasSave: Boolean(state.selectedLordId),
     setScreen: (screen: Screen) => dispatch({ type: 'setScreen', screen }),
     selectLord: (lordId: string) => dispatch({ type: 'selectLord', lordId }),
+    selectStarterPartner: (partner: Partner) => dispatch({ type: 'selectStarterPartner', partner }),
     collectIncome,
     upgradeHome,
     recruitPartner,

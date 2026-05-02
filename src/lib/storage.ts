@@ -3,7 +3,7 @@ import { findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gam
 import { quests } from '../data/progression';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
-const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'home'];
+const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
 const OFFLINE_TICK_MS = 3000;
 const OFFLINE_MIN_MS = 30000;
 const OFFLINE_MAX_TICKS = 240;
