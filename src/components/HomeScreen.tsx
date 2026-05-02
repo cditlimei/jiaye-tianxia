@@ -104,10 +104,23 @@ export function HomeScreen({
             <span>{lord.title}</span>
           </div>
         </div>
-        <div className="home-hud__numbers">
-          <span>{state.gold.toLocaleString()} 金</span>
-          <span>{totalPower} 战力</span>
-          <span>第 {state.day} 天</span>
+        <div className="home-hud__chips">
+          <div>
+            <strong>{state.gold.toLocaleString()}</strong>
+            <span>金币</span>
+          </div>
+          <div>
+            <strong>{totalPower}</strong>
+            <span>战力</span>
+          </div>
+          <div>
+            <strong>Lv.{currentHome.level}</strong>
+            <span>宅邸</span>
+          </div>
+          <div>
+            <strong>第 {state.day} 日</strong>
+            <span>天数</span>
+          </div>
         </div>
         <button className="sound-toggle sound-toggle--inset" onClick={onOpenSettings} aria-label="打开设置">
           设
@@ -122,19 +135,44 @@ export function HomeScreen({
               <span key={item.id}>+{item.amount}金</span>
             ))}
           </div>
+          <div className="home-estate__content">
+            <span className="eyebrow">主城经营 · 核心循环</span>
+            <h2>Lv.{currentHome.level} {currentHome.name}</h2>
+            <p>每 3 秒自动收入 {currentHome.dailyIncome} 金，当前战力由主公、伴侣、兵器与宅邸共同构成。</p>
+          </div>
+          <div className="home-estate__stats">
+            <StatBar label="武力" value={totalPower} max={420} tone="red" />
+            <StatBar label="智谋" value={intelligence} max={150} tone="blue" />
+            <StatBar label="声望" value={charisma} max={150} tone="gold" />
+          </div>
         </div>
-        <div className="home-estate__content">
-          <span className="eyebrow">宅邸等级 {currentHome.level}</span>
-          <h2>{currentHome.name}</h2>
-          <p>每日收入 {currentHome.dailyIncome} 金 · 当前兵器 {weapon.name}</p>
-          <p>伴侣：{partnerNames}</p>
+        <div className="home-support-grid">
+          <div>
+            <span>当前兵器</span>
+            <strong>{weapon.name}</strong>
+            <small>武力 +{weapon.strengthBonus}</small>
+          </div>
+          <div>
+            <span>伴侣状态</span>
+            <strong>已招募 {ownedPartners.length} 位</strong>
+            <small>{partnerNames === '尚未招募' ? '尚未招募伴侣，当前内庭寂静。' : partnerNames}</small>
+          </div>
         </div>
       </section>
 
-      <section className="home-stats">
-        <StatBar label="武力" value={totalPower} max={420} tone="red" />
-        <StatBar label="智谋" value={intelligence} max={150} tone="blue" />
-        <StatBar label="声望" value={charisma} max={150} tone="green" />
+      <section className="action-grid">
+        <GameButton onClick={handleUpgrade} disabled={!canUpgrade}>
+          {nextHome ? `升级宅邸 · ${nextHome.upgradeCost.toLocaleString()}金` : '宅邸已满'}
+        </GameButton>
+        <GameButton variant="secondary" onClick={onOpenPartner}>
+          招募伴侣
+        </GameButton>
+        <GameButton variant="secondary" onClick={onOpenWeapon}>
+          兵器库
+        </GameButton>
+        <GameButton variant="danger" onClick={onBattle}>
+          出征讨伐
+        </GameButton>
       </section>
 
       {!state.tutorialDone && (
@@ -153,21 +191,6 @@ export function HomeScreen({
           <button onClick={onCompleteTutorial}>{completedStarterOrders === starterOrders.length ? '收令' : '暂收'}</button>
         </section>
       )}
-
-      <section className="action-grid">
-        <GameButton onClick={handleUpgrade} disabled={!canUpgrade}>
-          {nextHome ? `升级宅邸 · ${nextHome.upgradeCost.toLocaleString()}金` : '宅邸已满'}
-        </GameButton>
-        <GameButton variant="secondary" onClick={onOpenPartner}>
-          招募伴侣
-        </GameButton>
-        <GameButton variant="secondary" onClick={onOpenWeapon}>
-          兵器库
-        </GameButton>
-        <GameButton variant="danger" onClick={onBattle}>
-          出征讨伐
-        </GameButton>
-      </section>
 
       <section className="quest-panel">
         <div className="section-title">

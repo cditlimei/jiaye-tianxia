@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react';
 import type { GameState } from '../types';
+import { imageUrl } from '../lib/assets';
 import { GameButton } from './common/GameButton';
 
 interface TitleScreenProps {
@@ -12,13 +14,16 @@ interface TitleScreenProps {
 
 export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onToggleSound }: TitleScreenProps) {
   return (
-    <main className="screen title-screen">
+    <main
+      className="screen title-screen"
+      style={{ '--title-backdrop': `url(${imageUrl('assets/lords/lord_caocao.png', 640)})` } as CSSProperties}
+    >
       <button className="sound-toggle" onClick={onToggleSound} aria-label="切换声音">
         {state.soundEnabled ? '音' : '静'}
       </button>
-      <div className="title-screen__seal">汉末风云</div>
+      <div className="title-screen__seal">三国经营策略</div>
       <h1>家业天下</h1>
-      <p className="title-screen__subtitle">三国经营策略</p>
+      <p className="title-screen__subtitle">选定主公，经营家业，招募伴侣，配备兵器，于乱世中成就一方门阀霸业。</p>
       {hasSave ? (
         <div className="title-screen__save">
           <span>{lordName ?? '旧主'}</span>
@@ -43,4 +48,3 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
     </main>
   );
 }
-

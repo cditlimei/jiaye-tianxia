@@ -23,7 +23,7 @@ try {
   await expectText(page, '家业天下');
 
   await page.getByRole('button', { name: '开始游戏' }).click();
-  await expectText(page, '群雄入局');
+  await expectText(page, '乱世择主');
   await page.getByRole('button', { name: '确认选择' }).click();
   await expectText(page, '升级宅邸', 7000);
   await page.getByRole('button', { name: '招募伴侣' }).click();
@@ -118,7 +118,7 @@ try {
     await page.getByRole('button', { name: '鸣金收兵' }).click();
     await page.getByRole('button', { name: '返回家业' }).click();
   }
-  await expectText(page, '宅邸等级');
+  await expectText(page, '主城经营');
   assertOptimizedImages(imageRequests);
 
   console.log('smoke_ok');

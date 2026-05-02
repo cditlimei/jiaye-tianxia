@@ -19,8 +19,8 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
     <main className="screen lord-screen">
       <header className="screen-header">
         <div>
-          <span className="eyebrow">择定主公</span>
-          <h2>群雄入局</h2>
+          <span className="eyebrow">第二屏 · 选择主公</span>
+          <h2>乱世择主</h2>
         </div>
         <GameButton variant="ghost" onClick={onBack}>
           返回
@@ -41,8 +41,10 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
               <span className="camp-badge" style={{ color: lordCamp.color, background: lordCamp.softColor }}>
                 {lordCamp.name}
               </span>
-              <strong>{lord.name}</strong>
-              <small>{lord.title}</small>
+              <span className="lord-card__copy">
+                <strong>{lord.name}</strong>
+                <small>{lord.title}</small>
+              </span>
             </button>
           );
         })}
@@ -55,6 +57,7 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
           </span>
           <h3>{selectedLord.name}</h3>
           <p>{selectedLord.description}</p>
+          <blockquote>“乱世起家，择一主而成一门。”</blockquote>
         </div>
         <div className="lord-detail__stats">
           <StatBar label="武力" value={selectedLord.strength} tone="red" />
