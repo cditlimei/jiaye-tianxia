@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, PointerEvent } from 'react';
 import { lords } from '../data/gameData';
 import type { Lord } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
@@ -113,6 +114,18 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     setTable((prev) => ({ ...prev, selectedIds: [] }));
   };
 
+  const selectCardFromHand = (event: PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || table.currentPlayer !== 0 || table.winner !== null || playerHand.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, playerHand.length);
+    const card = playerHand[index];
+    if (card) {
+      toggleCard(card.id);
+    }
+  };
+
   return (
     <main className="screen doudizhu-screen">
       <header className="screen-header doudizhu-header">
@@ -173,19 +186,23 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         />
       </section>
 
-      <section className="player-hand" aria-label="你的手牌">
-        {playerHand.map((card) => (
+      <section className="player-hand" aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
+        {playerHand.map((card, index) => {
+          const selected = table.selectedIds.includes(card.id);
+          return (
           <button
             key={card.id}
             type="button"
-            className={`poker-card ${card.red ? 'is-red' : ''} ${table.selectedIds.includes(card.id) ? 'is-selected' : ''}`}
+            className={`poker-card ${card.red ? 'is-red' : ''} ${selected ? 'is-selected' : ''}`}
+            style={handCardStyle(index, playerHand.length, selected)}
             onClick={() => toggleCard(card.id)}
-            aria-pressed={table.selectedIds.includes(card.id)}
+            aria-pressed={selected}
           >
             <span>{card.suit}</span>
             <strong>{card.rank}</strong>
           </button>
-        ))}
+          );
+        })}
       </section>
 
       <section className="doudizhu-actions">
@@ -235,6 +252,27 @@ function PlayerSeat({
       <p>{recentCards.length > 0 ? formatCards(recentCards) : '静待出牌'}</p>
     </article>
   );
+}
+
+function handCardStyle(index: number, count: number, selected: boolean): CSSProperties {
+  const cardWidthPercent = 12.5;
+  const progress = count <= 1 ? 0.5 : index / (count - 1);
+  const left = count <= 1 ? (100 - cardWidthPercent) / 2 : progress * (100 - cardWidthPercent);
+
+  return {
+    left: `${left}%`,
+    transform: selected ? 'translateY(-16px)' : 'translateY(0)',
+    zIndex: selected ? 100 + index : index + 1
+  };
+}
+
+function handIndexFromPointer(handBox: DOMRect, clientX: number, count: number) {
+  if (count <= 1) return 0;
+
+  const cardWidth = handBox.width * 0.125;
+  const usableWidth = Math.max(1, handBox.width - cardWidth);
+  const progress = Math.min(1, Math.max(0, (clientX - handBox.left - cardWidth / 2) / usableWidth));
+  return Math.round(progress * (count - 1));
 }
 
 function createInitialTable(): TableState {

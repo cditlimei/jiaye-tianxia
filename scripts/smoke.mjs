@@ -117,7 +117,9 @@ try {
   await expectText(page, '三人同桌');
   await expectText(page, '曹操');
   await expectText(page, '孙权');
-  await page.locator('.player-hand .poker-card').first().click();
+  await assertPlayerHandFits(page);
+  await page.locator('.player-hand').click({ position: { x: 24, y: 80 } });
+  await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
   await expectText(page, '你出牌');
   await page.getByRole('button', { name: '回府' }).click();
@@ -179,6 +181,30 @@ function assertOptimizedImages(imageRequests) {
   const optimizedRequests = imageRequests.filter((url) => url.includes('/optimized/'));
   if (optimizedRequests.length === 0) {
     throw new Error('smoke_missing_optimized_image_requests');
+  }
+}
+
+async function assertPlayerHandFits(page) {
+  const fit = await page.locator('.player-hand').evaluate((hand) => {
+    const cards = [...hand.querySelectorAll('.poker-card')];
+    const handBox = hand.getBoundingClientRect();
+    const cardBoxes = cards.map((card) => card.getBoundingClientRect());
+    const first = cardBoxes[0];
+    const last = cardBoxes.at(-1);
+    const offscreenCards = cardBoxes.filter((box) => box.left < handBox.left - 1 || box.right > handBox.right + 1);
+
+    return {
+      cardCount: cards.length,
+      firstLeft: first?.left ?? 0,
+      lastRight: last?.right ?? 0,
+      handLeft: handBox.left,
+      handRight: handBox.right,
+      offscreenCount: offscreenCards.length
+    };
+  });
+
+  if (fit.cardCount < 17 || fit.offscreenCount > 0) {
+    throw new Error(`smoke_player_hand_overflows ${JSON.stringify(fit)}`);
   }
 }
 

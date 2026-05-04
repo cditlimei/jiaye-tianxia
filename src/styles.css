@@ -2525,31 +2525,30 @@ body {
 }
 
 .player-hand {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  min-height: 104px;
-  overflow-x: auto;
-  padding: 14px 4px 5px;
-  scroll-snap-type: x proximity;
+  position: relative;
+  height: 112px;
+  min-height: 112px;
+  overflow: visible;
+  padding: 14px 6px 6px;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .poker-card {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 72px;
-  padding: 7px 4px;
+  position: absolute;
+  bottom: 6px;
+  width: 12.5%;
+  height: 76px;
+  padding: 7px 5px;
   border: 1px solid rgba(45, 34, 24, 0.72);
   border-radius: 9px;
   color: #111017;
   background: linear-gradient(180deg, #fff9e9, #d7c7a5);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
-  scroll-snap-align: start;
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
 .poker-card.is-selected {
-  transform: translateY(-13px);
   box-shadow: 0 12px 24px rgba(212, 168, 67, 0.26);
 }
 
@@ -2560,17 +2559,18 @@ body {
 .poker-card span,
 .poker-card strong {
   display: block;
-  text-align: center;
+  text-align: left;
 }
 
 .poker-card span {
-  height: 18px;
-  font-size: 16px;
+  height: 15px;
+  font-size: 14px;
   line-height: 1;
 }
 
 .poker-card strong {
-  margin-top: 8px;
+  margin-top: 4px;
+  font-family: var(--font-number);
   font-size: 18px;
   line-height: 1;
 }
