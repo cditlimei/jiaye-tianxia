@@ -72,6 +72,19 @@ button:disabled {
   background-size: 24px 24px, 24px 24px, auto;
 }
 
+@media (orientation: landscape), (min-width: 760px) {
+  body.is-doudizhu-table .app-shell {
+    padding: 10px;
+  }
+
+  body.is-doudizhu-table .phone-shell {
+    width: min(100%, 930px);
+    height: min(560px, calc(100vh - 20px));
+    height: min(560px, calc(100dvh - 20px));
+    min-height: 360px;
+  }
+}
+
 .screen {
   width: 100%;
   height: 100%;
@@ -2340,6 +2353,10 @@ body {
   gap: 10px;
 }
 
+.orientation-tip {
+  display: none;
+}
+
 .doudizhu-header {
   align-items: flex-start;
 }
@@ -2590,4 +2607,162 @@ body {
 
 .doudizhu-actions .game-button--block {
   grid-column: 1 / -1;
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  body.is-doudizhu-table .orientation-tip {
+    display: grid;
+    gap: 3px;
+    padding: 8px 12px;
+    border: 1px solid rgba(240, 214, 138, 0.42);
+    border-radius: 14px;
+    background: rgba(91, 20, 18, 0.72);
+  }
+
+  body.is-doudizhu-table .orientation-tip strong {
+    color: var(--gold-light);
+    font-size: 14px;
+    line-height: 1.1;
+  }
+
+  body.is-doudizhu-table .orientation-tip span {
+    color: rgba(245, 230, 200, 0.78);
+    font-size: 11px;
+    line-height: 1.25;
+  }
+}
+
+@media (orientation: landscape), (min-width: 760px) {
+  body.is-doudizhu-table .doudizhu-screen {
+    grid-template-columns: 190px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) 96px;
+    gap: 8px 10px;
+    overflow: hidden;
+    padding: 12px 14px;
+  }
+
+  body.is-doudizhu-table .doudizhu-header {
+    grid-column: 1;
+    grid-row: 1;
+    display: grid;
+    gap: 6px;
+  }
+
+  body.is-doudizhu-table .doudizhu-header h2 {
+    margin-top: 3px;
+    font-size: 24px;
+    line-height: 1.08;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
+
+  body.is-doudizhu-table .doudizhu-tabletop {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    grid-template-rows: 86px minmax(0, 1fr) 82px;
+    min-height: 0;
+    height: 100%;
+    padding: 8px;
+  }
+
+  body.is-doudizhu-table .table-seat {
+    grid-template-columns: 44px minmax(0, 1fr);
+    min-height: 0;
+    padding: 7px;
+  }
+
+  body.is-doudizhu-table .table-seat__avatar {
+    width: 44px;
+    height: 56px;
+    border-radius: 10px;
+  }
+
+  body.is-doudizhu-table .table-seat p {
+    margin-top: 0;
+    font-size: 11px;
+  }
+
+  body.is-doudizhu-table .table-seat em,
+  body.is-doudizhu-table .history-panel p,
+  body.is-doudizhu-table .doudizhu-status span {
+    font-size: 11px;
+  }
+
+  body.is-doudizhu-table .table-center {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  body.is-doudizhu-table .last-play-panel,
+  body.is-doudizhu-table .history-panel {
+    min-height: 0;
+    padding: 9px 10px;
+  }
+
+  body.is-doudizhu-table .last-play-panel p {
+    margin-top: 3px;
+    overflow: hidden;
+    color: rgba(245, 230, 200, 0.68);
+    font-size: 12px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .history-panel p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .player-hand {
+    grid-column: 2;
+    grid-row: 3;
+    height: 96px;
+    min-height: 96px;
+    padding: 8px 4px 4px;
+  }
+
+  body.is-doudizhu-table .poker-card {
+    height: 86px;
+    border-radius: 10px;
+  }
+
+  body.is-doudizhu-table .poker-card span {
+    font-size: 15px;
+  }
+
+  body.is-doudizhu-table .poker-card strong {
+    font-size: 22px;
+  }
+
+  body.is-doudizhu-table .doudizhu-actions {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: end;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  body.is-doudizhu-table .doudizhu-actions .game-button {
+    min-height: 28px;
+    padding: 5px 8px;
+    border-radius: 9px;
+    font-size: 14px;
+  }
 }

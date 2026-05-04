@@ -117,8 +117,11 @@ try {
   await expectText(page, '三人同桌');
   await expectText(page, '曹操');
   await expectText(page, '孙权');
+  await expectText(page, '横屏牌桌');
+  await page.setViewportSize({ width: 844, height: 390 });
+  await assertLandscapeTable(page);
   await assertPlayerHandFits(page);
-  await page.locator('.player-hand').click({ position: { x: 24, y: 80 } });
+  await page.locator('.player-hand').click({ position: { x: 32, y: 72 } });
   await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
   await expectText(page, '你出牌');
@@ -205,6 +208,22 @@ async function assertPlayerHandFits(page) {
 
   if (fit.cardCount < 17 || fit.offscreenCount > 0) {
     throw new Error(`smoke_player_hand_overflows ${JSON.stringify(fit)}`);
+  }
+}
+
+async function assertLandscapeTable(page) {
+  const layout = await page.evaluate(() => {
+    const shell = document.querySelector('.phone-shell')?.getBoundingClientRect();
+    const tip = document.querySelector('.orientation-tip');
+    return {
+      shellWidth: shell?.width ?? 0,
+      shellHeight: shell?.height ?? 0,
+      tipDisplay: tip ? getComputedStyle(tip).display : ''
+    };
+  });
+
+  if (layout.shellWidth <= layout.shellHeight || layout.tipDisplay !== 'none') {
+    throw new Error(`smoke_doudizhu_landscape_layout_failed ${JSON.stringify(layout)}`);
   }
 }
 

@@ -77,6 +77,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
       : `${playerNames[table.currentPlayer]}思索中`;
 
   useEffect(() => {
+    document.body.classList.add('is-doudizhu-table');
+    return () => document.body.classList.remove('is-doudizhu-table');
+  }, []);
+
+  useEffect(() => {
     if (table.winner === null || settledRef.current) {
       return;
     }
@@ -128,6 +133,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
 
   return (
     <main className="screen doudizhu-screen">
+      <aside className="orientation-tip" aria-hidden="true">
+        <strong>横屏牌桌</strong>
+        <span>把手机横过来，手牌和对局信息会更清楚。</span>
+      </aside>
+
       <header className="screen-header doudizhu-header">
         <div>
           <span className="eyebrow">荆州 · 斗地主</span>
@@ -190,17 +200,17 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         {playerHand.map((card, index) => {
           const selected = table.selectedIds.includes(card.id);
           return (
-          <button
-            key={card.id}
-            type="button"
-            className={`poker-card ${card.red ? 'is-red' : ''} ${selected ? 'is-selected' : ''}`}
-            style={handCardStyle(index, playerHand.length, selected)}
-            onClick={() => toggleCard(card.id)}
-            aria-pressed={selected}
-          >
-            <span>{card.suit}</span>
-            <strong>{card.rank}</strong>
-          </button>
+            <button
+              key={card.id}
+              type="button"
+              className={`poker-card ${card.red ? 'is-red' : ''} ${selected ? 'is-selected' : ''}`}
+              style={handCardStyle(index, playerHand.length, selected)}
+              onClick={() => toggleCard(card.id)}
+              aria-pressed={selected}
+            >
+              <span>{card.suit}</span>
+              <strong>{card.rank}</strong>
+            </button>
           );
         })}
       </section>
