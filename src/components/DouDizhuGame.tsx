@@ -168,17 +168,20 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           handCount={table.hands[1].length}
           recentCards={table.recentMoves[1]}
           active={table.currentPlayer === 1}
+          seat="opponent-left"
         />
         <PlayerSeat
           profile={profiles[2]}
           handCount={table.hands[2].length}
           recentCards={table.recentMoves[2]}
           active={table.currentPlayer === 2}
+          seat="opponent-right"
         />
         <div className="table-center">
           <div className="last-play-panel">
             <span>当前牌型</span>
             <strong>{table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</strong>
+            <MiniCardStrip cards={table.lastPlay?.cards ?? []} emptyLabel="桌面等待首轮出牌" center />
             <p>{table.lastPlay ? formatCards(table.lastPlay.cards) : '无人压牌，任意合法牌型可出。'}</p>
           </div>
           <div className="history-panel">
@@ -192,6 +195,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           handCount={table.hands[0].length}
           recentCards={table.recentMoves[0]}
           active={table.currentPlayer === 0}
+          seat="self"
           self
         />
       </section>
@@ -243,24 +247,47 @@ function PlayerSeat({
   handCount,
   recentCards,
   active,
+  seat,
   self = false
 }: {
   profile: PlayerProfile;
   handCount: number;
   recentCards: Card[];
   active: boolean;
+  seat: 'opponent-left' | 'opponent-right' | 'self';
   self?: boolean;
 }) {
   return (
-    <article className={`table-seat ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
+    <article className={`table-seat table-seat--${seat} ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
       <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} className="table-seat__avatar" />
       <div className="table-seat__copy">
         <strong>{profile.name}</strong>
         <span>{profile.role} · {profile.title}</span>
         <em>{handCount} 张手牌</em>
       </div>
-      <p>{recentCards.length > 0 ? formatCards(recentCards) : '静待出牌'}</p>
+      <MiniCardStrip cards={recentCards} emptyLabel="静待出牌" />
     </article>
+  );
+}
+
+function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; emptyLabel: string; center?: boolean }) {
+  return (
+    <div className={`mini-card-strip ${center ? 'mini-card-strip--center' : ''} ${cards.length === 0 ? 'is-empty' : ''}`}>
+      {cards.length > 0 ? (
+        cards.map((card) => <MiniCard key={card.id} card={card} />)
+      ) : (
+        <span className="mini-card-empty">{emptyLabel}</span>
+      )}
+    </div>
+  );
+}
+
+function MiniCard({ card }: { card: Card }) {
+  return (
+    <span className={`mini-card ${card.red ? 'is-red' : ''}`}>
+      <span>{card.suit}</span>
+      <strong>{card.rank}</strong>
+    </span>
   );
 }
 

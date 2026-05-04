@@ -124,7 +124,7 @@ try {
   await page.locator('.player-hand').click({ position: { x: 32, y: 72 } });
   await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
-  await expectText(page, '你出牌');
+  await expectText(page, '19 张手牌');
   await page.getByRole('button', { name: '回府' }).click();
   await expectText(page, '主城经营');
   assertOptimizedImages(imageRequests);
