@@ -114,6 +114,9 @@ try {
   await expectText(page, '九州征途');
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await expectText(page, '斗地主牌局', 9000);
+  await expectText(page, '三人同桌');
+  await expectText(page, '曹操');
+  await expectText(page, '孙权');
   await page.locator('.player-hand .poker-card').first().click();
   await page.getByRole('button', { name: '出牌' }).click();
   await expectText(page, '你出牌');

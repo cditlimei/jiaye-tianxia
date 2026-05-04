@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { lords } from '../data/gameData';
 import type { Lord } from '../data/gameData';
+import { imageUrl } from '../lib/assets';
 import type { Card, Combo, PlayerIndex } from '../lib/doudizhu';
 import { canBeat, comboLabel, createDoudizhuDeal, evaluateCards, findFirstPlayable, formatCards, sortCards } from '../lib/doudizhu';
 import { GameButton } from './common/GameButton';
+import { ImageWithFallback } from './common/ImageWithFallback';
 
 interface DouDizhuGameProps {
   lord: Lord;
@@ -32,15 +35,27 @@ interface TableState {
   winner: PlayerIndex | null;
 }
 
-const PLAYER_META: Record<PlayerIndex, { name: string; role: string }> = {
-  0: { name: '主公', role: '地主' },
-  1: { name: '许都散骑', role: '农民' },
-  2: { name: '江东游侠', role: '农民' }
-};
+interface PlayerProfile {
+  name: string;
+  title: string;
+  role: '地主' | '农民';
+  imagePath: string;
+}
+
+const OPPONENT_IDS = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi'];
 
 export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
   const settledRef = useRef(false);
+  const profiles = useMemo(() => createPlayerProfiles(lord), [lord]);
+  const playerNames = useMemo(
+    () => ({
+      0: profiles[0].name,
+      1: profiles[1].name,
+      2: profiles[2].name
+    }) satisfies Record<PlayerIndex, string>,
+    [profiles]
+  );
   const playerHand = table.hands[0];
   const selectedCards = useMemo(
     () => sortCards(playerHand.filter((card) => table.selectedIds.includes(card.id))),
@@ -53,12 +68,12 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   const statusCopy = table.winner !== null
     ? table.winner === 0
       ? `牌局胜利，缴获 ${rewardGold.toLocaleString()} 金`
-      : `${PLAYER_META[table.winner].name}先走完牌，本局失利`
+      : `${playerNames[table.winner]}先走完牌，本局失利`
     : table.currentPlayer === 0
       ? targetCombo
-        ? `请大过 ${PLAYER_META[table.lastPlay!.player].name} 的${comboLabel(targetCombo)}`
+        ? `请大过 ${playerNames[table.lastPlay!.player]} 的${comboLabel(targetCombo)}`
         : '本轮由你先出牌'
-      : `${PLAYER_META[table.currentPlayer].name}思索中`;
+      : `${playerNames[table.currentPlayer]}思索中`;
 
   useEffect(() => {
     if (table.winner === null || settledRef.current) {
@@ -83,13 +98,15 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   const playSelected = () => {
     if (!canPlay || !selectedCombo) return;
     onSfx('audio/sfx/sfx_button.mp3', 0.32);
-    setTable((prev) => resolveAiTurns(applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`)));
+    setTable((prev) =>
+      resolveAiTurns(applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`), playerNames)
+    );
   };
 
   const pass = () => {
     if (!canPass) return;
     onSfx('audio/sfx/sfx_button.mp3', 0.24);
-    setTable((prev) => resolveAiTurns(applyPass(prev, 0, '你选择不要。')));
+    setTable((prev) => resolveAiTurns(applyPass(prev, 0, '你选择不要。'), playerNames));
   };
 
   const resetSelection = () => {
@@ -113,7 +130,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
 
       <section className="doudizhu-status" aria-live="polite">
         <div>
-          <span>{lord.name}坐庄</span>
+          <span>三人同桌 · {lord.name}坐庄</span>
           <strong>{statusCopy}</strong>
         </div>
         <div>
@@ -122,22 +139,38 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         </div>
       </section>
 
-      <section className="opponent-row" aria-label="对手">
-        <OpponentSeat player={1} handCount={table.hands[1].length} recentCards={table.recentMoves[1]} />
-        <OpponentSeat player={2} handCount={table.hands[2].length} recentCards={table.recentMoves[2]} />
-      </section>
-
-      <section className="card-table" aria-label="牌桌">
-        <div className="last-play-panel">
-          <span>当前牌型</span>
-          <strong>{table.lastPlay ? `${PLAYER_META[table.lastPlay.player].name} · ${table.lastPlay.combo.label}` : '自由出牌'}</strong>
-          <p>{table.lastPlay ? formatCards(table.lastPlay.cards) : '无人压牌，任意合法牌型可出。'}</p>
+      <section className="doudizhu-tabletop" aria-label="三人斗地主牌桌">
+        <PlayerSeat
+          profile={profiles[1]}
+          handCount={table.hands[1].length}
+          recentCards={table.recentMoves[1]}
+          active={table.currentPlayer === 1}
+        />
+        <PlayerSeat
+          profile={profiles[2]}
+          handCount={table.hands[2].length}
+          recentCards={table.recentMoves[2]}
+          active={table.currentPlayer === 2}
+        />
+        <div className="table-center">
+          <div className="last-play-panel">
+            <span>当前牌型</span>
+            <strong>{table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</strong>
+            <p>{table.lastPlay ? formatCards(table.lastPlay.cards) : '无人压牌，任意合法牌型可出。'}</p>
+          </div>
+          <div className="history-panel">
+            {table.history.slice(0, 4).map((item) => (
+              <p key={item}>{item}</p>
+            ))}
+          </div>
         </div>
-        <div className="history-panel">
-          {table.history.slice(0, 4).map((item) => (
-            <p key={item}>{item}</p>
-          ))}
-        </div>
+        <PlayerSeat
+          profile={profiles[0]}
+          handCount={table.hands[0].length}
+          recentCards={table.recentMoves[0]}
+          active={table.currentPlayer === 0}
+          self
+        />
       </section>
 
       <section className="player-hand" aria-label="你的手牌">
@@ -178,12 +211,26 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   );
 }
 
-function OpponentSeat({ player, handCount, recentCards }: { player: PlayerIndex; handCount: number; recentCards: Card[] }) {
+function PlayerSeat({
+  profile,
+  handCount,
+  recentCards,
+  active,
+  self = false
+}: {
+  profile: PlayerProfile;
+  handCount: number;
+  recentCards: Card[];
+  active: boolean;
+  self?: boolean;
+}) {
   return (
-    <article className="opponent-seat">
-      <div>
-        <strong>{PLAYER_META[player].name}</strong>
-        <span>{PLAYER_META[player].role} · {handCount} 张</span>
+    <article className={`table-seat ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
+      <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} className="table-seat__avatar" />
+      <div className="table-seat__copy">
+        <strong>{profile.name}</strong>
+        <span>{profile.role} · {profile.title}</span>
+        <em>{handCount} 张手牌</em>
       </div>
       <p>{recentCards.length > 0 ? formatCards(recentCards) : '静待出牌'}</p>
     </article>
@@ -205,7 +252,22 @@ function createInitialTable(): TableState {
   };
 }
 
-function resolveAiTurns(table: TableState): TableState {
+function createPlayerProfiles(lord: Lord): Record<PlayerIndex, PlayerProfile> {
+  const opponents = OPPONENT_IDS.map((id) => lords.find((item) => item.id === id))
+    .filter((item): item is Lord => item !== undefined && item.id !== lord.id)
+    .slice(0, 2);
+  const fallbackOpponents = lords.filter((item) => item.id !== lord.id && !opponents.some((opponent) => opponent.id === item.id));
+  const firstOpponent = opponents[0] ?? fallbackOpponents[0] ?? lord;
+  const secondOpponent = opponents[1] ?? fallbackOpponents[1] ?? firstOpponent;
+
+  return {
+    0: { name: lord.name, title: lord.title, role: '地主', imagePath: lord.imagePath },
+    1: { name: firstOpponent.name, title: firstOpponent.title, role: '农民', imagePath: firstOpponent.imagePath },
+    2: { name: secondOpponent.name, title: secondOpponent.title, role: '农民', imagePath: secondOpponent.imagePath }
+  };
+}
+
+function resolveAiTurns(table: TableState, playerNames: Record<PlayerIndex, string>): TableState {
   let next = table;
   let guard = 0;
 
@@ -217,9 +279,9 @@ function resolveAiTurns(table: TableState): TableState {
     const combo = cards ? evaluateCards(cards) : null;
 
     if (cards && combo && canBeat(combo, target)) {
-      next = applyPlay(next, player, cards, combo, `${PLAYER_META[player].name}出牌：${combo.label} ${formatCards(cards)}`);
+      next = applyPlay(next, player, cards, combo, `${playerNames[player]}出牌：${combo.label} ${formatCards(cards)}`);
     } else {
-      next = applyPass(next, player, `${PLAYER_META[player].name}不要。`);
+      next = applyPass(next, player, `${playerNames[player]}不要。`);
     }
   }
 

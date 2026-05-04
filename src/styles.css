@@ -2336,7 +2336,7 @@ body {
 
 .doudizhu-screen {
   display: grid;
-  grid-template-rows: auto auto auto minmax(160px, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(360px, 1fr) auto auto;
   gap: 10px;
 }
 
@@ -2368,7 +2368,7 @@ body {
 }
 
 .doudizhu-status div,
-.opponent-seat,
+.table-seat,
 .last-play-panel,
 .history-panel {
   min-width: 0;
@@ -2383,22 +2383,22 @@ body {
 
 .doudizhu-status span,
 .doudizhu-status strong,
-.opponent-seat strong,
-.opponent-seat span,
+.table-seat strong,
+.table-seat span,
 .last-play-panel span,
 .last-play-panel strong {
   display: block;
 }
 
 .doudizhu-status span,
-.opponent-seat span,
+.table-seat span,
 .last-play-panel span {
   color: rgba(245, 230, 200, 0.62);
   font-size: 12px;
 }
 
 .doudizhu-status strong,
-.opponent-seat strong,
+.table-seat strong,
 .last-play-panel strong {
   margin-top: 4px;
   color: var(--gold-light);
@@ -2406,30 +2406,99 @@ body {
   line-height: 1.35;
 }
 
-.opponent-row {
+.doudizhu-tabletop {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto minmax(150px, 1fr) auto;
   gap: 8px;
-}
-
-.opponent-seat {
-  min-height: 92px;
+  min-height: 360px;
   padding: 10px;
+  border: 1px solid rgba(212, 168, 67, 0.2);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(212, 168, 67, 0.16), transparent 34%),
+    radial-gradient(ellipse at 50% 50%, rgba(35, 82, 59, 0.58), rgba(8, 8, 17, 0.82) 68%),
+    rgba(8, 8, 17, 0.72);
 }
 
-.opponent-seat p {
-  margin: 10px 0 0;
-  min-height: 22px;
+.table-seat {
+  position: relative;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 100px;
+  padding: 8px;
+}
+
+.table-seat.is-active {
+  border-color: rgba(240, 214, 138, 0.78);
+  box-shadow: 0 0 0 1px rgba(240, 214, 138, 0.18), 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.table-seat.is-active::after {
+  content: '出牌中';
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #241303;
+  background: var(--gold-light);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.table-seat.is-self {
+  grid-column: 1 / -1;
+  min-height: 88px;
+}
+
+.table-seat__avatar {
+  width: 54px;
+  height: 68px;
+  display: block;
+  object-fit: cover;
+  object-position: top center;
+  border: 1px solid rgba(240, 214, 138, 0.42);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.table-seat__copy {
+  min-width: 0;
+}
+
+.table-seat span,
+.table-seat em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-seat em {
+  display: block;
+  margin-top: 5px;
+  color: rgba(245, 230, 200, 0.82);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.table-seat p {
+  grid-column: 1 / -1;
+  min-height: 20px;
+  margin: 2px 0 0;
   color: rgba(245, 230, 200, 0.78);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
-.card-table {
+.table-center {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-rows: auto minmax(74px, 1fr);
+  grid-template-rows: auto minmax(64px, 1fr);
   gap: 8px;
-  min-height: 160px;
 }
 
 .last-play-panel {
