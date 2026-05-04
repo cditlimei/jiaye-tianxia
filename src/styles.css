@@ -2333,3 +2333,192 @@ body {
 .venue-card:disabled {
   opacity: 0.48;
 }
+
+.doudizhu-screen {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(160px, 1fr) auto auto;
+  gap: 10px;
+}
+
+.doudizhu-header {
+  align-items: flex-start;
+}
+
+.doudizhu-header h2 {
+  font-size: 30px;
+}
+
+.doudizhu-header__side {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.doudizhu-header__side .game-button {
+  min-height: 34px;
+  padding: 6px 12px;
+  clip-path: none;
+  border-radius: 999px;
+}
+
+.doudizhu-status {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 8px;
+}
+
+.doudizhu-status div,
+.opponent-seat,
+.last-play-panel,
+.history-panel {
+  min-width: 0;
+  border: 1px solid rgba(212, 168, 67, 0.22);
+  border-radius: 16px;
+  background: rgba(9, 9, 18, 0.68);
+}
+
+.doudizhu-status div {
+  padding: 10px 12px;
+}
+
+.doudizhu-status span,
+.doudizhu-status strong,
+.opponent-seat strong,
+.opponent-seat span,
+.last-play-panel span,
+.last-play-panel strong {
+  display: block;
+}
+
+.doudizhu-status span,
+.opponent-seat span,
+.last-play-panel span {
+  color: rgba(245, 230, 200, 0.62);
+  font-size: 12px;
+}
+
+.doudizhu-status strong,
+.opponent-seat strong,
+.last-play-panel strong {
+  margin-top: 4px;
+  color: var(--gold-light);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.opponent-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.opponent-seat {
+  min-height: 92px;
+  padding: 10px;
+}
+
+.opponent-seat p {
+  margin: 10px 0 0;
+  min-height: 22px;
+  color: rgba(245, 230, 200, 0.78);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.card-table {
+  display: grid;
+  grid-template-rows: auto minmax(74px, 1fr);
+  gap: 8px;
+  min-height: 160px;
+}
+
+.last-play-panel {
+  padding: 12px;
+}
+
+.last-play-panel p {
+  margin: 8px 0 0;
+  color: rgba(245, 230, 200, 0.82);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.history-panel {
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.history-panel p {
+  margin: 0 0 7px;
+  color: rgba(245, 230, 200, 0.68);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.player-hand {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-height: 104px;
+  overflow-x: auto;
+  padding: 14px 4px 5px;
+  scroll-snap-type: x proximity;
+}
+
+.poker-card {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 72px;
+  padding: 7px 4px;
+  border: 1px solid rgba(45, 34, 24, 0.72);
+  border-radius: 9px;
+  color: #111017;
+  background: linear-gradient(180deg, #fff9e9, #d7c7a5);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
+  scroll-snap-align: start;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.poker-card.is-selected {
+  transform: translateY(-13px);
+  box-shadow: 0 12px 24px rgba(212, 168, 67, 0.26);
+}
+
+.poker-card.is-red {
+  color: #991d1d;
+}
+
+.poker-card span,
+.poker-card strong {
+  display: block;
+  text-align: center;
+}
+
+.poker-card span {
+  height: 18px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.poker-card strong {
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.doudizhu-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.doudizhu-actions .game-button {
+  min-height: 44px;
+  padding: 8px;
+  clip-path: none;
+  border-radius: 12px;
+}
+
+.doudizhu-actions .game-button--block {
+  grid-column: 1 / -1;
+}

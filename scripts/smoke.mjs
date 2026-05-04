@@ -112,16 +112,12 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '出征讨伐' }).click();
   await expectText(page, '九州征途');
-  await page.getByRole('button', { name: '携伴侣出征' }).click();
-  await expectText(page, '匹配敌军', 9000);
-  await expectText(page, /返回家业|鸣金收兵/, 30000);
-  const returnButton = page.getByRole('button', { name: '返回家业' });
-  if (await returnButton.isVisible().catch(() => false)) {
-    await returnButton.click();
-  } else {
-    await page.getByRole('button', { name: '鸣金收兵' }).click();
-    await page.getByRole('button', { name: '返回家业' }).click();
-  }
+  await page.getByRole('button', { name: '进入斗地主' }).click();
+  await expectText(page, '斗地主牌局', 9000);
+  await page.locator('.player-hand .poker-card').first().click();
+  await page.getByRole('button', { name: '出牌' }).click();
+  await expectText(page, '你出牌');
+  await page.getByRole('button', { name: '回府' }).click();
   await expectText(page, '主城经营');
   assertOptimizedImages(imageRequests);
 

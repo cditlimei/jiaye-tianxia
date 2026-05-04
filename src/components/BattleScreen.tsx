@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Lord, Weapon } from '../data/gameData';
 import { matchEnemy, rollDamage } from '../lib/battle';
 import { imageUrl } from '../lib/assets';
+import { DouDizhuGame } from './DouDizhuGame';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
@@ -37,10 +38,10 @@ const MAP_REGIONS = [
   { id: 'beijiang', name: '北疆', state: '未开', x: 42, y: 20, available: false }
 ];
 
-const VENUES: Array<{ id: VenueId; name: string; limit: string; prize: string; locked?: boolean }> = [
-  { id: 'beginner', name: '初级场', limit: '推荐战力 80+', prize: '胜利可得基础缴获' },
-  { id: 'middle', name: '中级场', limit: '推荐战力 180+', prize: '更高金币奖励' },
-  { id: 'high', name: '高级场', limit: '推荐战力 320+', prize: '名望与重赏', locked: true }
+const VENUES: Array<{ id: VenueId; name: string; limit: string; prize: string; rewardGold: number; locked?: boolean }> = [
+  { id: 'beginner', name: '初级场', limit: '推荐战力 80+', prize: '胜利可得基础缴获', rewardGold: 1200 },
+  { id: 'middle', name: '中级场', limit: '推荐战力 180+', prize: '更高金币奖励', rewardGold: 3000 },
+  { id: 'high', name: '高级场', limit: '推荐战力 320+', prize: '名望与重赏', rewardGold: 8000, locked: true }
 ];
 
 export function BattleScreen({
@@ -60,7 +61,9 @@ export function BattleScreen({
   const settledRef = useRef(false);
   const startedRef = useRef(false);
   const [mapOpen, setMapOpen] = useState(true);
+  const [doudizhuOpen, setDoudizhuOpen] = useState(false);
   const [venueId, setVenueId] = useState<VenueId>('beginner');
+  const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
   const [runtime, setRuntime] = useState<BattleRuntime>({
     phase: 'intro',
     playerHp: maxPlayerHp,
@@ -71,7 +74,7 @@ export function BattleScreen({
   });
 
   useEffect(() => {
-    if (mapOpen || startedRef.current) {
+    if (mapOpen || doudizhuOpen || startedRef.current) {
       return;
     }
     startedRef.current = true;
@@ -104,7 +107,7 @@ export function BattleScreen({
     return () => {
       cancelled = true;
     };
-  }, [lord.name, mapOpen, onPlayEffect, onSfx, weapon]);
+  }, [doudizhuOpen, lord.name, mapOpen, onPlayEffect, onSfx, weapon]);
 
   useEffect(() => {
     if (runtime.phase !== 'battle') {
@@ -186,6 +189,20 @@ export function BattleScreen({
 
   const resultTitle = runtime.result === 'win' ? '讨伐得胜' : runtime.result === 'retreat' ? '鸣金收兵' : '败退整军';
 
+  if (doudizhuOpen) {
+    return (
+      <DouDizhuGame
+        lord={lord}
+        wins={wins}
+        losses={losses}
+        rewardGold={selectedVenue.rewardGold}
+        onSfx={onSfx}
+        onResolved={onResolved}
+        onReturnHome={onReturnHome}
+      />
+    );
+  }
+
   if (mapOpen) {
     return (
       <main className="screen battle-screen expedition-screen">
@@ -242,10 +259,11 @@ export function BattleScreen({
           variant="danger"
           onClick={() => {
             onSfx('audio/sfx/sfx_button.mp3', 0.35);
+            setDoudizhuOpen(true);
             setMapOpen(false);
           }}
         >
-          携伴侣出征
+          进入斗地主
         </GameButton>
       </main>
     );
