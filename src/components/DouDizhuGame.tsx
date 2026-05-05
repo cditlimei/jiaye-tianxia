@@ -415,12 +415,12 @@ function handCardStyle(index: number, count: number, selected: boolean): CSSProp
   const spread = progress - 0.5;
   const rotate = spread * 4.8;
   const edgeDrop = Math.abs(spread) * 5;
-  const selectedRise = selected ? 11 : 0;
+  const selectedRise = selected ? 4 : 0;
 
   return {
     left: `${left}%`,
     transform: `translateX(-50%) translateY(${edgeDrop - selectedRise}px) rotate(${rotate}deg)`,
-    zIndex: selected ? 70 + index : index + 1
+    zIndex: index + 1
   };
 }
 
