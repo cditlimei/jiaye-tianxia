@@ -4,7 +4,17 @@ import { lords } from '../data/gameData';
 import type { Lord } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import type { Card, Combo, PlayerIndex } from '../lib/doudizhu';
-import { canBeat, comboLabel, createDoudizhuDeal, evaluateCards, findFirstPlayable, formatCards, sortCards } from '../lib/doudizhu';
+import {
+  canBeat,
+  comboLabel,
+  createDoudizhuDeal,
+  evaluateCards,
+  findFirstPlayable,
+  findPlayableCombos,
+  formatCards,
+  sortCards,
+  sortCardsDescending
+} from '../lib/doudizhu';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
@@ -47,6 +57,7 @@ const OPPONENT_IDS = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simay
 
 export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
+  const [hintIndex, setHintIndex] = useState(0);
   const settledRef = useRef(false);
   const aiTimerRef = useRef<number | null>(null);
   const profiles = useMemo(() => createPlayerProfiles(lord), [lord]);
@@ -59,17 +70,18 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     [profiles]
   );
   const playerHand = table.hands[0];
-  const displayedHand = useMemo(() => sortCardsForDisplay(playerHand), [playerHand]);
+  const displayedHand = useMemo(() => sortCardsDescending(playerHand), [playerHand]);
   const selectedCards = useMemo(
     () => sortCards(playerHand.filter((card) => table.selectedIds.includes(card.id))),
     [playerHand, table.selectedIds]
   );
   const selectedCombo = useMemo(() => evaluateCards(selectedCards), [selectedCards]);
   const targetCombo = table.lastPlay?.player === 0 ? null : table.lastPlay?.combo ?? null;
-  const suggestedCards = useMemo(() => findFirstPlayable(playerHand, targetCombo), [playerHand, targetCombo]);
+  const playableHints = useMemo(() => findPlayableCombos(playerHand, targetCombo), [playerHand, targetCombo]);
+  const suggestedCards = playableHints.length > 0 ? playableHints[hintIndex % playableHints.length] : null;
   const canPlay = table.currentPlayer === 0 && canBeat(selectedCombo, targetCombo);
   const canPass = table.currentPlayer === 0 && Boolean(table.lastPlay && table.lastPlay.player !== 0);
-  const canHint = table.currentPlayer === 0 && table.winner === null && Boolean(suggestedCards);
+  const canHint = table.currentPlayer === 0 && table.winner === null && playableHints.length > 0;
   const selectedCopy = table.winner !== null
     ? '牌局已结束'
     : table.currentPlayer !== 0
@@ -97,6 +109,10 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     document.body.classList.add('is-doudizhu-table');
     return () => document.body.classList.remove('is-doudizhu-table');
   }, []);
+
+  useEffect(() => {
+    setHintIndex(0);
+  }, [playerHand, table.currentPlayer, table.lastPlay]);
 
   useEffect(() => {
     if (aiTimerRef.current !== null) {
@@ -161,6 +177,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     if (!canHint || !suggestedCards) return;
     onSfx('audio/sfx/sfx_button.mp3', 0.18);
     setTable((prev) => ({ ...prev, selectedIds: suggestedCards.map((card) => card.id) }));
+    setHintIndex((prev) => (playableHints.length > 0 ? (prev + 1) % playableHints.length : 0));
   };
 
   const resetSelection = () => {
@@ -282,8 +299,29 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
               data-rank={card.rank}
               data-suit={card.suit}
             >
-              <span>{card.suit}</span>
-              <strong>{card.rank}</strong>
+              <span className="poker-card__corner" aria-hidden="true">
+                {joker ? (
+                  card.rank
+                ) : (
+                  <>
+                    <b>{card.rank}</b>
+                    <i>{card.suit}</i>
+                  </>
+                )}
+              </span>
+              <strong className="poker-card__pip" aria-hidden="true">
+                {joker ? card.rank : card.suit}
+              </strong>
+              <span className="poker-card__corner poker-card__corner--bottom" aria-hidden="true">
+                {joker ? (
+                  card.rank
+                ) : (
+                  <>
+                    <b>{card.rank}</b>
+                    <i>{card.suit}</i>
+                  </>
+                )}
+              </span>
             </button>
           );
         })}
@@ -345,7 +383,7 @@ function PlayerSeat({
 }
 
 function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; emptyLabel: string; center?: boolean }) {
-  const displayCards = sortCardsForDisplay(cards);
+  const displayCards = sortCardsDescending(cards);
   return (
     <div className={`mini-card-strip ${center ? 'mini-card-strip--center' : ''} ${cards.length === 0 ? 'is-empty' : ''}`}>
       {displayCards.length > 0 ? (
@@ -364,10 +402,6 @@ function MiniCard({ card }: { card: Card }) {
       <strong>{card.rank}</strong>
     </span>
   );
-}
-
-function sortCardsForDisplay(cards: Card[]) {
-  return [...cards].sort((left, right) => right.value - left.value || left.suit.localeCompare(right.suit));
 }
 
 function isJoker(card: Card) {

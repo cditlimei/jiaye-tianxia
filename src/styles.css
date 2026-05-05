@@ -2666,16 +2666,27 @@ body {
   bottom: 6px;
   width: calc(var(--hand-card-edge) * 2);
   height: 76px;
-  padding: 7px 5px;
+  overflow: hidden;
+  padding: 0;
   border: 1px solid rgba(47, 36, 24, 0.78);
   border-radius: 10px;
   color: #111017;
   background:
-    radial-gradient(circle at 20% 14%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0) 22%),
+    radial-gradient(circle at 26% 18%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0) 24%),
+    linear-gradient(90deg, rgba(130, 106, 70, 0.12), transparent 18%, transparent 82%, rgba(130, 106, 70, 0.1)),
     linear-gradient(145deg, #fffdf3, #efe2c2 54%, #cdb98e);
   box-shadow: 0 9px 18px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
   transition: transform 140ms ease, box-shadow 140ms ease;
   transform-origin: 50% 100%;
+}
+
+.poker-card::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgba(70, 51, 30, 0.14);
+  border-radius: 7px;
+  pointer-events: none;
 }
 
 .poker-card.is-selected {
@@ -2691,9 +2702,10 @@ body {
   content: '';
   position: absolute;
   left: 50%;
-  top: -7px;
+  top: 3px;
   width: 26px;
-  height: 4px;
+  height: 3px;
+  z-index: 2;
   border-radius: 999px;
   background: linear-gradient(90deg, transparent, rgba(255, 224, 126, 0.95), transparent);
   transform: translateX(-50%);
@@ -2704,60 +2716,75 @@ body {
 }
 
 .poker-card.is-joker {
+  background:
+    radial-gradient(circle at 24% 18%, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0) 24%),
+    linear-gradient(145deg, #fffdf3, #efe3c0 56%, #d0b177);
+}
+
+.poker-card__corner {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  z-index: 1;
   display: grid;
-  align-content: start;
-  justify-items: start;
-  padding-top: 9px;
-}
-
-.poker-card span,
-.poker-card strong {
-  display: block;
-  text-align: left;
-}
-
-.poker-card span {
-  height: 15px;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.poker-card strong {
-  margin-top: 4px;
+  justify-items: center;
+  gap: 0;
   font-family: var(--font-number);
-  font-size: 18px;
+  font-weight: 900;
+  line-height: 0.9;
+}
+
+.poker-card__corner b,
+.poker-card__corner i {
+  display: block;
+}
+
+.poker-card__corner b {
+  font-size: 17px;
+}
+
+.poker-card__corner i {
+  margin-top: 1px;
+  font-size: 13px;
+  font-style: normal;
+}
+
+.poker-card__corner--bottom {
+  left: auto;
+  right: 5px;
+  top: auto;
+  bottom: 5px;
+  transform: rotate(180deg);
+}
+
+.poker-card__pip {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  color: currentColor;
+  font-family: var(--font-number);
+  font-size: 27px;
+  font-weight: 900;
   line-height: 1;
+  opacity: 0.18;
+  transform: translate(-50%, -50%);
 }
 
-.poker-card.is-joker span {
-  display: none;
-}
-
-.poker-card.is-joker strong {
-  margin-top: 0;
+.poker-card.is-joker .poker-card__corner {
+  top: 7px;
   font-family: var(--font-ui);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
   text-orientation: upright;
   writing-mode: vertical-rl;
 }
 
-.poker-card::after {
-  content: attr(data-suit) attr(data-rank);
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  font-family: var(--font-number);
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
-  opacity: 0.68;
-  transform: rotate(180deg);
-}
-
-.poker-card.is-joker::after {
-  content: attr(data-rank);
-  transform: none;
+.poker-card.is-joker .poker-card__pip {
+  font-family: var(--font-title);
+  font-size: 20px;
+  opacity: 0.16;
+  text-orientation: upright;
+  writing-mode: vertical-rl;
 }
 
 .doudizhu-actions {
@@ -3287,7 +3314,7 @@ body {
   body.is-doudizhu-table .poker-card {
     bottom: 8px;
     height: 80px;
-    padding: 6px 5px;
+    padding: 0;
     border-radius: 10px;
   }
 
@@ -3299,19 +3326,35 @@ body {
       inset 0 0 0 1px rgba(255, 255, 255, 0.62);
   }
 
-  body.is-doudizhu-table .poker-card span {
-    height: 13px;
+  body.is-doudizhu-table .poker-card__corner {
+    left: 5px;
+    top: 5px;
+  }
+
+  body.is-doudizhu-table .poker-card__corner--bottom {
+    left: auto;
+    right: 5px;
+    top: auto;
+    bottom: 5px;
+  }
+
+  body.is-doudizhu-table .poker-card__corner b {
+    font-size: 17px;
+  }
+
+  body.is-doudizhu-table .poker-card__corner i {
     font-size: 13px;
   }
 
-  body.is-doudizhu-table .poker-card strong {
-    margin-top: 4px;
-    font-size: 21px;
+  body.is-doudizhu-table .poker-card__pip {
+    font-size: 28px;
   }
 
-  body.is-doudizhu-table .poker-card::after {
-    right: 5px;
-    bottom: 5px;
-    font-size: 10px;
+  body.is-doudizhu-table .poker-card.is-joker .poker-card__corner {
+    font-size: 15px;
+  }
+
+  body.is-doudizhu-table .poker-card.is-joker .poker-card__pip {
+    font-size: 20px;
   }
 }

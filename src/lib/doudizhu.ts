@@ -1,5 +1,19 @@
 export type PlayerIndex = 0 | 1 | 2;
-export type ComboType = 'single' | 'pair' | 'triple' | 'triple-one' | 'triple-pair' | 'straight' | 'pair-straight' | 'bomb' | 'rocket';
+export type ComboType =
+  | 'single'
+  | 'pair'
+  | 'triple'
+  | 'triple-one'
+  | 'triple-pair'
+  | 'straight'
+  | 'pair-straight'
+  | 'airplane'
+  | 'airplane-one'
+  | 'airplane-pair'
+  | 'quad-single'
+  | 'quad-pair'
+  | 'bomb'
+  | 'rocket';
 
 export interface Card {
   id: string;
@@ -15,6 +29,12 @@ export interface Combo {
   value: number;
   length: number;
   label: string;
+}
+
+interface ValueGroup {
+  value: number;
+  cards: Card[];
+  count: number;
 }
 
 const RANKS = [
@@ -48,8 +68,30 @@ const COMBO_LABELS: Record<ComboType, string> = {
   'triple-pair': '三带二',
   straight: '顺子',
   'pair-straight': '连对',
+  airplane: '飞机',
+  'airplane-one': '飞机带单',
+  'airplane-pair': '飞机带对',
+  'quad-single': '四带二',
+  'quad-pair': '四带两对',
   bomb: '炸弹',
   rocket: '王炸'
+};
+
+const LEAD_COMBO_PRIORITY: Record<ComboType, number> = {
+  straight: 0,
+  'pair-straight': 1,
+  airplane: 2,
+  'airplane-one': 3,
+  'airplane-pair': 4,
+  'triple-pair': 5,
+  'triple-one': 6,
+  triple: 7,
+  pair: 8,
+  single: 9,
+  'quad-single': 10,
+  'quad-pair': 11,
+  bomb: 12,
+  rocket: 13
 };
 
 export function createDoudizhuDeal() {
@@ -71,36 +113,38 @@ export function sortCards(cards: Card[]) {
   return [...cards].sort((left, right) => left.value - right.value || left.suit.localeCompare(right.suit));
 }
 
+export function sortCardsDescending(cards: Card[]) {
+  return [...cards].sort((left, right) => right.value - left.value || left.suit.localeCompare(right.suit));
+}
+
 export function evaluateCards(cards: Card[]): Combo | null {
   if (cards.length === 0) return null;
 
   const sorted = sortCards(cards);
-  const counts = countByValue(sorted);
-  const groups = [...counts.entries()].sort((left, right) => left[0] - right[0]);
-  const values = groups.map(([value]) => value);
-  const countValues = groups.map(([, count]) => count).sort((left, right) => right - left);
+  const groups = groupCards(sorted);
+  const values = groups.map((group) => group.value);
+  const counts = groups.map((group) => group.count).sort((left, right) => right - left);
+  const length = sorted.length;
 
-  if (sorted.length === 1) return combo('single', sorted[0].value, sorted.length);
-  if (sorted.length === 2 && values.includes(16) && values.includes(17)) return combo('rocket', 17, sorted.length);
-  if (sorted.length === 2 && countValues[0] === 2) return combo('pair', values[0], sorted.length);
-  if (sorted.length === 3 && countValues[0] === 3) return combo('triple', values[0], sorted.length);
-  if (sorted.length === 4 && countValues[0] === 4) return combo('bomb', values[0], sorted.length);
-  if (sorted.length === 4 && countValues[0] === 3) return combo('triple-one', valueWithCount(groups, 3), sorted.length);
-  if (sorted.length === 5 && countValues[0] === 3 && countValues[1] === 2) return combo('triple-pair', valueWithCount(groups, 3), sorted.length);
+  if (length === 1) return combo('single', sorted[0].value, length);
+  if (length === 2 && values.includes(16) && values.includes(17)) return combo('rocket', 17, length);
+  if (length === 2 && counts[0] === 2) return combo('pair', values[0], length);
+  if (length === 3 && counts[0] === 3) return combo('triple', values[0], length);
+  if (length === 4 && counts[0] === 4) return combo('bomb', values[0], length);
+  if (length === 4 && counts[0] === 3) return combo('triple-one', valueWithCount(groups, 3), length);
+  if (length === 5 && counts[0] === 3 && counts[1] === 2) return combo('triple-pair', valueWithCount(groups, 3), length);
 
-  if (sorted.length >= 5 && groups.every(([, count]) => count === 1) && isConsecutive(values) && values.every((value) => value < 15)) {
-    return combo('straight', values[values.length - 1], sorted.length);
-  }
+  const straight = evaluateStraight(groups, length);
+  if (straight) return straight;
 
-  if (
-    sorted.length >= 6 &&
-    sorted.length % 2 === 0 &&
-    groups.every(([, count]) => count === 2) &&
-    isConsecutive(values) &&
-    values.every((value) => value < 15)
-  ) {
-    return combo('pair-straight', values[values.length - 1], sorted.length);
-  }
+  const pairStraight = evaluatePairStraight(groups, length);
+  if (pairStraight) return pairStraight;
+
+  const airplane = evaluateAirplane(groups, length);
+  if (airplane) return airplane;
+
+  const quadplex = evaluateQuadplex(groups, length);
+  if (quadplex) return quadplex;
 
   return null;
 }
@@ -108,6 +152,7 @@ export function evaluateCards(cards: Card[]): Combo | null {
 export function canBeat(candidate: Combo | null, target: Combo | null) {
   if (!candidate) return false;
   if (!target) return true;
+  if (candidate.type === 'rocket' && target.type === 'rocket') return false;
   if (candidate.type === 'rocket') return true;
   if (target.type === 'rocket') return false;
   if (candidate.type === 'bomb' && target.type !== 'bomb') return true;
@@ -115,18 +160,18 @@ export function canBeat(candidate: Combo | null, target: Combo | null) {
   return candidate.type === target.type && candidate.length === target.length && candidate.value > target.value;
 }
 
-export function findFirstPlayable(hand: Card[], target: Combo | null) {
-  const sorted = sortCards(hand);
-  if (!target) {
-    return [sorted[0]];
-  }
+export function findPlayableCombos(hand: Card[], target: Combo | null) {
+  const candidates = dedupeCandidateCards(collectCandidateCombos(sortCards(hand)));
+  const playable = candidates.filter((cards) => canBeat(evaluateCards(cards), target));
+  return playable.sort((left, right) => compareCandidates(left, right, target));
+}
 
-  const candidate = findMatchingCombo(sorted, target) ?? findBomb(sorted, target.type === 'bomb' ? target.value : -1) ?? findRocket(sorted);
-  return candidate ?? null;
+export function findFirstPlayable(hand: Card[], target: Combo | null) {
+  return findPlayableCombos(hand, target)[0] ?? null;
 }
 
 export function formatCards(cards: Card[]) {
-  return [...cards].sort((left, right) => right.value - left.value || left.suit.localeCompare(right.suit)).map((card) => card.label).join(' ');
+  return sortCardsDescending(cards).map((card) => card.label).join(' ');
 }
 
 export function comboLabel(comboItem: Combo | null) {
@@ -171,94 +216,277 @@ function combo(type: ComboType, value: number, length: number): Combo {
   };
 }
 
-function countByValue(cards: Card[]) {
-  const counts = new Map<number, number>();
+function groupCards(cards: Card[]) {
+  const groups = new Map<number, Card[]>();
   for (const card of cards) {
-    counts.set(card.value, (counts.get(card.value) ?? 0) + 1);
+    groups.set(card.value, [...(groups.get(card.value) ?? []), card]);
   }
-  return counts;
+  return [...groups.entries()]
+    .map(([value, groupCardsByValue]) => ({
+      value,
+      cards: sortCards(groupCardsByValue),
+      count: groupCardsByValue.length
+    }))
+    .sort((left, right) => left.value - right.value);
 }
 
-function valueWithCount(groups: Array<[number, number]>, count: number) {
-  return groups.find(([, itemCount]) => itemCount === count)?.[0] ?? groups[0][0];
+function valueWithCount(groups: ValueGroup[], count: number) {
+  return groups.find((group) => group.count === count)?.value ?? groups[0].value;
 }
 
-function isConsecutive(values: number[]) {
-  return values.every((value, index) => index === 0 || value === values[index - 1] + 1);
+function evaluateStraight(groups: ValueGroup[], length: number) {
+  if (length < 5) return null;
+  if (!groups.every((group) => group.count === 1)) return null;
+  if (!isRun(groups.map((group) => group.value))) return null;
+  if (groups.some((group) => group.value >= 15)) return null;
+  return combo('straight', groups[groups.length - 1].value, length);
 }
 
-function findMatchingCombo(hand: Card[], target: Combo) {
-  switch (target.type) {
-    case 'single':
-      return hand.find((card) => card.value > target.value) ? [hand.find((card) => card.value > target.value)!] : null;
-    case 'pair':
-      return cardsOfSameValue(hand, 2, target.value);
-    case 'triple':
-      return cardsOfSameValue(hand, 3, target.value);
-    case 'triple-one':
-      return findTripleWithKicker(hand, target.value, false);
-    case 'triple-pair':
-      return findTripleWithKicker(hand, target.value, true);
-    case 'straight':
-      return findStraight(hand, target.length, target.value);
-    case 'pair-straight':
-      return findPairStraight(hand, target.length, target.value);
-    case 'bomb':
-      return findBomb(hand, target.value);
-    case 'rocket':
-      return null;
-  }
+function evaluatePairStraight(groups: ValueGroup[], length: number) {
+  if (length < 6 || length % 2 !== 0) return null;
+  if (!groups.every((group) => group.count === 2)) return null;
+  if (!isRun(groups.map((group) => group.value))) return null;
+  if (groups.some((group) => group.value >= 15)) return null;
+  return combo('pair-straight', groups[groups.length - 1].value, length);
 }
 
-function cardsOfSameValue(hand: Card[], count: number, minValue: number) {
-  const values = [...countByValue(hand).entries()]
-    .filter(([value, itemCount]) => value > minValue && itemCount >= count)
-    .map(([value]) => value)
-    .sort((left, right) => left - right);
-  const value = values[0];
-  return value ? hand.filter((card) => card.value === value).slice(0, count) : null;
-}
-
-function findTripleWithKicker(hand: Card[], minValue: number, pairKicker: boolean) {
-  const triple = cardsOfSameValue(hand, 3, minValue);
-  if (!triple) return null;
-  const rest = hand.filter((card) => card.value !== triple[0].value);
-  const kicker = pairKicker ? cardsOfSameValue(rest, 2, -1) : rest.slice(0, 1);
-  return kicker && kicker.length > 0 ? [...triple, ...kicker] : null;
-}
-
-function findStraight(hand: Card[], length: number, minHighValue: number) {
-  const uniqueValues = [...new Set(hand.map((card) => card.value).filter((value) => value < 15))].sort((left, right) => left - right);
-  for (let index = 0; index <= uniqueValues.length - length; index += 1) {
-    const values = uniqueValues.slice(index, index + length);
-    if (values[values.length - 1] > minHighValue && isConsecutive(values)) {
-      return values.map((value) => hand.find((card) => card.value === value)!);
+function evaluateAirplane(groups: ValueGroup[], length: number) {
+  if (length >= 6 && length % 3 === 0 && groups.every((group) => group.count === 3)) {
+    const tripletValues = groups.map((group) => group.value);
+    if (tripletValues.length >= 2 && isRun(tripletValues) && tripletValues.every((value) => value < 15)) {
+      return combo('airplane', tripletValues[tripletValues.length - 1], length);
     }
   }
+
+  if (length >= 8 && length % 4 === 0) {
+    const sequenceLength = length / 4;
+    const triplets = groups.filter((group) => group.count === 3);
+    const attachments = groups.filter((group) => group.count !== 3).flatMap((group) => group.cards);
+    const tripletValues = triplets.map((group) => group.value);
+    if (
+      sequenceLength >= 2 &&
+      triplets.length === sequenceLength &&
+      attachments.length === sequenceLength &&
+      isRun(tripletValues) &&
+      tripletValues.every((value) => value < 15) &&
+      !hasBothJokers(attachments)
+    ) {
+      return combo('airplane-one', tripletValues[tripletValues.length - 1], length);
+    }
+  }
+
+  if (length >= 10 && length % 5 === 0) {
+    const sequenceLength = length / 5;
+    const triplets = groups.filter((group) => group.count === 3);
+    const pairs = groups.filter((group) => group.count === 2);
+    const tripletValues = triplets.map((group) => group.value);
+    if (
+      sequenceLength >= 2 &&
+      triplets.length === sequenceLength &&
+      pairs.length === sequenceLength &&
+      groups.length === triplets.length + pairs.length &&
+      isRun(tripletValues) &&
+      tripletValues.every((value) => value < 15)
+    ) {
+      return combo('airplane-pair', tripletValues[tripletValues.length - 1], length);
+    }
+  }
+
   return null;
 }
 
-function findPairStraight(hand: Card[], length: number, minHighValue: number) {
-  const pairLength = length / 2;
-  const pairValues = [...countByValue(hand).entries()]
-    .filter(([value, count]) => value < 15 && count >= 2)
-    .map(([value]) => value)
-    .sort((left, right) => left - right);
+function evaluateQuadplex(groups: ValueGroup[], length: number) {
+  const quad = groups.find((group) => group.count === 4);
+  if (!quad) return null;
 
-  for (let index = 0; index <= pairValues.length - pairLength; index += 1) {
-    const values = pairValues.slice(index, index + pairLength);
-    if (values[values.length - 1] > minHighValue && isConsecutive(values)) {
-      return values.flatMap((value) => hand.filter((card) => card.value === value).slice(0, 2));
-    }
+  const attachments = groups.filter((group) => group.value !== quad.value);
+  const attachmentCards = attachments.flatMap((group) => group.cards);
+  if (length === 6 && attachments.length === 2 && attachments.every((group) => group.count === 1) && !hasBothJokers(attachmentCards)) {
+    return combo('quad-single', quad.value, length);
   }
+
+  if (length === 8 && attachments.length === 2 && attachments.every((group) => group.count === 2)) {
+    return combo('quad-pair', quad.value, length);
+  }
+
   return null;
 }
 
-function findBomb(hand: Card[], minValue: number) {
-  return cardsOfSameValue(hand, 4, minValue);
+function isRun(values: number[]) {
+  return values.length > 0 && values.every((value, index) => index === 0 || value === values[index - 1] + 1);
+}
+
+function hasBothJokers(cards: Card[]) {
+  return cards.some((card) => card.value === 16) && cards.some((card) => card.value === 17);
+}
+
+function collectCandidateCombos(hand: Card[]) {
+  const groups = groupCards(hand);
+  const candidates: Card[][] = [];
+  const push = (cards: Card[]) => {
+    if (evaluateCards(cards)) candidates.push(sortCards(cards));
+  };
+
+  for (const card of hand) push([card]);
+  for (const group of groups) {
+    if (group.count >= 2 && group.value < 16) push(group.cards.slice(0, 2));
+    if (group.count >= 3) push(group.cards.slice(0, 3));
+    if (group.count === 4) push(group.cards);
+  }
+
+  const rocket = findRocket(hand);
+  if (rocket) push(rocket);
+
+  addTripleCombos(groups, push);
+  addStraightCombos(groups, push);
+  addAirplaneCombos(groups, push);
+  addQuadplexCombos(groups, push);
+
+  return candidates;
+}
+
+function addTripleCombos(groups: ValueGroup[], push: (cards: Card[]) => void) {
+  const triples = groups.filter((group) => group.count >= 3);
+  for (const triple of triples) {
+    const tripleCards = triple.cards.slice(0, 3);
+    const singles = groups.filter((group) => group.value !== triple.value).flatMap((group) => group.cards);
+    const pairs = groups.filter((group) => group.value !== triple.value && group.count >= 2 && group.value < 16);
+
+    for (const single of singles) push([...tripleCards, single]);
+    for (const pair of pairs) push([...tripleCards, ...pair.cards.slice(0, 2)]);
+  }
+}
+
+function addStraightCombos(groups: ValueGroup[], push: (cards: Card[]) => void) {
+  const singleValues = groups.filter((group) => group.value < 15).map((group) => group.value);
+  for (const run of valueRuns(singleValues, 5)) {
+    for (const values of runSlices(run, 5)) {
+      push(values.map((value) => cardOfValue(groups, value, 1)).flat());
+    }
+  }
+
+  const pairValues = groups.filter((group) => group.value < 15 && group.count >= 2).map((group) => group.value);
+  for (const run of valueRuns(pairValues, 3)) {
+    for (const values of runSlices(run, 3)) {
+      push(values.map((value) => cardOfValue(groups, value, 2)).flat());
+    }
+  }
+}
+
+function addAirplaneCombos(groups: ValueGroup[], push: (cards: Card[]) => void) {
+  const tripletValues = groups.filter((group) => group.value < 15 && group.count >= 3).map((group) => group.value);
+  for (const run of valueRuns(tripletValues, 2)) {
+    for (const values of runSlices(run, 2)) {
+      const tripletCards = values.map((value) => cardOfValue(groups, value, 3)).flat();
+      const tripletValueSet = new Set(values);
+      const remainingCards = groups.filter((group) => !tripletValueSet.has(group.value)).flatMap((group) => group.cards);
+      const pairGroups = groups.filter((group) => !tripletValueSet.has(group.value) && group.count >= 2 && group.value < 16);
+
+      push(tripletCards);
+      for (const attachments of combinations(remainingCards, values.length, 8).filter((cards) => !hasBothJokers(cards))) {
+        push([...tripletCards, ...attachments]);
+      }
+      for (const pairs of combinations(pairGroups, values.length, 8)) {
+        push([...tripletCards, ...pairs.flatMap((group) => group.cards.slice(0, 2))]);
+      }
+    }
+  }
+}
+
+function addQuadplexCombos(groups: ValueGroup[], push: (cards: Card[]) => void) {
+  const quads = groups.filter((group) => group.count === 4);
+  for (const quad of quads) {
+    const remainingCards = groups.filter((group) => group.value !== quad.value).flatMap((group) => group.cards);
+    const pairGroups = groups.filter((group) => group.value !== quad.value && group.count >= 2 && group.value < 16);
+
+    for (const attachments of combinations(remainingCards, 2, 8).filter((cards) => !hasBothJokers(cards))) {
+      push([...quad.cards, ...attachments]);
+    }
+    for (const pairs of combinations(pairGroups, 2, 8)) {
+      push([...quad.cards, ...pairs.flatMap((group) => group.cards.slice(0, 2))]);
+    }
+  }
+}
+
+function valueRuns(values: number[], minLength: number) {
+  const runs: number[][] = [];
+  let current: number[] = [];
+  for (const value of values) {
+    if (current.length === 0 || value === current[current.length - 1] + 1) {
+      current.push(value);
+    } else {
+      if (current.length >= minLength) runs.push(current);
+      current = [value];
+    }
+  }
+  if (current.length >= minLength) runs.push(current);
+  return runs;
+}
+
+function runSlices(run: number[], minLength: number) {
+  const slices: number[][] = [];
+  for (let start = 0; start < run.length; start += 1) {
+    for (let end = start + minLength; end <= run.length; end += 1) {
+      slices.push(run.slice(start, end));
+    }
+  }
+  return slices;
+}
+
+function cardOfValue(groups: ValueGroup[], value: number, count: number) {
+  return groups.find((group) => group.value === value)?.cards.slice(0, count) ?? [];
+}
+
+function combinations<T>(items: T[], count: number, limit = Number.POSITIVE_INFINITY) {
+  const result: T[][] = [];
+  const walk = (start: number, picked: T[]) => {
+    if (result.length >= limit) return;
+    if (picked.length === count) {
+      result.push(picked);
+      return;
+    }
+    for (let index = start; index <= items.length - (count - picked.length); index += 1) {
+      walk(index + 1, [...picked, items[index]]);
+    }
+  };
+  walk(0, []);
+  return result;
 }
 
 function findRocket(hand: Card[]) {
   const rocket = [hand.find((card) => card.value === 16), hand.find((card) => card.value === 17)];
   return rocket.every(Boolean) ? (rocket as Card[]) : null;
+}
+
+function dedupeCandidateCards(candidates: Card[][]) {
+  const seen = new Set<string>();
+  return candidates.filter((cards) => {
+    const key = cards.map((card) => card.id).sort().join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function compareCandidates(left: Card[], right: Card[], target: Combo | null) {
+  const leftCombo = evaluateCards(left);
+  const rightCombo = evaluateCards(right);
+  if (!leftCombo || !rightCombo) return 0;
+
+  const priorityDiff = comboPriority(leftCombo, target) - comboPriority(rightCombo, target);
+  if (priorityDiff !== 0) return priorityDiff;
+  if (leftCombo.length !== rightCombo.length) return leftCombo.length - rightCombo.length;
+  if (leftCombo.value !== rightCombo.value) return leftCombo.value - rightCombo.value;
+  return highestCard(left) - highestCard(right);
+}
+
+function comboPriority(comboItem: Combo, target: Combo | null) {
+  if (!target) return LEAD_COMBO_PRIORITY[comboItem.type];
+  if (comboItem.type === 'rocket') return target.type === 'rocket' ? 0 : 12;
+  if (comboItem.type === 'bomb') return target.type === 'bomb' ? 0 : 11;
+  return 0;
+}
+
+function highestCard(cards: Card[]) {
+  return Math.max(...cards.map((card) => card.value));
 }
