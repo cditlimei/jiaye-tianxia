@@ -54,6 +54,7 @@ interface PlayerProfile {
 }
 
 const OPPONENT_IDS = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi'];
+const HAND_EDGE_PERCENT = 7.2;
 
 export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
@@ -296,6 +297,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
               }}
               aria-pressed={selected}
               aria-label={`${card.suit}${card.rank}`}
+              data-card-id={card.id}
               data-rank={card.rank}
               data-suit={card.suit}
             >
@@ -410,8 +412,7 @@ function isJoker(card: Card) {
 
 function handCardStyle(index: number, count: number, selected: boolean): CSSProperties {
   const progress = count <= 1 ? 0.5 : index / (count - 1);
-  const edgePercent = 7.2;
-  const left = edgePercent + progress * (100 - edgePercent * 2);
+  const left = HAND_EDGE_PERCENT + progress * (100 - HAND_EDGE_PERCENT * 2);
   const spread = progress - 0.5;
   const rotate = spread * 4.8;
   const edgeDrop = Math.abs(spread) * 5;
@@ -427,7 +428,9 @@ function handCardStyle(index: number, count: number, selected: boolean): CSSProp
 function handIndexFromPointer(handBox: DOMRect, clientX: number, count: number) {
   if (count <= 1) return 0;
 
-  const progress = Math.min(1, Math.max(0, (clientX - handBox.left) / handBox.width));
+  const edge = handBox.width * (HAND_EDGE_PERCENT / 100);
+  const span = Math.max(1, handBox.width - edge * 2);
+  const progress = Math.min(1, Math.max(0, (clientX - handBox.left - edge) / span));
   return Math.round(progress * (count - 1));
 }
 
