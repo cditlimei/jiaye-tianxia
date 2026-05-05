@@ -398,8 +398,8 @@ function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; e
 function MiniCard({ card }: { card: Card }) {
   return (
     <span className={`mini-card ${card.red ? 'is-red' : ''} ${isJoker(card) ? 'is-joker' : ''}`}>
-      <span>{card.suit}</span>
-      <strong>{card.rank}</strong>
+      <b className="mini-card__rank">{card.rank}</b>
+      {!isJoker(card) && <i className="mini-card__suit">{card.suit}</i>}
     </span>
   );
 }
