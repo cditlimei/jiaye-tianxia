@@ -59,6 +59,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     [profiles]
   );
   const playerHand = table.hands[0];
+  const displayedHand = useMemo(() => sortCardsForDisplay(playerHand), [playerHand]);
   const selectedCards = useMemo(
     () => sortCards(playerHand.filter((card) => table.selectedIds.includes(card.id))),
     [playerHand, table.selectedIds]
@@ -171,8 +172,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     event.preventDefault();
     event.stopPropagation();
 
-    const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, playerHand.length);
-    const card = playerHand[index];
+    const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, displayedHand.length);
+    const card = displayedHand[index];
     if (card) {
       toggleCard(card.id);
     }
@@ -260,14 +261,15 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
       </section>
 
       <section className="player-hand" aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
-        {playerHand.map((card, index) => {
+        {displayedHand.map((card, index) => {
           const selected = table.selectedIds.includes(card.id);
+          const joker = isJoker(card);
           return (
             <button
               key={card.id}
               type="button"
-              className={`poker-card ${card.red ? 'is-red' : ''} ${selected ? 'is-selected' : ''}`}
-              style={handCardStyle(index, playerHand.length, selected)}
+              className={`poker-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''} ${selected ? 'is-selected' : ''}`}
+              style={handCardStyle(index, displayedHand.length, selected)}
               onClick={(event) => event.preventDefault()}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -343,10 +345,11 @@ function PlayerSeat({
 }
 
 function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; emptyLabel: string; center?: boolean }) {
+  const displayCards = sortCardsForDisplay(cards);
   return (
     <div className={`mini-card-strip ${center ? 'mini-card-strip--center' : ''} ${cards.length === 0 ? 'is-empty' : ''}`}>
-      {cards.length > 0 ? (
-        cards.map((card) => <MiniCard key={card.id} card={card} />)
+      {displayCards.length > 0 ? (
+        displayCards.map((card) => <MiniCard key={card.id} card={card} />)
       ) : (
         <span className="mini-card-empty">{emptyLabel}</span>
       )}
@@ -356,22 +359,32 @@ function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; e
 
 function MiniCard({ card }: { card: Card }) {
   return (
-    <span className={`mini-card ${card.red ? 'is-red' : ''}`}>
+    <span className={`mini-card ${card.red ? 'is-red' : ''} ${isJoker(card) ? 'is-joker' : ''}`}>
       <span>{card.suit}</span>
       <strong>{card.rank}</strong>
     </span>
   );
 }
 
+function sortCardsForDisplay(cards: Card[]) {
+  return [...cards].sort((left, right) => right.value - left.value || left.suit.localeCompare(right.suit));
+}
+
+function isJoker(card: Card) {
+  return card.value >= 16;
+}
+
 function handCardStyle(index: number, count: number, selected: boolean): CSSProperties {
   const progress = count <= 1 ? 0.5 : index / (count - 1);
+  const edgePercent = 7.2;
+  const left = edgePercent + progress * (100 - edgePercent * 2);
   const spread = progress - 0.5;
   const rotate = spread * 4.8;
   const edgeDrop = Math.abs(spread) * 5;
   const selectedRise = selected ? 11 : 0;
 
   return {
-    left: `clamp(calc(var(--hand-card-edge) + 6px), ${progress * 100}%, calc(100% - var(--hand-card-edge) - 6px))`,
+    left: `${left}%`,
     transform: `translateX(-50%) translateY(${edgeDrop - selectedRise}px) rotate(${rotate}deg)`,
     zIndex: selected ? 70 + index : index + 1
   };

@@ -2564,6 +2564,16 @@ body {
   font-size: 12px;
 }
 
+.mini-card.is-joker span {
+  display: none;
+}
+
+.mini-card.is-joker strong {
+  margin-top: 5px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+}
+
 .mini-card-empty {
   color: rgba(245, 230, 200, 0.66);
   font-size: 11px;
@@ -2588,6 +2598,11 @@ body {
 .mini-card-strip--center .mini-card strong {
   margin-top: 3px;
   font-size: 16px;
+}
+
+.mini-card-strip--center .mini-card.is-joker strong {
+  margin-top: 8px;
+  font-size: 11px;
 }
 
 .table-center {
@@ -2622,7 +2637,7 @@ body {
 
 .player-hand {
   position: relative;
-  --hand-card-edge: clamp(29px, 4vw, 39px);
+  --hand-card-edge: clamp(24px, 4vw, 30px);
   height: 112px;
   min-height: 112px;
   overflow: visible;
@@ -2688,6 +2703,13 @@ body {
   color: #991d1d;
 }
 
+.poker-card.is-joker {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  padding-top: 9px;
+}
+
 .poker-card span,
 .poker-card strong {
   display: block;
@@ -2707,6 +2729,19 @@ body {
   line-height: 1;
 }
 
+.poker-card.is-joker span {
+  display: none;
+}
+
+.poker-card.is-joker strong {
+  margin-top: 0;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1;
+  text-orientation: upright;
+  writing-mode: vertical-rl;
+}
+
 .poker-card::after {
   content: attr(data-suit) attr(data-rank);
   position: absolute;
@@ -2718,6 +2753,11 @@ body {
   line-height: 1;
   opacity: 0.68;
   transform: rotate(180deg);
+}
+
+.poker-card.is-joker::after {
+  content: attr(data-rank);
+  transform: none;
 }
 
 .doudizhu-actions {

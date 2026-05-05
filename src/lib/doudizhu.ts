@@ -126,7 +126,7 @@ export function findFirstPlayable(hand: Card[], target: Combo | null) {
 }
 
 export function formatCards(cards: Card[]) {
-  return sortCards(cards).map((card) => card.label).join(' ');
+  return [...cards].sort((left, right) => right.value - left.value || left.suit.localeCompare(right.suit)).map((card) => card.label).join(' ');
 }
 
 export function comboLabel(comboItem: Combo | null) {
