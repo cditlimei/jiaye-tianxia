@@ -163,6 +163,14 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
       </section>
 
       <section className="doudizhu-tabletop" aria-label="三人斗地主牌桌">
+        <div className="table-felt-lines" aria-hidden="true" />
+        <div className="table-dealer-mark" aria-hidden="true">
+          庄
+        </div>
+        <div className="landlord-kitty" aria-label="地主底牌">
+          <span>地主底牌</span>
+          <MiniCardStrip cards={table.landlordCards} emptyLabel="底牌未亮" center />
+        </div>
         <PlayerSeat
           profile={profiles[1]}
           handCount={table.hands[1].length}
@@ -209,8 +217,17 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
               type="button"
               className={`poker-card ${card.red ? 'is-red' : ''} ${selected ? 'is-selected' : ''}`}
               style={handCardStyle(index, playerHand.length, selected)}
-              onClick={() => toggleCard(card.id)}
+              onClick={(event) => event.preventDefault()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  toggleCard(card.id);
+                }
+              }}
               aria-pressed={selected}
+              aria-label={`${card.suit}${card.rank}`}
+              data-rank={card.rank}
+              data-suit={card.suit}
             >
               <span>{card.suit}</span>
               <strong>{card.rank}</strong>
@@ -292,23 +309,31 @@ function MiniCard({ card }: { card: Card }) {
 }
 
 function handCardStyle(index: number, count: number, selected: boolean): CSSProperties {
-  const cardWidthPercent = 12.5;
+  const cardWidthPercent = 10.8;
+  const gutterPercent = 1.4;
   const progress = count <= 1 ? 0.5 : index / (count - 1);
-  const left = count <= 1 ? (100 - cardWidthPercent) / 2 : progress * (100 - cardWidthPercent);
+  const left = count <= 1
+    ? (100 - cardWidthPercent) / 2
+    : gutterPercent + progress * (100 - cardWidthPercent - gutterPercent * 2);
+  const spread = progress - 0.5;
+  const rotate = spread * 7;
+  const edgeDrop = Math.abs(spread) * 8;
+  const selectedRise = selected ? 8 : 0;
 
   return {
     left: `${left}%`,
-    transform: selected ? 'translateY(-16px)' : 'translateY(0)',
-    zIndex: selected ? 100 + index : index + 1
+    transform: `translateY(${edgeDrop - selectedRise}px) rotate(${rotate}deg)`,
+    zIndex: selected ? 70 + index : index + 1
   };
 }
 
 function handIndexFromPointer(handBox: DOMRect, clientX: number, count: number) {
   if (count <= 1) return 0;
 
-  const cardWidth = handBox.width * 0.125;
-  const usableWidth = Math.max(1, handBox.width - cardWidth);
-  const progress = Math.min(1, Math.max(0, (clientX - handBox.left - cardWidth / 2) / usableWidth));
+  const cardWidth = handBox.width * 0.108;
+  const gutter = handBox.width * 0.014;
+  const usableWidth = Math.max(1, handBox.width - cardWidth - gutter * 2);
+  const progress = Math.min(1, Math.max(0, (clientX - handBox.left - gutter - cardWidth / 2) / usableWidth));
   return Math.round(progress * (count - 1));
 }
 
