@@ -121,6 +121,7 @@ try {
   await page.setViewportSize({ width: 844, height: 390 });
   await assertLandscapeTable(page);
   await assertPlayerHandFits(page);
+  await assertVisibleCardCornerSelection(page);
   await page.locator('.player-hand').click({ position: { x: 32, y: 72 } });
   await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
@@ -209,6 +210,50 @@ async function assertPlayerHandFits(page) {
   if (fit.cardCount < 17 || fit.offscreenCount > 0) {
     throw new Error(`smoke_player_hand_overflows ${JSON.stringify(fit)}`);
   }
+}
+
+async function assertVisibleCardCornerSelection(page) {
+  const cards = await page.$$('.player-hand .poker-card');
+  if (cards.length < 5) {
+    throw new Error(`smoke_not_enough_hand_cards ${cards.length}`);
+  }
+
+  const targetIndex = Math.floor(cards.length / 2);
+  await clickCardCorner(page, targetIndex - 1);
+  await clickCardCorner(page, targetIndex + 1);
+  const targetId = await clickCardCorner(page, targetIndex);
+
+  const selected = await page.$$eval('.player-hand .poker-card', (elements) => elements
+    .filter((element) => element.classList.contains('is-selected'))
+    .map((element) => ({
+      id: element.getAttribute('data-card-id'),
+      rank: element.getAttribute('data-rank'),
+      suit: element.getAttribute('data-suit')
+    })));
+
+  if (selected.length !== 3 || !selected.some((card) => card.id === targetId)) {
+    throw new Error(`smoke_visible_card_corner_selection_failed ${JSON.stringify({ targetId, selected })}`);
+  }
+
+  await page.getByRole('button', { name: '重选' }).click();
+}
+
+async function clickCardCorner(page, index) {
+  const data = await page.locator('.player-hand .poker-card').nth(index).evaluate((card) => {
+    const hand = card.closest('.player-hand');
+    if (!hand) {
+      throw new Error('smoke_missing_player_hand');
+    }
+    const cardBox = card.getBoundingClientRect();
+    const handBox = hand.getBoundingClientRect();
+    return {
+      id: card.getAttribute('data-card-id'),
+      x: cardBox.left - handBox.left + 12,
+      y: cardBox.top - handBox.top + 22
+    };
+  });
+  await page.locator('.player-hand').click({ position: { x: data.x, y: data.y } });
+  return data.id;
 }
 
 async function assertLandscapeTable(page) {

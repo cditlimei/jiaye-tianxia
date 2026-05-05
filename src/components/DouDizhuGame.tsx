@@ -190,6 +190,12 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     event.preventDefault();
     event.stopPropagation();
 
+    const visibleCardId = cardIdFromPointer(event.currentTarget, event.clientX, event.clientY);
+    if (visibleCardId && playerHand.some((card) => card.id === visibleCardId)) {
+      toggleCard(visibleCardId);
+      return;
+    }
+
     const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, displayedHand.length);
     const card = displayedHand[index];
     if (card) {
@@ -432,6 +438,14 @@ function handIndexFromPointer(handBox: DOMRect, clientX: number, count: number) 
   const span = Math.max(1, handBox.width - edge * 2);
   const progress = Math.min(1, Math.max(0, (clientX - handBox.left - edge) / span));
   return Math.round(progress * (count - 1));
+}
+
+function cardIdFromPointer(hand: EventTarget & HTMLElement, clientX: number, clientY: number) {
+  const cardElement = document.elementsFromPoint(clientX, clientY)
+    .map((element) => element.closest<HTMLButtonElement>('.poker-card'))
+    .find((element): element is HTMLButtonElement => element !== null && hand.contains(element));
+
+  return cardElement?.dataset.cardId ?? null;
 }
 
 function createInitialTable(): TableState {
