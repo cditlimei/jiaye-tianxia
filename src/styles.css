@@ -2622,6 +2622,7 @@ body {
 
 .player-hand {
   position: relative;
+  --hand-card-edge: clamp(29px, 4vw, 39px);
   height: 112px;
   min-height: 112px;
   overflow: visible;
@@ -2648,7 +2649,7 @@ body {
 .poker-card {
   position: absolute;
   bottom: 6px;
-  width: 10.8%;
+  width: calc(var(--hand-card-edge) * 2);
   height: 76px;
   padding: 7px 5px;
   border: 1px solid rgba(47, 36, 24, 0.78);
@@ -2721,8 +2722,13 @@ body {
 
 .doudizhu-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.doudizhu-action-readout {
+  display: none;
+  margin: 0;
 }
 
 .doudizhu-actions .game-button {
@@ -2730,6 +2736,15 @@ body {
   padding: 8px;
   clip-path: none;
   border-radius: 12px;
+}
+
+.doudizhu-actions .game-button:disabled {
+  opacity: 1;
+  color: rgba(245, 230, 200, 0.34);
+  border: 1px solid rgba(212, 168, 67, 0.16);
+  background: rgba(10, 10, 18, 0.58);
+  box-shadow: none;
+  filter: none;
 }
 
 .doudizhu-actions .game-button--block {
@@ -2797,6 +2812,10 @@ body {
     align-content: start;
   }
 
+  body.is-doudizhu-table .doudizhu-selection-status {
+    display: none;
+  }
+
   body.is-doudizhu-table .doudizhu-tabletop {
     grid-column: 2;
     grid-row: 1 / 3;
@@ -2827,6 +2846,13 @@ body {
   body.is-doudizhu-table .history-panel p,
   body.is-doudizhu-table .doudizhu-status span {
     font-size: 11px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status strong {
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   body.is-doudizhu-table .table-center {
@@ -2860,6 +2886,7 @@ body {
   body.is-doudizhu-table .player-hand {
     grid-column: 2;
     grid-row: 3;
+    --hand-card-edge: clamp(27px, 3.2vw, 37px);
     height: 96px;
     min-height: 96px;
     padding: 8px 4px 4px;
@@ -2882,15 +2909,33 @@ body {
     grid-column: 1;
     grid-row: 3;
     align-self: end;
-    grid-template-columns: 1fr;
-    gap: 6px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  body.is-doudizhu-table .doudizhu-action-readout {
+    display: block;
+    grid-column: 1 / -1;
+    min-height: 22px;
+    overflow: hidden;
+    margin: 0;
+    padding: 4px 8px;
+    border: 1px solid rgba(212, 168, 67, 0.18);
+    border-radius: 9px;
+    color: rgba(245, 230, 200, 0.7);
+    background: rgba(9, 9, 18, 0.68);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   body.is-doudizhu-table .doudizhu-actions .game-button {
-    min-height: 28px;
-    padding: 5px 8px;
+    min-height: 32px;
+    padding: 5px 6px;
     border-radius: 9px;
-    font-size: 14px;
+    font-size: 13px;
   }
 }
 
@@ -3184,6 +3229,7 @@ body {
 
   body.is-doudizhu-table .player-hand {
     z-index: 5;
+    --hand-card-edge: clamp(28px, 3vw, 36px);
     height: 100px;
     min-height: 100px;
     padding-top: 4px;

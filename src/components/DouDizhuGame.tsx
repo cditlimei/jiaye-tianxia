@@ -48,6 +48,7 @@ const OPPONENT_IDS = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simay
 export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
   const settledRef = useRef(false);
+  const aiTimerRef = useRef<number | null>(null);
   const profiles = useMemo(() => createPlayerProfiles(lord), [lord]);
   const playerNames = useMemo(
     () => ({
@@ -64,8 +65,23 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   );
   const selectedCombo = useMemo(() => evaluateCards(selectedCards), [selectedCards]);
   const targetCombo = table.lastPlay?.player === 0 ? null : table.lastPlay?.combo ?? null;
+  const suggestedCards = useMemo(() => findFirstPlayable(playerHand, targetCombo), [playerHand, targetCombo]);
   const canPlay = table.currentPlayer === 0 && canBeat(selectedCombo, targetCombo);
   const canPass = table.currentPlayer === 0 && Boolean(table.lastPlay && table.lastPlay.player !== 0);
+  const canHint = table.currentPlayer === 0 && table.winner === null && Boolean(suggestedCards);
+  const selectedCopy = table.winner !== null
+    ? '牌局已结束'
+    : table.currentPlayer !== 0
+      ? `等待 ${playerNames[table.currentPlayer]}`
+      : selectedCards.length === 0
+        ? targetCombo
+          ? `需压过 ${comboLabel(targetCombo)}`
+          : '待选牌'
+        : selectedCombo
+          ? canBeat(selectedCombo, targetCombo)
+            ? `${selectedCombo.label} · ${formatCards(selectedCards)}`
+            : `${selectedCombo.label} 不够大`
+          : '牌型不合法';
   const statusCopy = table.winner !== null
     ? table.winner === 0
       ? `牌局胜利，缴获 ${rewardGold.toLocaleString()} 金`
@@ -80,6 +96,33 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     document.body.classList.add('is-doudizhu-table');
     return () => document.body.classList.remove('is-doudizhu-table');
   }, []);
+
+  useEffect(() => {
+    if (aiTimerRef.current !== null) {
+      window.clearTimeout(aiTimerRef.current);
+      aiTimerRef.current = null;
+    }
+
+    if (table.winner !== null || table.currentPlayer === 0) {
+      return undefined;
+    }
+
+    const activePlayer = table.currentPlayer;
+    aiTimerRef.current = window.setTimeout(() => {
+      setTable((prev) => {
+        if (prev.winner !== null || prev.currentPlayer !== activePlayer) return prev;
+        return resolveSingleAiTurn(prev, playerNames);
+      });
+      aiTimerRef.current = null;
+    }, 560);
+
+    return () => {
+      if (aiTimerRef.current !== null) {
+        window.clearTimeout(aiTimerRef.current);
+        aiTimerRef.current = null;
+      }
+    };
+  }, [playerNames, table.currentPlayer, table.winner]);
 
   useEffect(() => {
     if (table.winner === null || settledRef.current) {
@@ -104,15 +147,19 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   const playSelected = () => {
     if (!canPlay || !selectedCombo) return;
     onSfx('audio/sfx/sfx_button.mp3', 0.32);
-    setTable((prev) =>
-      resolveAiTurns(applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`), playerNames)
-    );
+    setTable((prev) => applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`));
   };
 
   const pass = () => {
     if (!canPass) return;
     onSfx('audio/sfx/sfx_button.mp3', 0.24);
-    setTable((prev) => resolveAiTurns(applyPass(prev, 0, '你选择不要。'), playerNames));
+    setTable((prev) => applyPass(prev, 0, '你选择不要。'));
+  };
+
+  const selectHint = () => {
+    if (!canHint || !suggestedCards) return;
+    onSfx('audio/sfx/sfx_button.mp3', 0.18);
+    setTable((prev) => ({ ...prev, selectedIds: suggestedCards.map((card) => card.id) }));
   };
 
   const resetSelection = () => {
@@ -159,6 +206,10 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         <div>
           <span>地主底牌</span>
           <strong>{formatCards(table.landlordCards)}</strong>
+        </div>
+        <div className="doudizhu-selection-status">
+          <span>已选牌</span>
+          <strong>{selectedCopy}</strong>
         </div>
       </section>
 
@@ -239,6 +290,10 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
       <section className="doudizhu-actions">
         {table.winner === null ? (
           <>
+            <p className="doudizhu-action-readout">{selectedCopy}</p>
+            <GameButton variant="ghost" onClick={selectHint} disabled={!canHint}>
+              提示
+            </GameButton>
             <GameButton onClick={playSelected} disabled={!canPlay}>
               出牌
             </GameButton>
@@ -309,20 +364,15 @@ function MiniCard({ card }: { card: Card }) {
 }
 
 function handCardStyle(index: number, count: number, selected: boolean): CSSProperties {
-  const cardWidthPercent = 10.8;
-  const gutterPercent = 1.4;
   const progress = count <= 1 ? 0.5 : index / (count - 1);
-  const left = count <= 1
-    ? (100 - cardWidthPercent) / 2
-    : gutterPercent + progress * (100 - cardWidthPercent - gutterPercent * 2);
   const spread = progress - 0.5;
-  const rotate = spread * 7;
-  const edgeDrop = Math.abs(spread) * 8;
-  const selectedRise = selected ? 8 : 0;
+  const rotate = spread * 4.8;
+  const edgeDrop = Math.abs(spread) * 5;
+  const selectedRise = selected ? 11 : 0;
 
   return {
-    left: `${left}%`,
-    transform: `translateY(${edgeDrop - selectedRise}px) rotate(${rotate}deg)`,
+    left: `clamp(calc(var(--hand-card-edge) + 6px), ${progress * 100}%, calc(100% - var(--hand-card-edge) - 6px))`,
+    transform: `translateX(-50%) translateY(${edgeDrop - selectedRise}px) rotate(${rotate}deg)`,
     zIndex: selected ? 70 + index : index + 1
   };
 }
@@ -330,10 +380,7 @@ function handCardStyle(index: number, count: number, selected: boolean): CSSProp
 function handIndexFromPointer(handBox: DOMRect, clientX: number, count: number) {
   if (count <= 1) return 0;
 
-  const cardWidth = handBox.width * 0.108;
-  const gutter = handBox.width * 0.014;
-  const usableWidth = Math.max(1, handBox.width - cardWidth - gutter * 2);
-  const progress = Math.min(1, Math.max(0, (clientX - handBox.left - gutter - cardWidth / 2) / usableWidth));
+  const progress = Math.min(1, Math.max(0, (clientX - handBox.left) / handBox.width));
   return Math.round(progress * (count - 1));
 }
 
@@ -367,25 +414,17 @@ function createPlayerProfiles(lord: Lord): Record<PlayerIndex, PlayerProfile> {
   };
 }
 
-function resolveAiTurns(table: TableState, playerNames: Record<PlayerIndex, string>): TableState {
-  let next = table;
-  let guard = 0;
+function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex, string>): TableState {
+  const player = table.currentPlayer;
+  const target = table.lastPlay && table.lastPlay.player !== player ? table.lastPlay.combo : null;
+  const cards = findFirstPlayable(table.hands[player], target);
+  const combo = cards ? evaluateCards(cards) : null;
 
-  while (next.currentPlayer !== 0 && next.winner === null && guard < 8) {
-    guard += 1;
-    const player = next.currentPlayer;
-    const target = next.lastPlay && next.lastPlay.player !== player ? next.lastPlay.combo : null;
-    const cards = findFirstPlayable(next.hands[player], target);
-    const combo = cards ? evaluateCards(cards) : null;
-
-    if (cards && combo && canBeat(combo, target)) {
-      next = applyPlay(next, player, cards, combo, `${playerNames[player]}出牌：${combo.label} ${formatCards(cards)}`);
-    } else {
-      next = applyPass(next, player, `${playerNames[player]}不要。`);
-    }
+  if (cards && combo && canBeat(combo, target)) {
+    return applyPlay(table, player, cards, combo, `${playerNames[player]}出牌：${combo.label} ${formatCards(cards)}`);
   }
 
-  return next;
+  return applyPass(table, player, `${playerNames[player]}不要。`);
 }
 
 function applyPlay(table: TableState, player: PlayerIndex, cards: Card[], combo: Combo, history: string): TableState {
