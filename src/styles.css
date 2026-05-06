@@ -2461,16 +2461,7 @@ body {
 }
 
 .table-seat.is-active::after {
-  content: '出牌中';
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  color: #241303;
-  background: var(--gold-light);
-  font-size: 10px;
-  font-weight: 900;
+  content: none;
 }
 
 .table-seat.is-self {
@@ -2515,6 +2506,63 @@ body {
   color: rgba(245, 230, 200, 0.78);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.seat-turn-badge {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+  width: auto;
+  max-width: 72px;
+  padding: 2px 7px;
+  border: 1px solid rgba(240, 214, 138, 0.22);
+  border-radius: 999px;
+  color: rgba(245, 230, 200, 0.72);
+  background: rgba(8, 8, 17, 0.72);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.table-seat.is-active .seat-turn-badge {
+  color: #241303;
+  border-color: rgba(255, 229, 144, 0.9);
+  background: var(--gold-light);
+}
+
+.seat-action {
+  grid-column: 1 / -1;
+  min-height: 20px;
+  padding: 3px 8px;
+  border: 1px solid rgba(240, 214, 138, 0.14);
+  border-radius: 999px;
+  color: rgba(245, 230, 200, 0.68);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.seat-action--play {
+  color: var(--gold-light);
+  border-color: rgba(240, 214, 138, 0.26);
+  background: rgba(212, 168, 67, 0.08);
+}
+
+.seat-action--pass {
+  color: rgba(245, 230, 200, 0.76);
+  border-color: rgba(245, 230, 200, 0.24);
+  background: rgba(80, 74, 64, 0.22);
+}
+
+.seat-action--active {
+  color: #241303;
+  border-color: rgba(255, 229, 144, 0.82);
+  background: linear-gradient(180deg, rgba(255, 232, 157, 0.96), rgba(207, 151, 51, 0.9));
 }
 
 .mini-card-strip {
@@ -3170,7 +3218,7 @@ body {
     position: absolute;
     z-index: 3;
     width: 214px;
-    min-height: 68px;
+    min-height: 94px;
     grid-template-columns: 40px minmax(0, 1fr);
     gap: 7px;
     align-items: center;
@@ -3224,6 +3272,7 @@ body {
     left: 50%;
     bottom: 12px;
     width: 286px;
+    min-height: 104px;
     transform: translateX(-50%);
   }
 
@@ -3245,6 +3294,38 @@ body {
   body.is-doudizhu-table .table-seat span,
   body.is-doudizhu-table .table-seat em {
     font-size: 10px;
+  }
+
+  body.is-doudizhu-table .seat-turn-badge {
+    right: 8px;
+    top: 7px;
+    max-width: 64px;
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  body.is-doudizhu-table .seat-action {
+    min-height: 18px;
+    padding: 2px 7px;
+    font-size: 10px;
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-left .seat-action,
+  body.is-doudizhu-table .table-seat--opponent-right .seat-action {
+    position: absolute;
+    bottom: 8px;
+    z-index: 5;
+    min-width: 70px;
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-left .seat-action {
+    left: 112px;
+    right: 8px;
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-right .seat-action {
+    left: 8px;
+    right: 112px;
   }
 
   body.is-doudizhu-table .mini-card-strip {

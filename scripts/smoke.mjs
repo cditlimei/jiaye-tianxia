@@ -121,6 +121,7 @@ try {
   await page.setViewportSize({ width: 844, height: 390 });
   await assertLandscapeTable(page);
   await assertPlayerHandFits(page);
+  await assertThreeSeatActions(page);
   await assertVisibleCardCornerSelection(page);
   await page.locator('.player-hand').click({ position: { x: 32, y: 72 } });
   await assertPlayerHandFits(page);
@@ -209,6 +210,18 @@ async function assertPlayerHandFits(page) {
 
   if (fit.cardCount < 17 || fit.offscreenCount > 0) {
     throw new Error(`smoke_player_hand_overflows ${JSON.stringify(fit)}`);
+  }
+}
+
+async function assertThreeSeatActions(page) {
+  const seats = await page.$$eval('.table-seat', (items) => items.map((seat) => ({
+    name: seat.querySelector('.table-seat__copy strong')?.textContent?.trim(),
+    action: seat.querySelector('.seat-action')?.textContent?.trim(),
+    badge: seat.querySelector('.seat-turn-badge')?.textContent?.trim()
+  })));
+
+  if (seats.length !== 3 || seats.some((seat) => !seat.name || !seat.action || !seat.badge)) {
+    throw new Error(`smoke_three_seat_actions_missing ${JSON.stringify(seats)}`);
   }
 }
 

@@ -42,8 +42,14 @@ interface TableState {
   consecutivePasses: number;
   lastPlay: PlayedMove | null;
   recentMoves: Record<PlayerIndex, Card[]>;
+  recentActions: Record<PlayerIndex, SeatAction>;
   history: string[];
   winner: PlayerIndex | null;
+}
+
+interface SeatAction {
+  kind: 'idle' | 'play' | 'pass';
+  label: string;
 }
 
 interface PlayerProfile {
@@ -251,6 +257,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           profile={profiles[1]}
           handCount={table.hands[1].length}
           recentCards={table.recentMoves[1]}
+          recentAction={table.recentActions[1]}
           active={table.currentPlayer === 1}
           seat="opponent-left"
         />
@@ -258,6 +265,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           profile={profiles[2]}
           handCount={table.hands[2].length}
           recentCards={table.recentMoves[2]}
+          recentAction={table.recentActions[2]}
           active={table.currentPlayer === 2}
           seat="opponent-right"
         />
@@ -278,6 +286,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           profile={profiles[0]}
           handCount={table.hands[0].length}
           recentCards={table.recentMoves[0]}
+          recentAction={table.recentActions[0]}
           active={table.currentPlayer === 0}
           seat="self"
           self
@@ -366,6 +375,7 @@ function PlayerSeat({
   profile,
   handCount,
   recentCards,
+  recentAction,
   active,
   seat,
   self = false
@@ -373,12 +383,14 @@ function PlayerSeat({
   profile: PlayerProfile;
   handCount: number;
   recentCards: Card[];
+  recentAction: SeatAction;
   active: boolean;
   seat: 'opponent-left' | 'opponent-right' | 'self';
   self?: boolean;
 }) {
   return (
     <article className={`table-seat table-seat--${seat} ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
+      <span className="seat-turn-badge">{active ? (self ? '出牌中' : '思考中') : profile.role}</span>
       <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} className="table-seat__avatar" />
       <div className="table-seat__copy">
         <strong>{profile.name}</strong>
@@ -386,8 +398,34 @@ function PlayerSeat({
         <em>{handCount} 张手牌</em>
       </div>
       <MiniCardStrip cards={recentCards} emptyLabel="静待出牌" />
+      <SeatActionLine action={recentAction} active={active} self={self} hasCards={recentCards.length > 0} />
     </article>
   );
+}
+
+function SeatActionLine({
+  action,
+  active,
+  self,
+  hasCards
+}: {
+  action: SeatAction;
+  active: boolean;
+  self: boolean;
+  hasCards: boolean;
+}) {
+  const kind = active ? 'active' : action.kind;
+  const label = active
+    ? self
+      ? '轮到你出牌'
+      : '正在思考'
+    : action.kind === 'pass'
+      ? '不要'
+      : hasCards
+        ? action.label
+        : '等待出牌';
+
+  return <div className={`seat-action seat-action--${kind}`}>{label}</div>;
 }
 
 function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; emptyLabel: string; center?: boolean }) {
@@ -458,8 +496,17 @@ function createInitialTable(): TableState {
     consecutivePasses: 0,
     lastPlay: null,
     recentMoves: { 0: [], 1: [], 2: [] },
+    recentActions: createSeatActions(),
     history: ['你成为地主，获得三张底牌。'],
     winner: null
+  };
+}
+
+function createSeatActions(): Record<PlayerIndex, SeatAction> {
+  return {
+    0: { kind: 'idle', label: '等待出牌' },
+    1: { kind: 'idle', label: '等待出牌' },
+    2: { kind: 'idle', label: '等待出牌' }
   };
 }
 
@@ -508,6 +555,7 @@ function applyPlay(table: TableState, player: PlayerIndex, cards: Card[], combo:
     consecutivePasses: 0,
     lastPlay: { player, cards, combo },
     recentMoves: { ...table.recentMoves, [player]: cards },
+    recentActions: { ...table.recentActions, [player]: { kind: 'play', label: combo.label } },
     history: [history, ...table.history].slice(0, 12),
     winner
   };
@@ -523,6 +571,7 @@ function applyPass(table: TableState, player: PlayerIndex, history: string): Tab
     consecutivePasses: roundCleared ? 0 : passes,
     lastPlay: roundCleared ? null : table.lastPlay,
     recentMoves: { ...table.recentMoves, [player]: [] },
+    recentActions: { ...table.recentActions, [player]: { kind: 'pass', label: roundCleared ? '不要，本轮清牌' : '不要' } },
     history: [roundCleared ? `${history} 本轮清牌。` : history, ...table.history].slice(0, 12)
   };
 }
