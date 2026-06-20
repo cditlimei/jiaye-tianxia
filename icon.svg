@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="家业天下">
+  <defs>
+    <linearGradient id="bg" x1="96" y1="52" x2="416" y2="468" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6f1113"/>
+      <stop offset="0.56" stop-color="#171424"/>
+      <stop offset="1" stop-color="#080811"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="122" y1="72" x2="390" y2="424" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff0ad"/>
+      <stop offset="0.48" stop-color="#d4a843"/>
+      <stop offset="1" stop-color="#8d581b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="92" fill="url(#bg)"/>
+  <path d="M96 170 256 74l160 96v42L256 118 96 212z" fill="url(#gold)"/>
+  <path d="M136 208h240v190H136z" fill="#10101d" stroke="#d4a843" stroke-width="18"/>
+  <path d="M186 258h140v38H186zm0 70h140v38H186z" fill="url(#gold)"/>
+  <path d="M256 208v190" stroke="#d4a843" stroke-width="20"/>
+  <path d="M100 424h312" stroke="#f0d68a" stroke-width="22" stroke-linecap="round"/>
+</svg>
