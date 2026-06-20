@@ -564,6 +564,10 @@ button:disabled {
   min-height: 52px;
 }
 
+.action-grid .game-button:first-child {
+  grid-column: 1 / -1;
+}
+
 .quest-panel,
 .event-panel,
 .starter-panel {
@@ -1846,19 +1850,20 @@ body {
 
 @media (max-width: 420px) {
   .app-shell {
-    padding: 8px 0;
+    padding: 0;
   }
 
   .phone-shell {
-    width: min(100%, 390px);
-    height: min(844px, 100dvh);
-    min-height: 720px;
-    border: 1px solid rgba(196, 151, 66, 0.48);
-    border-radius: 30px;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
   }
 
   .screen {
-    padding: 30px 28px 24px;
+    padding: 14px;
   }
 
   .lord-card {
@@ -2283,6 +2288,10 @@ body {
   background: linear-gradient(180deg, rgba(139, 26, 26, 0.84), rgba(42, 11, 15, 0.86));
 }
 
+.map-node.is-selected {
+  box-shadow: 0 0 0 2px rgba(255, 226, 145, 0.32), 0 14px 24px rgba(0, 0, 0, 0.3);
+}
+
 .map-node.is-locked {
   opacity: 0.58;
 }
@@ -2347,9 +2356,16 @@ body {
   opacity: 0.48;
 }
 
+.venue-summary {
+  margin: 0;
+  color: rgba(245, 230, 200, 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .doudizhu-screen {
   display: grid;
-  grid-template-rows: auto auto minmax(360px, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(360px, 1fr) auto auto auto;
   gap: 10px;
 }
 
@@ -2711,6 +2727,41 @@ body {
   touch-action: manipulation;
 }
 
+.hand-readout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.22);
+  border-radius: 12px;
+  color: rgba(245, 230, 200, 0.72);
+  background: rgba(9, 9, 18, 0.68);
+}
+
+.hand-readout span {
+  color: rgba(240, 214, 138, 0.72);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.hand-readout strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(245, 230, 200, 0.86);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hand-readout.is-playable {
+  border-color: rgba(255, 226, 145, 0.52);
+  background: rgba(100, 67, 18, 0.3);
+}
+
 .player-hand::before {
   content: '';
   position: absolute;
@@ -3022,6 +3073,23 @@ body {
     height: 96px;
     min-height: 96px;
     padding: 8px 4px 4px;
+  }
+
+  body.is-doudizhu-table .hand-readout {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 9px;
+  }
+
+  body.is-doudizhu-table .hand-readout span {
+    display: none;
+  }
+
+  body.is-doudizhu-table .hand-readout strong {
+    font-size: 11px;
   }
 
   body.is-doudizhu-table .poker-card {
@@ -3503,5 +3571,236 @@ body {
 
   body.is-doudizhu-table .poker-card.is-joker .poker-card__pip {
     font-size: 20px;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  body.is-doudizhu-table .app-shell {
+    padding: 0;
+  }
+
+  body.is-doudizhu-table .phone-shell {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  body.is-doudizhu-table .doudizhu-screen {
+    grid-template-rows: auto auto minmax(0, 1fr) 34px 104px auto;
+    gap: 6px;
+    overflow: hidden;
+    padding: 9px;
+  }
+
+  body.is-doudizhu-table .orientation-tip {
+    display: none;
+  }
+
+  body.is-doudizhu-table .doudizhu-header {
+    align-items: center;
+  }
+
+  body.is-doudizhu-table .doudizhu-header .eyebrow {
+    display: none;
+  }
+
+  body.is-doudizhu-table .doudizhu-header h2 {
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side .game-button {
+    min-height: 30px;
+    padding: 5px 10px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status div {
+    padding: 6px 7px;
+    border-radius: 10px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status span {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .doudizhu-status strong {
+    margin-top: 2px;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .doudizhu-tabletop {
+    grid-template-rows: 76px minmax(0, 1fr) 72px;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+    gap: 5px;
+    padding: 6px;
+    border-radius: 16px;
+  }
+
+  body.is-doudizhu-table .table-seat {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 6px;
+    min-height: 0;
+    padding: 5px;
+    border-radius: 12px;
+  }
+
+  body.is-doudizhu-table .table-seat.is-self {
+    min-height: 0;
+  }
+
+  body.is-doudizhu-table .table-seat__avatar {
+    width: 34px;
+    height: 42px;
+    border-radius: 8px;
+  }
+
+  body.is-doudizhu-table .table-seat strong {
+    margin-top: 0;
+    font-size: 12px;
+  }
+
+  body.is-doudizhu-table .table-seat span,
+  body.is-doudizhu-table .table-seat em {
+    font-size: 10px;
+  }
+
+  body.is-doudizhu-table .seat-turn-badge {
+    right: 5px;
+    top: 5px;
+    max-width: 58px;
+    padding: 1px 5px;
+    font-size: 9px;
+  }
+
+  body.is-doudizhu-table .mini-card-strip {
+    min-height: 18px;
+    gap: 2px;
+  }
+
+  body.is-doudizhu-table .table-seat .mini-card {
+    width: 20px;
+    height: 26px;
+    border-radius: 5px;
+  }
+
+  body.is-doudizhu-table .mini-card__rank {
+    font-size: 12px;
+  }
+
+  body.is-doudizhu-table .mini-card__suit {
+    font-size: 8px;
+  }
+
+  body.is-doudizhu-table .seat-action {
+    min-height: 17px;
+    padding: 2px 6px;
+    font-size: 9px;
+  }
+
+  body.is-doudizhu-table .table-center {
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  body.is-doudizhu-table .last-play-panel {
+    min-height: 0;
+    padding: 7px;
+    border-radius: 12px;
+  }
+
+  body.is-doudizhu-table .last-play-panel span {
+    font-size: 10px;
+  }
+
+  body.is-doudizhu-table .last-play-panel strong {
+    margin-top: 2px;
+    font-size: 12px;
+  }
+
+  body.is-doudizhu-table .last-play-panel p,
+  body.is-doudizhu-table .history-panel {
+    display: none;
+  }
+
+  body.is-doudizhu-table .mini-card-strip--center {
+    min-height: 28px;
+  }
+
+  body.is-doudizhu-table .mini-card-strip--center .mini-card {
+    width: 24px;
+    height: 30px;
+    border-radius: 6px;
+  }
+
+  body.is-doudizhu-table .hand-readout {
+    min-height: 34px;
+    padding: 5px 8px;
+    border-radius: 10px;
+  }
+
+  body.is-doudizhu-table .player-hand {
+    --hand-card-edge: clamp(21px, 6vw, 26px);
+    height: 104px;
+    min-height: 104px;
+    padding: 8px 2px 4px;
+  }
+
+  body.is-doudizhu-table .player-hand::before {
+    left: 8px;
+    right: 8px;
+    height: 30px;
+  }
+
+  body.is-doudizhu-table .poker-card {
+    bottom: 8px;
+    height: 84px;
+    border-radius: 9px;
+  }
+
+  body.is-doudizhu-table .poker-card__corner b {
+    font-size: 15px;
+  }
+
+  body.is-doudizhu-table .poker-card__corner i {
+    font-size: 11px;
+  }
+
+  body.is-doudizhu-table .poker-card__pip {
+    font-size: 24px;
+  }
+
+  body.is-doudizhu-table .doudizhu-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  body.is-doudizhu-table .doudizhu-actions .game-button {
+    min-height: 38px;
+    padding: 5px 4px;
+    border-radius: 9px;
+    font-size: 13px;
   }
 }

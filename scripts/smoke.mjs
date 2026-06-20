@@ -112,12 +112,16 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '出征讨伐' }).click();
   await expectText(page, '九州征途');
+  await assertExpeditionModes(page);
+  await assertVenueGate(page);
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await expectText(page, '本场缴获 3,000 金');
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await expectText(page, '斗地主牌局', 9000);
   await expectText(page, '三人同桌');
   await expectText(page, '曹操');
   await expectText(page, '孙权');
-  await expectText(page, '横屏牌桌');
+  await assertPortraitDoudizhuFits(page);
   await page.setViewportSize({ width: 844, height: 390 });
   await assertLandscapeTable(page);
   await assertPlayerHandFits(page);
@@ -282,6 +286,73 @@ async function assertLandscapeTable(page) {
 
   if (layout.shellWidth <= layout.shellHeight || layout.tipDisplay !== 'none') {
     throw new Error(`smoke_doudizhu_landscape_layout_failed ${JSON.stringify(layout)}`);
+  }
+}
+
+async function assertPortraitDoudizhuFits(page) {
+  const layout = await page.evaluate(() => {
+    const shell = document.querySelector('.phone-shell')?.getBoundingClientRect();
+    const hand = document.querySelector('.player-hand')?.getBoundingClientRect();
+    const actions = document.querySelector('.doudizhu-actions')?.getBoundingClientRect();
+    const seats = [...document.querySelectorAll('.table-seat')].map((seat) => {
+      const box = seat.getBoundingClientRect();
+      return {
+        top: box.top,
+        bottom: box.bottom,
+        action: seat.querySelector('.seat-action')?.textContent?.trim() ?? ''
+      };
+    });
+
+    return {
+      shellTop: shell?.top ?? 0,
+      shellBottom: shell?.bottom ?? 0,
+      handTop: hand?.top ?? 0,
+      handBottom: hand?.bottom ?? 0,
+      actionsTop: actions?.top ?? 0,
+      actionsBottom: actions?.bottom ?? 0,
+      seatCount: seats.length,
+      seats
+    };
+  });
+
+  const visibleBottom = layout.shellBottom + 1;
+  const visibleTop = layout.shellTop - 1;
+  const handVisible = layout.handTop >= visibleTop && layout.handBottom <= visibleBottom;
+  const actionsVisible = layout.actionsTop >= visibleTop && layout.actionsBottom <= visibleBottom;
+  const seatsVisible = layout.seatCount === 3 && layout.seats.every((seat) => seat.action && seat.top >= visibleTop && seat.bottom <= visibleBottom);
+
+  if (!handVisible || !actionsVisible || !seatsVisible) {
+    throw new Error(`smoke_portrait_doudizhu_not_playable ${JSON.stringify(layout)}`);
+  }
+}
+
+async function assertExpeditionModes(page) {
+  const doudizhu = page.getByRole('button', { name: /荆州/ });
+  const autoBattle = page.getByRole('button', { name: /官道/ });
+  await doudizhu.waitFor({ state: 'visible', timeout: 5000 });
+  await autoBattle.waitFor({ state: 'visible', timeout: 5000 });
+
+  if (!(await doudizhu.isEnabled())) {
+    throw new Error('smoke_doudizhu_region_should_be_available');
+  }
+
+  if (!(await autoBattle.isEnabled())) {
+    throw new Error('smoke_auto_battle_region_should_be_available');
+  }
+}
+
+async function assertVenueGate(page) {
+  const middle = page.getByRole('button', { name: /中级场/ });
+  const high = page.getByRole('button', { name: /高级场/ });
+  await middle.waitFor({ state: 'visible', timeout: 5000 });
+  await high.waitFor({ state: 'visible', timeout: 5000 });
+
+  if (!(await middle.isEnabled())) {
+    throw new Error('smoke_middle_venue_should_be_available');
+  }
+
+  if (!(await high.isDisabled())) {
+    throw new Error('smoke_high_venue_should_be_power_locked');
   }
 }
 

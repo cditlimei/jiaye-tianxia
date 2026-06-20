@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
@@ -79,16 +79,13 @@ export function HomeScreen({
     return [...ready, ...active, ...claimed].slice(0, 3);
   }, [questStatuses]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const amount = onCollectIncome();
-      const id = Date.now();
-      onIncomeSfx();
-      setFloating((items) => [...items, { id, amount }].slice(-3));
-      window.setTimeout(() => setFloating((items) => items.filter((item) => item.id !== id)), 1500);
-    }, 3000);
-    return () => window.clearInterval(timer);
-  }, [onCollectIncome, onIncomeSfx]);
+  const handleCollectIncome = () => {
+    const amount = onCollectIncome();
+    const id = Date.now();
+    onIncomeSfx();
+    setFloating((items) => [...items, { id, amount }].slice(-3));
+    window.setTimeout(() => setFloating((items) => items.filter((item) => item.id !== id)), 1500);
+  };
 
   const handleUpgrade = () => {
     if (onUpgrade()) {
@@ -140,7 +137,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营 · 核心循环</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>每 3 秒自动收入 {currentHome.dailyIncome} 金，当前战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {currentHome.dailyIncome} 金，战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={420} tone="red" />
@@ -163,6 +160,9 @@ export function HomeScreen({
       </section>
 
       <section className="action-grid">
+        <GameButton onClick={handleCollectIncome}>
+          处理政务 · +{currentHome.dailyIncome.toLocaleString()}金
+        </GameButton>
         <GameButton onClick={handleUpgrade} disabled={!canUpgrade}>
           {nextHome ? `升级宅邸 · ${nextHome.upgradeCost.toLocaleString()}金` : '宅邸已满'}
         </GameButton>

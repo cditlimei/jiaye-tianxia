@@ -293,6 +293,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         />
       </section>
 
+      <section className={`hand-readout ${canPlay ? 'is-playable' : ''}`} aria-live="polite">
+        <span>{table.currentPlayer === 0 ? '你的回合' : '等待出牌'}</span>
+        <strong>{selectedCopy}</strong>
+      </section>
+
       <section className="player-hand" aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
         {displayedHand.map((card, index) => {
           const selected = table.selectedIds.includes(card.id);

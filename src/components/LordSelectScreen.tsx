@@ -8,9 +8,10 @@ import { StatBar } from './common/StatBar';
 interface LordSelectScreenProps {
   onConfirm: (lordId: string) => void;
   onBack: () => void;
+  disabled?: boolean;
 }
 
-export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
+export function LordSelectScreen({ onConfirm, onBack, disabled = false }: LordSelectScreenProps) {
   const [selectedId, setSelectedId] = useState(lords[0].id);
   const selectedLord = useMemo(() => lords.find((lord) => lord.id === selectedId) ?? lords[0], [selectedId]);
   const camp = CAMP_META[selectedLord.camp];
@@ -22,7 +23,7 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
           <span className="eyebrow">第二屏 · 选择主公</span>
           <h2>乱世择主</h2>
         </div>
-        <GameButton variant="ghost" onClick={onBack}>
+        <GameButton variant="ghost" onClick={onBack} disabled={disabled}>
           返回
         </GameButton>
       </header>
@@ -66,8 +67,8 @@ export function LordSelectScreen({ onConfirm, onBack }: LordSelectScreenProps) {
         </div>
       </section>
 
-      <GameButton block onClick={() => onConfirm(selectedLord.id)}>
-        确认选择
+      <GameButton block onClick={() => onConfirm(selectedLord.id)} disabled={disabled}>
+        {disabled ? '封侯拜将中' : '确认选择'}
       </GameButton>
     </main>
   );

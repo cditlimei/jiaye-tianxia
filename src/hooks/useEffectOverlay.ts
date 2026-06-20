@@ -18,6 +18,7 @@ export function useEffectOverlay() {
   const [overlay, setOverlay] = useState<EffectOverlayState | null>(null);
   const resolverRef = useRef<(() => void) | null>(null);
   const timerRef = useRef<number | null>(null);
+  const playingRef = useRef(false);
 
   const finishEffect = useCallback(() => {
     if (timerRef.current) {
@@ -27,6 +28,7 @@ export function useEffectOverlay() {
     setOverlay(null);
     resolverRef.current?.();
     resolverRef.current = null;
+    playingRef.current = false;
   }, []);
 
   const playEffect = useCallback(
@@ -34,6 +36,12 @@ export function useEffectOverlay() {
       if (!options.videoPath) {
         return Promise.resolve();
       }
+
+      if (playingRef.current) {
+        return Promise.resolve();
+      }
+
+      playingRef.current = true;
 
       return new Promise<void>((resolve) => {
         resolverRef.current = resolve;
@@ -50,4 +58,3 @@ export function useEffectOverlay() {
 
   return { overlay, playEffect, finishEffect };
 }
-

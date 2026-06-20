@@ -20,6 +20,24 @@ interface BattleScreenProps {
 
 type BattlePhase = 'intro' | 'battle' | 'result';
 type VenueId = 'beginner' | 'middle' | 'high';
+type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
+type RegionMode = 'doudizhu' | 'battle' | 'locked';
+interface Venue {
+  id: VenueId;
+  name: string;
+  requiredPower: number;
+  prize: string;
+  rewardGold: number;
+}
+
+interface MapRegion {
+  id: RegionId;
+  name: string;
+  state: string;
+  x: number;
+  y: number;
+  mode: RegionMode;
+}
 
 interface BattleRuntime {
   phase: BattlePhase;
@@ -30,18 +48,19 @@ interface BattleRuntime {
   result: 'win' | 'loss' | 'retreat' | null;
 }
 
-const MAP_REGIONS = [
-  { id: 'jingzhou', name: '荆州', state: '斗地主', x: 46, y: 54, available: true },
-  { id: 'jiangdong', name: '江东', state: '水战筹备', x: 67, y: 66, available: false },
-  { id: 'xuchang', name: '许都', state: '未开', x: 55, y: 36, available: false },
-  { id: 'xishu', name: '西蜀', state: '未开', x: 27, y: 59, available: false },
-  { id: 'beijiang', name: '北疆', state: '未开', x: 42, y: 20, available: false }
+const MAP_REGIONS: MapRegion[] = [
+  { id: 'jingzhou', name: '荆州', state: '斗地主', x: 46, y: 54, mode: 'doudizhu' },
+  { id: 'guandao', name: '官道', state: '自动讨伐', x: 54, y: 36, mode: 'battle' },
+  { id: 'jiangdong', name: '江东', state: '水战筹备', x: 67, y: 66, mode: 'locked' },
+  { id: 'xuchang', name: '许都', state: '未开', x: 55, y: 20, mode: 'locked' },
+  { id: 'xishu', name: '西蜀', state: '未开', x: 27, y: 59, mode: 'locked' },
+  { id: 'beijiang', name: '北疆', state: '未开', x: 42, y: 20, mode: 'locked' }
 ];
 
-const VENUES: Array<{ id: VenueId; name: string; limit: string; prize: string; rewardGold: number; locked?: boolean }> = [
-  { id: 'beginner', name: '初级场', limit: '推荐战力 80+', prize: '胜利可得基础缴获', rewardGold: 1200 },
-  { id: 'middle', name: '中级场', limit: '推荐战力 180+', prize: '更高金币奖励', rewardGold: 3000 },
-  { id: 'high', name: '高级场', limit: '推荐战力 320+', prize: '名望与重赏', rewardGold: 8000, locked: true }
+const VENUES: Venue[] = [
+  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 1200 },
+  { id: 'middle', name: '中级场', requiredPower: 180, prize: '更高金币奖励', rewardGold: 3000 },
+  { id: 'high', name: '高级场', requiredPower: 320, prize: '名望与重赏', rewardGold: 8000 }
 ];
 
 export function BattleScreen({
@@ -62,8 +81,12 @@ export function BattleScreen({
   const startedRef = useRef(false);
   const [mapOpen, setMapOpen] = useState(true);
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
+  const [selectedRegionId, setSelectedRegionId] = useState<RegionId>('jingzhou');
   const [venueId, setVenueId] = useState<VenueId>('beginner');
+  const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
+  const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
+  const canEnterSelectedRegion = selectedRegion.mode !== 'locked' && !selectedVenueLocked;
   const [runtime, setRuntime] = useState<BattleRuntime>({
     phase: 'intro',
     playerHp: maxPlayerHp,
@@ -94,7 +117,7 @@ export function BattleScreen({
         title: weapon.name,
         fallbackMs: 1800
       });
-      if (!cancelled) {
+      if (!cancelled && !settledRef.current) {
         setRuntime((prev) => ({
           ...prev,
           phase: 'battle',
@@ -218,52 +241,78 @@ export function BattleScreen({
 
         <section className="expedition-map" aria-label="三国地图">
           <div className="expedition-map__terrain" />
-          {MAP_REGIONS.map((region) => (
-            <button
-              key={region.id}
-              type="button"
-              className={`map-node ${region.available ? 'is-available' : 'is-locked'}`}
-              style={{ left: `${region.x}%`, top: `${region.y}%` }}
-              disabled={!region.available}
-            >
-              <strong>{region.name}</strong>
-              <span>{region.state}</span>
-            </button>
-          ))}
+          {MAP_REGIONS.map((region) => {
+            const available = region.mode !== 'locked';
+            return (
+              <button
+                key={region.id}
+                type="button"
+                className={`map-node ${available ? 'is-available' : 'is-locked'} ${region.id === selectedRegionId ? 'is-selected' : ''}`}
+                style={{ left: `${region.x}%`, top: `${region.y}%` }}
+                disabled={!available}
+                onClick={() => setSelectedRegionId(region.id)}
+              >
+                <strong>{region.name}</strong>
+                <span>{region.state}</span>
+              </button>
+            );
+          })}
         </section>
 
-        <section className="venue-panel" aria-label="场次选择">
+        {selectedRegion.mode === 'doudizhu' ? (
+          <section className="venue-panel" aria-label="场次选择">
           <div className="section-title">
-            <span>荆州 · 斗地主</span>
+            <span>荆州 · 斗地主 · 当前战力 {totalPower}</span>
             <strong>选择场次</strong>
           </div>
           <div className="venue-grid">
-            {VENUES.map((venue) => (
-              <button
-                key={venue.id}
-                type="button"
-                className={`venue-card ${venue.id === venueId ? 'is-selected' : ''}`}
-                disabled={venue.locked}
-                onClick={() => setVenueId(venue.id)}
-              >
-                <strong>{venue.name}</strong>
-                <span>{venue.limit}</span>
-                <em>{venue.locked ? '未开放' : venue.prize}</em>
-              </button>
-            ))}
+            {VENUES.map((venue) => {
+              const locked = totalPower < venue.requiredPower;
+              const powerGap = Math.max(0, venue.requiredPower - totalPower);
+              return (
+                <button
+                  key={venue.id}
+                  type="button"
+                  className={`venue-card ${venue.id === venueId ? 'is-selected' : ''}`}
+                  disabled={locked}
+                  onClick={() => setVenueId(venue.id)}
+                >
+                  <strong>{venue.name}</strong>
+                  <span>推荐战力 {venue.requiredPower}+</span>
+                  <em>{locked ? `战力不足，还差 ${powerGap}` : venue.prize}</em>
+                </button>
+              );
+            })}
           </div>
-        </section>
+          <p className="venue-summary">
+            {selectedVenueLocked
+              ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
+              : `本场缴获 ${selectedVenue.rewardGold.toLocaleString()} 金。`}
+          </p>
+          </section>
+        ) : (
+          <section className="venue-panel" aria-label="自动讨伐说明">
+            <div className="section-title">
+              <span>官道 · 自动回合战 · 当前战力 {totalPower}</span>
+              <strong>{enemy.name}</strong>
+            </div>
+            <p className="venue-summary">
+              普通讨伐将自动结算攻防回合，胜利可缴获 {enemy.rewardGold.toLocaleString()} 金。
+            </p>
+          </section>
+        )}
 
         <GameButton
           block
           variant="danger"
+          disabled={!canEnterSelectedRegion}
           onClick={() => {
             onSfx('audio/sfx/sfx_button.mp3', 0.35);
-            setDoudizhuOpen(true);
+            setDoudizhuOpen(selectedRegion.mode === 'doudizhu');
             setMapOpen(false);
           }}
         >
-          进入斗地主
+          {selectedRegion.mode === 'doudizhu' ? '进入斗地主' : '出征讨伐'}
         </GameButton>
       </main>
     );

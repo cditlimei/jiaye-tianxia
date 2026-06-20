@@ -30,6 +30,7 @@ export function App() {
   const effects = useEffectOverlay();
   const [modal, setModal] = useState<Modal>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -60,6 +61,9 @@ export function App() {
   };
 
   const handleNew = () => {
+    if (game.hasSave && !confirmReset('重开会清空当前家业进度。')) {
+      return;
+    }
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
     game.resetGame();
@@ -67,15 +71,21 @@ export function App() {
   };
 
   const handleLordConfirm = async (lordId: string) => {
-    audio.unlock();
-    audio.playSfx('audio/sfx/sfx_button.mp3');
-    await effects.playEffect({
-      videoPath: 'assets/ui/ui_entrance_effect.mp4',
-      posterPath: 'assets/ui/ui_entrance_effect.png',
-      title: '封侯拜将',
-      fallbackMs: 1800
-    });
-    game.selectLord(lordId);
+    if (transitioning) return;
+    setTransitioning(true);
+    try {
+      audio.unlock();
+      audio.playSfx('audio/sfx/sfx_button.mp3');
+      await effects.playEffect({
+        videoPath: 'assets/ui/ui_entrance_effect.mp4',
+        posterPath: 'assets/ui/ui_entrance_effect.png',
+        title: '封侯拜将',
+        fallbackMs: 1800
+      });
+      game.selectLord(lordId);
+    } finally {
+      setTransitioning(false);
+    }
   };
 
   const handleStarterPartnerConfirm = (partnerId: string) => {
@@ -153,6 +163,9 @@ export function App() {
   };
 
   const resetGame = () => {
+    if (!confirmReset('重置会清空当前本地存档。')) {
+      return;
+    }
     game.resetGame();
     setModal(null);
   };
@@ -185,7 +198,7 @@ export function App() {
     }
 
     if (game.state.screen === 'lordSelect') {
-      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} />;
+      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} />;
     }
 
     if (game.state.screen === 'partnerSelect' && game.selectedLord) {
@@ -215,7 +228,7 @@ export function App() {
     }
 
     if (!game.selectedLord) {
-      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} />;
+      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} />;
     }
 
     return (
@@ -278,4 +291,8 @@ export function App() {
       {effects.overlay && <EffectOverlay overlay={effects.overlay} onFinish={effects.finishEffect} />}
     </div>
   );
+}
+
+function confirmReset(message: string) {
+  return window.confirm(`${message}\n\n建议先在设置里复制存档备份。确定继续吗？`);
 }
