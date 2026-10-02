@@ -3,7 +3,7 @@ import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../da
 import type { Partner } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
 import { calculateCharisma, calculateIntelligence, calculateTotalPower } from '../lib/battle';
-import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, saveGameState } from '../lib/storage';
+import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { GameState, Screen } from '../types';
 
 const HEARTBEAT_MS = 15000;
@@ -218,15 +218,25 @@ function reducer(state: GameState, action: Action): GameState {
 
 export function useGameState() {
   const [state, dispatch] = useReducer(reducer, undefined, loadGameState);
+  const rawAtLoadRef = useRef<string | null | undefined>(undefined);
+  if (rawAtLoadRef.current === undefined) {
+    rawAtLoadRef.current = readRawGameState();
+  }
 
   const stateRef = useRef(state);
-  const skipNextSaveRef = useRef(false);
   stateRef.current = state;
 
   useEffect(() => {
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false;
-      return;
+    // 首次落盘前若其他标签页已写入更新的存档，先同步过来，避免用加载时的旧值覆盖
+    if (rawAtLoadRef.current !== null) {
+      const currentRaw = readRawGameState();
+      const changedElsewhere = currentRaw !== rawAtLoadRef.current;
+      rawAtLoadRef.current = null;
+      const synced = changedElsewhere ? parseSyncedGameState(currentRaw) : null;
+      if (synced) {
+        dispatch({ type: 'sync', state: synced });
+        return;
+      }
     }
     saveGameState(state);
   }, [state]);
@@ -235,7 +245,7 @@ export function useGameState() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
-        saveGameState(stateRef.current);
+        saveGameState(stateRef.current, { force: true });
       }
     }, HEARTBEAT_MS);
     return () => window.clearInterval(timer);
@@ -247,7 +257,6 @@ export function useGameState() {
       if (event.key !== GAME_STORAGE_KEY) return;
       const synced = parseSyncedGameState(event.newValue);
       if (!synced) return;
-      skipNextSaveRef.current = true;
       dispatch({ type: 'sync', state: synced });
     };
     window.addEventListener('storage', handleStorage);

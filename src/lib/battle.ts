@@ -38,9 +38,33 @@ export function calculateCharisma(lord: Lord, ownedPartners: Partner[]) {
   );
 }
 
+// 敌军档位（名字与缴获）取不高于玩家战力的最强一档；实际战力随玩家浮动，
+// 系数由蒙特卡洛标定，使各战力段胜率稳定在 75% 左右（血量公式让高战力段需略降系数）
+const ENEMY_SCALE_POINTS: Array<[power: number, scale: number]> = [
+  [40, 1.012],
+  [130, 1.002],
+  [300, 0.992],
+  [700, 0.984],
+  [1000, 0.981]
+];
+
 export function matchEnemy(totalPower: number): Enemy {
   const beatable = enemies.filter((enemy) => enemy.power <= totalPower);
-  return beatable[beatable.length - 1] ?? enemies[0];
+  const tier = beatable[beatable.length - 1] ?? enemies[0];
+  return { ...tier, power: Math.round(totalPower * enemyScale(totalPower)) };
+}
+
+function enemyScale(totalPower: number) {
+  const points = ENEMY_SCALE_POINTS;
+  if (totalPower <= points[0][0]) return points[0][1];
+  for (let index = 1; index < points.length; index += 1) {
+    const [rightPower, rightScale] = points[index];
+    if (totalPower <= rightPower) {
+      const [leftPower, leftScale] = points[index - 1];
+      return leftScale + ((totalPower - leftPower) / (rightPower - leftPower)) * (rightScale - leftScale);
+    }
+  }
+  return points[points.length - 1][1];
 }
 
 export function rollDamage(attackerPower: number, defenderPower: number, isCritical: boolean) {

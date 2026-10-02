@@ -86,8 +86,16 @@ export function parseSyncedGameState(raw: string | null): GameState | null {
 
 export const GAME_STORAGE_KEY = STORAGE_KEY;
 
-export function saveGameState(state: GameState) {
+export function readRawGameState() {
+  return typeof window === 'undefined' ? null : safeGetItem();
+}
+
+export function saveGameState(state: GameState, { force = false } = {}) {
   if (typeof window === 'undefined') {
+    return;
+  }
+  // 内容未变（忽略存档时间和所在页面）时不重复写，避免多标签页同步来回触发
+  if (!force && sameProgress(state, safeGetItem())) {
     return;
   }
 
@@ -113,6 +121,24 @@ export function clearGameState() {
       // 同上
     }
   }
+}
+
+function sameProgress(state: GameState, raw: string | null) {
+  if (!raw) return false;
+  try {
+    const strip = ({ screen: _screen, lastScreen: _lastScreen, lastSavedAt: _lastSavedAt, ...rest }: GameState) => rest;
+    return stableStringify(strip(state)) === stableStringify(strip(JSON.parse(raw) as GameState));
+  } catch {
+    return false;
+  }
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)))
+      : item
+  );
 }
 
 function safeGetItem() {

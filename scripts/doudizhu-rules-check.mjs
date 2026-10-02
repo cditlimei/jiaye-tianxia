@@ -85,6 +85,14 @@ assertEqual(typeOf([3, 3, 4, 4, 5, 5]), 'pair-straight', 'pair-straight');
 assertEqual(typeOf([3, 3, 3, 4, 4, 4]), 'airplane', 'airplane');
 assertEqual(typeOf([3, 3, 3, 4, 4, 4, 5, 6]), 'airplane-one', 'airplane-one');
 assertEqual(typeOf([3, 3, 3, 4, 4, 4, 5, 5, 6, 6]), 'airplane-pair', 'airplane-pair');
+assertEqual(typeOf([3, 3, 3, 4, 4, 4, 4, 5]), 'airplane-one', 'airplane-one wing from bomb');
+assertEqual(typeOf([4, 4, 4, 4, 5, 5, 5, 6]), 'airplane-one', 'airplane-one wing from bomb low');
+assertEqual(typeOf([3, 3, 3, 4, 4, 4, 5, 5, 5, 9, 9, 9]), 'airplane-one', 'airplane-one same-rank wings');
+assertEqual(typeOf([3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]), 'airplane', 'four-triplet airplane stays plain');
+assertEqual(comboOf([3, 3, 3, 4, 4, 4, 5, 5, 5, 9, 9, 9]).value, 5, 'airplane-one same-rank wings value');
+const bombWingHint = findPlayableCombos(cards([3, 3, 3, 4, 4, 4, 4, 5]), null)
+  .map((hint) => evaluateCards(hint)?.type);
+assertTrue(bombWingHint.includes('airplane-one'), 'airplane-one hint with bomb wing');
 assertEqual(typeOf([3, 3, 3, 3, 4, 5]), 'quad-single', 'quad-single');
 assertEqual(typeOf([3, 3, 3, 3, 4, 4]), null, 'quad-single_requires_distinct_kickers');
 assertEqual(typeOf([3, 3, 3, 3, 4, 4, 5, 5]), 'quad-pair', 'quad-pair');

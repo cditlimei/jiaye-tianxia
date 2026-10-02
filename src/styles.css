@@ -3392,8 +3392,8 @@ body {
   }
 
   body.is-doudizhu-table .table-seat--opponent-right .seat-action {
-    left: 8px;
-    right: 112px;
+    left: 112px;
+    right: 8px;
   }
 
   body.is-doudizhu-table .mini-card-strip {
@@ -3594,7 +3594,8 @@ body {
   }
 
   body.is-doudizhu-table .last-play-panel p,
-  body.is-doudizhu-table .last-play-panel > span {
+  body.is-doudizhu-table .last-play-panel > span,
+  body.is-doudizhu-table .hand-readout {
     display: none;
   }
 
@@ -3643,6 +3644,90 @@ body {
   }
 
   body.is-doudizhu-table .table-seat__copy span {
+    display: none;
+  }
+}
+
+/* iPhone SE 一代等 320px 高横屏：压缩左栏与手牌，对手座位各占半桌 */
+@media (orientation: landscape) and (max-height: 340px) {
+  body.is-doudizhu-table .app-shell {
+    padding: 0;
+  }
+
+  body.is-doudizhu-table .phone-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  body.is-doudizhu-table .doudizhu-screen {
+    grid-template-columns: 168px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) 84px;
+    gap: 5px 8px;
+    padding: 6px 8px;
+  }
+
+  body.is-doudizhu-table .doudizhu-header .eyebrow {
+    display: none;
+  }
+
+  body.is-doudizhu-table .doudizhu-header h2 {
+    font-size: 19px;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side {
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side .battle-record {
+    font-size: 12px;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side button {
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status {
+    gap: 4px;
+  }
+
+  body.is-doudizhu-table .doudizhu-status div {
+    padding: 5px 8px;
+  }
+
+  body.is-doudizhu-table .doudizhu-actions {
+    gap: 3px;
+  }
+
+  body.is-doudizhu-table .doudizhu-actions button {
+    min-height: 30px;
+    padding-block: 4px;
+  }
+
+  body.is-doudizhu-table .player-hand {
+    height: 84px;
+    min-height: 84px;
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-left,
+  body.is-doudizhu-table .table-seat--opponent-right {
+    top: 6px;
+    width: calc(50% - 12px);
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-left {
+    left: 8px;
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-right {
+    right: 8px;
+  }
+
+  body.is-doudizhu-table .table-seat--opponent-left::before,
+  body.is-doudizhu-table .table-seat--opponent-right::before {
     display: none;
   }
 }

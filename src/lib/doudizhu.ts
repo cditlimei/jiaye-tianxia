@@ -259,19 +259,15 @@ function evaluateAirplane(groups: ValueGroup[], length: number) {
   }
 
   if (length >= 8 && length % 4 === 0) {
+    // 主流规则：翅膀可以是任意单牌，包括炸弹拆出的第四张和与主体同点数的牌，但不能同时带大小王
     const sequenceLength = length / 4;
-    const triplets = groups.filter((group) => group.count === 3);
-    const attachments = groups.filter((group) => group.count !== 3).flatMap((group) => group.cards);
-    const tripletValues = triplets.map((group) => group.value);
-    if (
-      sequenceLength >= 2 &&
-      triplets.length === sequenceLength &&
-      attachments.length === sequenceLength &&
-      isRun(tripletValues) &&
-      tripletValues.every((value) => value < 15) &&
-      !hasBothJokers(attachments)
-    ) {
-      return combo('airplane-one', tripletValues[tripletValues.length - 1], length);
+    const run = findHighestTripletRun(groups, sequenceLength);
+    if (run !== null) {
+      const runValues = new Set(run);
+      const attachments = groups.flatMap((group) => (runValues.has(group.value) ? group.cards.slice(3) : group.cards));
+      if (attachments.length === sequenceLength && !hasBothJokers(attachments)) {
+        return combo('airplane-one', run[run.length - 1], length);
+      }
     }
   }
 
@@ -292,6 +288,16 @@ function evaluateAirplane(groups: ValueGroup[], length: number) {
     }
   }
 
+  return null;
+}
+
+function findHighestTripletRun(groups: ValueGroup[], sequenceLength: number) {
+  if (sequenceLength < 2) return null;
+  const tripletValues = groups.filter((group) => group.count >= 3 && group.value < 15).map((group) => group.value);
+  for (let end = tripletValues.length - 1; end >= sequenceLength - 1; end -= 1) {
+    const run = tripletValues.slice(end - sequenceLength + 1, end + 1);
+    if (isRun(run)) return run;
+  }
   return null;
 }
 
@@ -379,7 +385,10 @@ function addAirplaneCombos(groups: ValueGroup[], push: (cards: Card[]) => void) 
     for (const values of runSlices(run, 2)) {
       const tripletCards = values.map((value) => cardOfValue(groups, value, 3)).flat();
       const tripletValueSet = new Set(values);
-      const remainingCards = groups.filter((group) => !tripletValueSet.has(group.value)).flatMap((group) => group.cards);
+      const remainingCards = [
+        ...groups.filter((group) => !tripletValueSet.has(group.value)).flatMap((group) => group.cards),
+        ...groups.filter((group) => tripletValueSet.has(group.value)).flatMap((group) => group.cards.slice(3))
+      ];
       const pairGroups = groups.filter((group) => !tripletValueSet.has(group.value) && group.count >= 2 && group.value < 16);
 
       push(tripletCards);
