@@ -139,10 +139,16 @@ export function App() {
     game.setScreen('battle');
   };
 
-  const copySave = () => {
+  const copySave = async () => {
     const payload = JSON.stringify(game.state, null, 2);
-    void navigator.clipboard?.writeText(payload).catch(() => undefined);
     audio.playSfx('audio/sfx/sfx_button.mp3', 0.28);
+    try {
+      if (!navigator.clipboard) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(payload);
+      return { ok: true, message: '存档已复制到剪贴板，请粘贴到备忘录等处保存。', payload: null };
+    } catch {
+      return { ok: false, message: '无法写入剪贴板，存档已填入上方文本框，请长按全选后手动复制。', payload };
+    }
   };
 
   const importSave = (payload: string) => {

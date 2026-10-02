@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
 import { calculateCharisma, calculateIntelligence, calculateTotalPower } from '../lib/battle';
-import { clearGameState, defaultGameState, loadGameState, saveGameState } from '../lib/storage';
+import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, saveGameState } from '../lib/storage';
 import type { GameState, Screen } from '../types';
+
+const HEARTBEAT_MS = 15000;
 
 type Action =
   | { type: 'setScreen'; screen: Screen }
@@ -19,6 +21,7 @@ type Action =
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
   | { type: 'restore'; state: GameState }
+  | { type: 'sync'; state: GameState }
   | { type: 'reset' };
 
 function reducer(state: GameState, action: Action): GameState {
@@ -183,6 +186,12 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         tutorialDone: true
       };
+    case 'sync':
+      return {
+        ...action.state,
+        screen: state.screen,
+        lastScreen: state.lastScreen
+      };
     case 'restore':
       return {
         ...action.state,
@@ -210,9 +219,40 @@ function reducer(state: GameState, action: Action): GameState {
 export function useGameState() {
   const [state, dispatch] = useReducer(reducer, undefined, loadGameState);
 
+  const stateRef = useRef(state);
+  const skipNextSaveRef = useRef(false);
+  stateRef.current = state;
+
   useEffect(() => {
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
     saveGameState(state);
   }, [state]);
+
+  // 页面开着时持续刷新存档时间，避免挂机时长在下次打开时被当成离线收益
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        saveGameState(stateRef.current);
+      }
+    }, HEARTBEAT_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // 其他标签页写入存档后同步过来，防止互相覆盖进度
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== GAME_STORAGE_KEY) return;
+      const synced = parseSyncedGameState(event.newValue);
+      if (!synced) return;
+      skipNextSaveRef.current = true;
+      dispatch({ type: 'sync', state: synced });
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const selectedLord = useMemo(() => findLord(state.selectedLordId), [state.selectedLordId]);
   const equippedWeapon = useMemo(() => findWeapon(state.equippedWeaponId), [state.equippedWeaponId]);

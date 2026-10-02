@@ -285,8 +285,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
             <p>{table.lastPlay ? formatCards(table.lastPlay.cards) : '无人压牌，任意合法牌型可出。'}</p>
           </div>
           <div className="history-panel">
-            {table.history.slice(0, 4).map((item) => (
-              <p key={item}>{item}</p>
+            {table.history.slice(0, 4).map((item, index) => (
+              <p key={`${index}-${item}`}>{item}</p>
             ))}
           </div>
         </div>

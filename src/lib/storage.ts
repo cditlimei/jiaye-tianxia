@@ -32,7 +32,7 @@ export function loadGameState(): GameState {
     return defaultGameState;
   }
 
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const raw = safeGetItem();
   if (!raw) {
     return defaultGameState;
   }
@@ -63,13 +63,28 @@ export function parseImportedGameState(raw: string): GameState {
     throw new Error('存档缺少有效主公。');
   }
 
+  const screen = normalized.ownedPartnerIds.length > 0 ? 'home' : 'partnerSelect';
   return {
     ...normalized,
-    screen: 'home',
-    lastScreen: 'home',
+    screen,
+    lastScreen: screen,
     lastSavedAt: Date.now()
   };
 }
+
+export function parseSyncedGameState(raw: string | null): GameState | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const normalized = normalizeGameState(JSON.parse(raw) as Partial<GameState>);
+    return normalized.selectedLordId ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+export const GAME_STORAGE_KEY = STORAGE_KEY;
 
 export function saveGameState(state: GameState) {
   if (typeof window === 'undefined') {
@@ -83,12 +98,28 @@ export function saveGameState(state: GameState) {
     lastScreen: safeScreen,
     lastSavedAt: Date.now()
   };
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // 存储被禁用或空间已满时继续游戏，只是本次进度不落盘
+  }
 }
 
 export function clearGameState() {
   if (typeof window !== 'undefined') {
-    window.localStorage.removeItem(STORAGE_KEY);
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // 同上
+    }
+  }
+}
+
+function safeGetItem() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
   }
 }
 

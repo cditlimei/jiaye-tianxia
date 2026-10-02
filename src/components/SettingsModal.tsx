@@ -7,7 +7,7 @@ interface SettingsModalProps {
   state: GameState;
   onClose: () => void;
   onToggleSound: () => void;
-  onCopySave: () => void;
+  onCopySave: () => Promise<{ ok: boolean; message: string; payload: string | null }>;
   onImportSave: (payload: string) => { ok: boolean; message: string };
   canInstall: boolean;
   onInstall: () => void;
@@ -37,6 +37,14 @@ export function SettingsModal({
     } else {
       setImportStatus({ ok: false, message: '无法读取剪贴板，请手动粘贴。' });
     }
+  };
+
+  const copySave = async () => {
+    const result = await onCopySave();
+    if (result.payload) {
+      setImportText(result.payload);
+    }
+    setImportStatus({ ok: result.ok, message: result.message });
   };
 
   const importSave = () => {
@@ -77,7 +85,7 @@ export function SettingsModal({
           <GameButton variant="secondary" onClick={onToggleSound}>
             {state.soundEnabled ? '关闭声音' : '开启声音'}
           </GameButton>
-          <GameButton variant="secondary" onClick={onCopySave}>
+          <GameButton variant="secondary" onClick={copySave}>
             复制存档
           </GameButton>
           {canInstall && (
