@@ -49,12 +49,12 @@ interface BattleRuntime {
 }
 
 const MAP_REGIONS: MapRegion[] = [
-  { id: 'jingzhou', name: '荆州', state: '斗地主', x: 46, y: 54, mode: 'doudizhu' },
-  { id: 'guandao', name: '官道', state: '自动讨伐', x: 54, y: 36, mode: 'battle' },
-  { id: 'jiangdong', name: '江东', state: '水战筹备', x: 67, y: 66, mode: 'locked' },
-  { id: 'xuchang', name: '许都', state: '未开', x: 55, y: 20, mode: 'locked' },
-  { id: 'xishu', name: '西蜀', state: '未开', x: 27, y: 59, mode: 'locked' },
-  { id: 'beijiang', name: '北疆', state: '未开', x: 42, y: 20, mode: 'locked' }
+  { id: 'jingzhou', name: '荆州', state: '斗地主', x: 47, y: 58, mode: 'doudizhu' },
+  { id: 'guandao', name: '官道', state: '自动讨伐', x: 52, y: 38, mode: 'battle' },
+  { id: 'jiangdong', name: '江东', state: '水战筹备', x: 76, y: 72, mode: 'locked' },
+  { id: 'xuchang', name: '许都', state: '未开', x: 70, y: 18, mode: 'locked' },
+  { id: 'xishu', name: '西蜀', state: '未开', x: 19, y: 52, mode: 'locked' },
+  { id: 'beijiang', name: '北疆', state: '未开', x: 30, y: 16, mode: 'locked' }
 ];
 
 const VENUES: Venue[] = [
