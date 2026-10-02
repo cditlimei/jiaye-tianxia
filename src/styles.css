@@ -3574,6 +3574,79 @@ body {
   }
 }
 
+/* 手机横屏牌桌高度只有 ~240px：底牌已在左栏展示，自己座位压成一行，中间面板去掉重复文字 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.is-doudizhu-table .landlord-kitty,
+  body.is-doudizhu-table .table-dealer-mark {
+    display: none;
+  }
+
+  body.is-doudizhu-table .table-center {
+    top: auto;
+    bottom: 50px;
+    min-height: 0;
+    transform: translateX(-50%);
+  }
+
+  body.is-doudizhu-table .last-play-panel {
+    min-height: 0;
+    padding: 5px 12px 6px;
+  }
+
+  body.is-doudizhu-table .last-play-panel p,
+  body.is-doudizhu-table .last-play-panel > span {
+    display: none;
+  }
+
+  body.is-doudizhu-table .last-play-panel .mini-card {
+    width: 28px;
+    height: 35px;
+  }
+
+  body.is-doudizhu-table .table-seat--self {
+    display: flex;
+    bottom: 8px;
+    width: auto;
+    min-height: 0;
+    max-width: 72%;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px 4px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .table-seat--self .table-seat__avatar,
+  body.is-doudizhu-table .table-seat--self .mini-card-strip,
+  body.is-doudizhu-table .table-seat--self .table-seat__copy span {
+    display: none;
+  }
+
+  body.is-doudizhu-table .table-seat--self .table-seat__copy {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  body.is-doudizhu-table .table-seat--self .seat-turn-badge,
+  body.is-doudizhu-table .table-seat--self .seat-action {
+    position: static;
+    margin: 0;
+    transform: none;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 400px) {
+  body.is-doudizhu-table .table-seat--opponent-left,
+  body.is-doudizhu-table .table-seat--opponent-right {
+    min-height: 0;
+  }
+
+  body.is-doudizhu-table .table-seat__copy span {
+    display: none;
+  }
+}
+
 @media (orientation: portrait) and (max-width: 700px) {
   body.is-doudizhu-table .app-shell {
     padding: 0;

@@ -187,6 +187,14 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     setHintIndex((prev) => (playableHints.length > 0 ? (prev + 1) % playableHints.length : 0));
   };
 
+  const leaveTable = () => {
+    if (table.winner === null && !settledRef.current) {
+      settledRef.current = true;
+      onResolved(false, 0);
+    }
+    onReturnHome();
+  };
+
   const resetSelection = () => {
     setTable((prev) => ({ ...prev, selectedIds: [] }));
   };
@@ -223,8 +231,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         </div>
         <div className="doudizhu-header__side">
           <span className="battle-record">胜 {wins} · 负 {losses}</span>
-          <GameButton variant="ghost" onClick={onReturnHome}>
-            回府
+          <GameButton variant="ghost" onClick={leaveTable}>
+            {table.winner === null ? '认输回府' : '回府'}
           </GameButton>
         </div>
       </header>
@@ -258,7 +266,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           handCount={table.hands[1].length}
           recentCards={table.recentMoves[1]}
           recentAction={table.recentActions[1]}
-          active={table.currentPlayer === 1}
+          active={table.winner === null && table.currentPlayer === 1}
           seat="opponent-left"
         />
         <PlayerSeat
@@ -266,7 +274,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           handCount={table.hands[2].length}
           recentCards={table.recentMoves[2]}
           recentAction={table.recentActions[2]}
-          active={table.currentPlayer === 2}
+          active={table.winner === null && table.currentPlayer === 2}
           seat="opponent-right"
         />
         <div className="table-center">
@@ -287,14 +295,14 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
           handCount={table.hands[0].length}
           recentCards={table.recentMoves[0]}
           recentAction={table.recentActions[0]}
-          active={table.currentPlayer === 0}
+          active={table.winner === null && table.currentPlayer === 0}
           seat="self"
           self
         />
       </section>
 
       <section className={`hand-readout ${canPlay ? 'is-playable' : ''}`} aria-live="polite">
-        <span>{table.currentPlayer === 0 ? '你的回合' : '等待出牌'}</span>
+        <span>{table.winner !== null ? '牌局结束' : table.currentPlayer === 0 ? '你的回合' : '等待出牌'}</span>
         <strong>{selectedCopy}</strong>
       </section>
 
@@ -533,6 +541,20 @@ function createPlayerProfiles(lord: Lord): Record<PlayerIndex, PlayerProfile> {
 function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex, string>): TableState {
   const player = table.currentPlayer;
   const target = table.lastPlay && table.lastPlay.player !== player ? table.lastPlay.combo : null;
+  const teammateLeads = Boolean(table.lastPlay && table.lastPlay.player !== player && table.lastPlay.player !== 0);
+  if (teammateLeads) {
+    const wholeHand = evaluateCards(table.hands[player]);
+    if (wholeHand && canBeat(wholeHand, target)) {
+      return applyPlay(table, player, table.hands[player], wholeHand, `${playerNames[player]}出牌：${wholeHand.label} ${formatCards(table.hands[player])}`);
+    }
+    // 队友出牌时只用 A 以下的普通牌跟，不拿炸弹、王、2 压队友
+    const followCards = findFirstPlayable(table.hands[player], target);
+    const followCombo = followCards ? evaluateCards(followCards) : null;
+    if (followCards && followCombo && canBeat(followCombo, target) && followCombo.type !== 'bomb' && followCombo.type !== 'rocket' && followCombo.value <= 14) {
+      return applyPlay(table, player, followCards, followCombo, `${playerNames[player]}出牌：${followCombo.label} ${formatCards(followCards)}`);
+    }
+    return applyPass(table, player, `${playerNames[player]}不要。`);
+  }
   const cards = findFirstPlayable(table.hands[player], target);
   const combo = cards ? evaluateCards(cards) : null;
 

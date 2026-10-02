@@ -39,7 +39,8 @@ export function calculateCharisma(lord: Lord, ownedPartners: Partner[]) {
 }
 
 export function matchEnemy(totalPower: number): Enemy {
-  return enemies.find((enemy) => enemy.power >= totalPower) ?? enemies[enemies.length - 1];
+  const beatable = enemies.filter((enemy) => enemy.power <= totalPower);
+  return beatable[beatable.length - 1] ?? enemies[0];
 }
 
 export function rollDamage(attackerPower: number, defenderPower: number, isCritical: boolean) {
