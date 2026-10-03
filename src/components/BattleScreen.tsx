@@ -377,7 +377,7 @@ export function BattleScreen({
               {modeLocked
                 ? `宅邸升至砖瓦宅（${FARM_UNLOCK_HOME_LEVEL} 级）后可开垦。屯田是独立于宅邸的田产，投入一次，每日收入永久提高。`
                 : farm.next
-                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farm.next.cost.toLocaleString()} 金，每日收入 +${farm.next.dailyIncome} 金（累计 +${farm.next.dailyIncome} 金/日）。`
+                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farm.next.cost.toLocaleString()} 金，每日收入从 +${farm.current.dailyIncome} 提到 +${farm.next.dailyIncome} 金。`
                   : `${farm.current.description} 屯田已达顶级。`}
             </p>
             {farmNotice && (
