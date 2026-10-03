@@ -327,11 +327,11 @@ export const weapons: Weapon[] = [
 ];
 
 export const homeLevels: HomeLevel[] = [
-  { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level2.png' },
+  { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level1.png' },
   { level: 2, name: '木屋', upgradeCost: 500, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },
-  { level: 3, name: '砖瓦宅', upgradeCost: 2000, dailyIncome: 80, imagePath: 'assets/homes/home_level2.png' },
-  { level: 4, name: '府邸', upgradeCost: 8000, dailyIncome: 200, imagePath: 'assets/homes/home_level6.png' },
-  { level: 5, name: '侯府', upgradeCost: 30000, dailyIncome: 500, imagePath: 'assets/homes/home_level6.png' },
+  { level: 3, name: '砖瓦宅', upgradeCost: 2000, dailyIncome: 80, imagePath: 'assets/homes/home_level3.png' },
+  { level: 4, name: '府邸', upgradeCost: 8000, dailyIncome: 200, imagePath: 'assets/homes/home_level4.png' },
+  { level: 5, name: '侯府', upgradeCost: 30000, dailyIncome: 500, imagePath: 'assets/homes/home_level5.png' },
   { level: 6, name: '王城', upgradeCost: 100000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
 ];
 
