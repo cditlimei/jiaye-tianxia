@@ -10,6 +10,8 @@ const BGM_BY_SCREEN: Record<Screen, string> = {
   battle: 'audio/bgm/bgm_battle.mp3'
 };
 
+const SFX_MAX_MS = 3000;
+
 export function useAudioManager(screen: Screen, soundEnabled: boolean) {
   const bgmRef = useRef<HTMLAudioElement | null>(null);
   const currentBgmRef = useRef<string | null>(null);
@@ -47,6 +49,8 @@ export function useAudioManager(screen: Screen, soundEnabled: boolean) {
       const sfx = new Audio(mediaUrl(path));
       sfx.volume = volume;
       void sfx.play().catch(() => undefined);
+      // 音效兜底时长：素材误放成长音频时也不会一直叠加播放
+      window.setTimeout(() => sfx.pause(), SFX_MAX_MS);
     },
     [soundEnabled]
   );
