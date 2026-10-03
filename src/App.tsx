@@ -242,6 +242,8 @@ export function App() {
           lord={game.selectedLord}
           weapon={game.equippedWeapon}
           totalPower={game.totalPower}
+          navalPower={game.navalPower}
+          homeLevel={game.state.homeLevel}
           wins={game.state.battleWins}
           losses={game.state.battleLosses}
           onPlayEffect={effects.playEffect}

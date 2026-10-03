@@ -332,6 +332,15 @@ export const weapons: Weapon[] = [
   }
 ];
 
+// 江东水战：比智谋（主公 + 伴侣智谋 + 宅邸），门槛高于陆战，缴获约为同档陆战的 1.25 倍
+export const navalEnemies: Enemy[] = [
+  { id: 'river-pirates', name: '江上水贼', power: 40, rewardGold: 625, description: '劫掠商船的乌合之众' },
+  { id: 'naval-captain', name: '水军校尉', power: 90, rewardGold: 1500, description: '操练有素的巡江水军' },
+  { id: 'tower-ship-commander', name: '楼船都督', power: 140, rewardGold: 3750, description: '统领楼船的江防主将' },
+  { id: 'grand-admiral', name: '水军大都督', power: 190, rewardGold: 10000, description: '号令三江的水师统帅' },
+  { id: 'legendary-admiral', name: '水师名将', power: 230, rewardGold: 25000, description: '威震长江的一代名将' }
+];
+
 export const homeLevels: HomeLevel[] = [
   { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level1.png' },
   { level: 2, name: '木屋', upgradeCost: 500, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },

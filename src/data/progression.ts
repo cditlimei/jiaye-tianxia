@@ -65,6 +65,13 @@ export const quests: Quest[] = [
     isComplete: (_state, context) => context.totalPower >= 180
   },
   {
+    id: 'naval-first-win',
+    title: '江东扬帆',
+    description: '在江东赢得一场水战。',
+    rewardGold: 2000,
+    isComplete: (state) => state.navalWins >= 1
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',

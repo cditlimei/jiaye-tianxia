@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
-import { calculateCharisma, calculateIntelligence, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
+import { calculateCharisma, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
-import type { GameState, Screen } from '../types';
+import type { BattleMode, GameState, Screen } from '../types';
 
 const HEARTBEAT_MS = 15000;
 
@@ -17,7 +17,7 @@ type Action =
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'buyWeapon'; weaponId: string; price: number }
-  | { type: 'recordBattle'; win: boolean; rewardGold: number }
+  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode }
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
@@ -169,12 +169,15 @@ function reducer(state: GameState, action: Action): GameState {
         gold: action.win ? state.gold + action.rewardGold : state.gold,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
+        navalWins: action.win && action.mode === 'naval' ? state.navalWins + 1 : state.navalWins,
         eventLog: [
           {
             id: `battle-${Date.now()}`,
             day: state.day,
-            title: action.win ? '讨伐得胜' : '整军再战',
-            detail: action.win ? `军中缴获 ${action.rewardGold.toLocaleString()} 金。` : '此战未竟，需回府整顿。',
+            title: action.win ? (action.mode === 'naval' ? '水战告捷' : '讨伐得胜') : '整军再战',
+            detail: action.win
+              ? `${action.mode === 'naval' ? '江上缴获' : '军中缴获'} ${action.rewardGold.toLocaleString()} 金。`
+              : '此战未竟，需回府整顿。',
             goldDelta: action.win ? action.rewardGold : undefined
           },
           ...state.eventLog
@@ -301,6 +304,7 @@ export function useGameState() {
   );
 
   const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome) : 0;
+  const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome) : 0;
   const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners) : 0;
   const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
@@ -353,6 +357,7 @@ export function useGameState() {
     nextHome,
     ownedPartners,
     totalPower,
+    navalPower,
     intelligence,
     charisma,
     dailyIncome,
@@ -368,7 +373,7 @@ export function useGameState() {
     recruitPartner,
     buyWeapon,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
-    recordBattle: (win: boolean, rewardGold: number) => dispatch({ type: 'recordBattle', win, rewardGold }),
+    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land') => dispatch({ type: 'recordBattle', win, rewardGold, mode }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),

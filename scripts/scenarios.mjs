@@ -177,6 +177,41 @@ await scenario('兵器与经济', async () => {
   await market.context().close();
 });
 
+await scenario('江东水战', async () => {
+  // 宅邸 2 级：江东不可进，提示解锁条件
+  const locked = await open(save({ homeLevel: 2 }));
+  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByText('九州征途').first().waitFor();
+  const node = locked.getByRole('button', { name: /江东/ });
+  check('宅邸 2 级时江东未开放', await node.isDisabled() && (await node.innerText()).includes('砖瓦宅后开放'));
+  await locked.context().close();
+
+  // 宅邸 3 级：诸葛亮（智谋 100）出战，打完一场，胜负与金币、水战胜场、任务一致
+  const page = await open(save({ selectedLordId: 'zhugeliang', homeLevel: 3, ownedPartnerIds: ['huangyueying'], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByText('九州征途').first().waitFor();
+  await page.getByRole('button', { name: /江东/ }).click();
+  const panel = await page.locator('[aria-label="水战说明"]').innerText();
+  const reward = Number(panel.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  check('水战面板显示智谋与缴获', /当前智谋 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
+  const before = await read(page);
+  await page.getByRole('button', { name: '扬帆出战' }).click();
+  await page.getByText(/水战告捷|折戟江上/).first().waitFor({ timeout: 90000 });
+  const win = (await page.locator('h2').first().innerText()).includes('水战告捷');
+  await page.waitForTimeout(500);
+  const after = await read(page);
+  check('水战结算与存档一致', win
+    ? after.gold - before.gold === reward && after.navalWins === before.navalWins + 1 && after.battleWins === before.battleWins + 1
+    : after.gold === before.gold && after.navalWins === before.navalWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+  await page.getByRole('button', { name: '返回家业' }).click();
+  await page.getByText('主城经营').first().waitFor();
+  if (win) {
+    const quest = page.locator('.quest-item').filter({ hasText: '江东扬帆' }).first();
+    check('胜后任务「江东扬帆」可领赏', await quest.isVisible().catch(() => false) && (await quest.getByRole('button', { name: '领赏' }).isEnabled().catch(() => false)));
+  }
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

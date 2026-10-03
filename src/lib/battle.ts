@@ -1,5 +1,5 @@
 import type { Enemy, HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
-import { enemies } from '../data/gameData';
+import { enemies, navalEnemies } from '../data/gameData';
 
 export function weaponBonusForLord(weapon: Weapon, lordId: string) {
   return weapon.bestMatchLordId === lordId ? Math.round(weapon.strengthBonus * 1.5) : weapon.strengthBonus;
@@ -66,10 +66,25 @@ const ENEMY_SCALE_POINTS: Array<[power: number, scale: number]> = [
 ];
 
 export function matchEnemy(totalPower: number): Enemy {
-  const beatable = enemies.filter((enemy) => enemy.power <= totalPower);
-  const tier = beatable[beatable.length - 1] ?? enemies[0];
-  return { ...tier, power: Math.round(totalPower * enemyScale(totalPower)) };
+  return matchEnemyFrom(enemies, totalPower);
 }
+
+export function matchNavalEnemy(navalPower: number): Enemy {
+  return matchEnemyFrom(navalEnemies, navalPower);
+}
+
+function matchEnemyFrom(list: Enemy[], power: number): Enemy {
+  const beatable = list.filter((enemy) => enemy.power <= power);
+  const tier = beatable[beatable.length - 1] ?? list[0];
+  return { ...tier, power: Math.round(power * enemyScale(power)) };
+}
+
+// 水战不看兵器：智谋 + 宅邸
+export function calculateNavalPower(lord: Lord, ownedPartners: Partner[], home: HomeLevel) {
+  return calculateIntelligence(lord, ownedPartners) + home.level * 5;
+}
+
+export const NAVAL_UNLOCK_HOME_LEVEL = 3;
 
 function enemyScale(totalPower: number) {
   const points = ENEMY_SCALE_POINTS;

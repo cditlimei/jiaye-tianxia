@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Lord, Weapon } from '../data/gameData';
-import { matchEnemy, rollDamage } from '../lib/battle';
+import { matchEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
+import type { BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
 import { GameButton } from './common/GameButton';
@@ -10,18 +11,20 @@ interface BattleScreenProps {
   lord: Lord;
   weapon: Weapon;
   totalPower: number;
+  navalPower: number;
+  homeLevel: number;
   wins: number;
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number) => void;
+  onResolved: (win: boolean, rewardGold: number, mode: BattleMode) => void;
   onReturnHome: () => void;
 }
 
 type BattlePhase = 'intro' | 'battle' | 'result';
 type VenueId = 'beginner' | 'middle' | 'high';
 type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
-type RegionMode = 'doudizhu' | 'battle' | 'locked';
+type RegionMode = 'doudizhu' | 'battle' | 'naval' | 'locked';
 interface Venue {
   id: VenueId;
   name: string;
@@ -51,7 +54,7 @@ interface BattleRuntime {
 const MAP_REGIONS: MapRegion[] = [
   { id: 'jingzhou', name: '荆州', state: '斗地主', x: 47, y: 58, mode: 'doudizhu' },
   { id: 'guandao', name: '官道', state: '自动讨伐', x: 52, y: 38, mode: 'battle' },
-  { id: 'jiangdong', name: '江东', state: '水战筹备', x: 76, y: 72, mode: 'locked' },
+  { id: 'jiangdong', name: '江东', state: '水战', x: 76, y: 72, mode: 'naval' },
   { id: 'xuchang', name: '许都', state: '未开', x: 70, y: 18, mode: 'locked' },
   { id: 'xishu', name: '西蜀', state: '未开', x: 19, y: 52, mode: 'locked' },
   { id: 'beijiang', name: '北疆', state: '未开', x: 30, y: 16, mode: 'locked' }
@@ -67,6 +70,8 @@ export function BattleScreen({
   lord,
   weapon,
   totalPower,
+  navalPower,
+  homeLevel,
   wins,
   losses,
   onPlayEffect,
@@ -74,9 +79,6 @@ export function BattleScreen({
   onResolved,
   onReturnHome
 }: BattleScreenProps) {
-  const enemy = useMemo(() => matchEnemy(totalPower), [totalPower]);
-  const maxPlayerHp = 100 + Math.round(totalPower * 0.5);
-  const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
   const settledRef = useRef(false);
   const startedRef = useRef(false);
   const [mapOpen, setMapOpen] = useState(true);
@@ -85,16 +87,27 @@ export function BattleScreen({
   const [venueId, setVenueId] = useState<VenueId>('beginner');
   const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
+  const mode: BattleMode = selectedRegion.mode === 'naval' ? 'naval' : 'land';
+  const navalLocked = homeLevel < NAVAL_UNLOCK_HOME_LEVEL;
+  // 水战比智谋、不看兵器；陆战比武力
+  const attackPower = mode === 'naval' ? navalPower : totalPower;
+  const enemy = useMemo(() => (mode === 'naval' ? matchNavalEnemy(navalPower) : matchEnemy(totalPower)), [mode, navalPower, totalPower]);
+  const maxPlayerHp = 100 + Math.round(attackPower * 0.5);
+  const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
-  const canEnterSelectedRegion = selectedRegion.mode !== 'locked' && !selectedVenueLocked;
-  const [runtime, setRuntime] = useState<BattleRuntime>({
+  const canEnterSelectedRegion =
+    selectedRegion.mode !== 'locked' && !selectedVenueLocked && !(selectedRegion.mode === 'naval' && navalLocked);
+  const wording = mode === 'naval'
+    ? { eyebrow: '江东水战', intro: '整船列阵', fighting: '鏖战江上', attack: '放箭', crit: '火攻', counter: '撞船反扑', counterCrit: '火船逼近', win: '水战告捷', loss: '折戟江上', enemyBroken: '船阵溃散', exhausted: '战船受损，只得回港' }
+    : { eyebrow: '自动回合战', intro: '整军出征', fighting: '激战正酣', attack: '出手', crit: '暴击', counter: '反击', counterCrit: '反扑暴击', win: '讨伐得胜', loss: '败退整军', enemyBroken: '阵脚崩溃', exhausted: '兵势已尽，只得暂退' };
+  const [runtime, setRuntime] = useState<BattleRuntime>(() => ({
     phase: 'intro',
     playerHp: maxPlayerHp,
     enemyHp: maxEnemyHp,
     round: 0,
-    logs: [`斥候回报：${enemy.name}列阵于前。`, `${lord.name}提${weapon.name}出征。`],
+    logs: [],
     result: null
-  });
+  }));
 
   useEffect(() => {
     if (mapOpen || doudizhuOpen || startedRef.current) {
@@ -121,7 +134,7 @@ export function BattleScreen({
         setRuntime((prev) => ({
           ...prev,
           phase: 'battle',
-          logs: [`${weapon.name}锋芒毕露，战斗开始。`, ...prev.logs]
+          logs: [mode === 'naval' ? '战鼓擂响，船阵前压。' : `${weapon.name}锋芒毕露，战斗开始。`, ...prev.logs]
         }));
       }
     }
@@ -130,7 +143,7 @@ export function BattleScreen({
     return () => {
       cancelled = true;
     };
-  }, [doudizhuOpen, lord.name, mapOpen, onPlayEffect, onSfx, weapon]);
+  }, [doudizhuOpen, lord.name, mapOpen, mode, onPlayEffect, onSfx, weapon]);
 
   useEffect(() => {
     if (runtime.phase !== 'battle') {
@@ -145,26 +158,26 @@ export function BattleScreen({
 
         const playerCrit = Math.random() < 0.18;
         const enemyCrit = Math.random() < 0.12;
-        const playerDamage = rollDamage(totalPower, enemy.power, playerCrit);
+        const playerDamage = rollDamage(attackPower, enemy.power, playerCrit);
         let nextEnemyHp = Math.max(0, prev.enemyHp - playerDamage);
         let nextPlayerHp = prev.playerHp;
         const round = prev.round + 1;
         const logs = [
-          `第${round}合：${lord.name}${playerCrit ? '暴击' : '出手'}，造成 ${playerDamage} 伤害。`,
+          `第${round}合：${lord.name}${playerCrit ? wording.crit : wording.attack}，造成 ${playerDamage} 伤害。`,
           ...prev.logs
         ];
 
         let result: BattleRuntime['result'] = null;
         if (nextEnemyHp <= 0) {
           result = 'win';
-          logs.unshift(`${enemy.name}阵脚崩溃，缴获 ${enemy.rewardGold} 金。`);
+          logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${enemy.rewardGold} 金。`);
         } else {
-          const enemyDamage = rollDamage(enemy.power, totalPower, enemyCrit);
+          const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
           nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
-          logs.unshift(`${enemy.name}${enemyCrit ? '反扑暴击' : '反击'}，造成 ${enemyDamage} 伤害。`);
+          logs.unshift(`${enemy.name}${enemyCrit ? wording.counterCrit : wording.counter}，造成 ${enemyDamage} 伤害。`);
           if (nextPlayerHp <= 0) {
             result = 'loss';
-            logs.unshift(`${lord.name}兵势已尽，只得暂退。`);
+            logs.unshift(`${lord.name}${wording.exhausted}。`);
           }
         }
 
@@ -180,7 +193,7 @@ export function BattleScreen({
     }, 800);
 
     return () => window.clearInterval(timer);
-  }, [enemy, lord.name, runtime.phase, totalPower]);
+  }, [attackPower, enemy, lord.name, runtime.phase, wording]);
 
   useEffect(() => {
     if (!runtime.result || settledRef.current) {
@@ -189,8 +202,8 @@ export function BattleScreen({
     settledRef.current = true;
     const win = runtime.result === 'win';
     onSfx(win ? 'audio/sfx/sfx_victory.mp3' : 'audio/sfx/sfx_defeat.mp3', 0.58);
-    onResolved(win, win ? enemy.rewardGold : 0);
-  }, [enemy.rewardGold, onResolved, onSfx, runtime.result]);
+    onResolved(win, win ? enemy.rewardGold : 0, mode);
+  }, [enemy.rewardGold, mode, onResolved, onSfx, runtime.result]);
 
   const retreat = () => {
     if (runtime.phase === 'result') {
@@ -200,7 +213,7 @@ export function BattleScreen({
 
     if (!settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0);
+      onResolved(false, 0, mode);
     }
     setRuntime((prev) => ({
       ...prev,
@@ -210,7 +223,7 @@ export function BattleScreen({
     }));
   };
 
-  const resultTitle = runtime.result === 'win' ? '讨伐得胜' : runtime.result === 'retreat' ? '鸣金收兵' : '败退整军';
+  const resultTitle = runtime.result === 'win' ? wording.win : runtime.result === 'retreat' ? '鸣金收兵' : runtime.result === 'loss' ? wording.loss : wording.fighting;
 
   if (doudizhuOpen) {
     return (
@@ -220,7 +233,7 @@ export function BattleScreen({
         losses={losses}
         rewardGold={selectedVenue.rewardGold}
         onSfx={onSfx}
-        onResolved={onResolved}
+        onResolved={(win, rewardGold) => onResolved(win, rewardGold, 'land')}
         onReturnHome={onReturnHome}
       />
     );
@@ -242,7 +255,8 @@ export function BattleScreen({
         <section className="expedition-map" aria-label="三国地图">
           <div className="expedition-map__terrain" />
           {MAP_REGIONS.map((region) => {
-            const available = region.mode !== 'locked';
+            const available = region.mode !== 'locked' && !(region.mode === 'naval' && navalLocked);
+            const stateLabel = region.mode === 'naval' && navalLocked ? '砖瓦宅后开放' : region.state;
             return (
               <button
                 key={region.id}
@@ -253,7 +267,7 @@ export function BattleScreen({
                 onClick={() => setSelectedRegionId(region.id)}
               >
                 <strong>{region.name}</strong>
-                <span>{region.state}</span>
+                <span>{stateLabel}</span>
               </button>
             );
           })}
@@ -290,6 +304,18 @@ export function BattleScreen({
               : `本场缴获 ${selectedVenue.rewardGold.toLocaleString()} 金。`}
           </p>
           </section>
+        ) : selectedRegion.mode === 'naval' ? (
+          <section className="venue-panel" aria-label="水战说明">
+            <div className="section-title">
+              <span>江东 · 水战 · 当前智谋 {navalPower}</span>
+              <strong>{navalLocked ? '尚未开放' : enemy.name}</strong>
+            </div>
+            <p className="venue-summary">
+              {navalLocked
+                ? `宅邸升至砖瓦宅（${NAVAL_UNLOCK_HOME_LEVEL} 级）后可出战。水战比的是智谋，兵器不计。`
+                : `水战比智谋（主公 + 伴侣 + 宅邸），兵器不计；胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
+            </p>
+          </section>
         ) : (
           <section className="venue-panel" aria-label="自动讨伐说明">
             <div className="section-title">
@@ -308,30 +334,40 @@ export function BattleScreen({
           disabled={!canEnterSelectedRegion}
           onClick={() => {
             onSfx('audio/sfx/sfx_button.mp3', 0.35);
+            setRuntime({
+              phase: 'intro',
+              playerHp: maxPlayerHp,
+              enemyHp: maxEnemyHp,
+              round: 0,
+              logs: mode === 'naval'
+                ? [`哨船回报：${enemy.name}列阵江上。`, `${lord.name}登楼船督战。`]
+                : [`斥候回报：${enemy.name}列阵于前。`, `${lord.name}提${weapon.name}出征。`],
+              result: null
+            });
             setDoudizhuOpen(selectedRegion.mode === 'doudizhu');
             setMapOpen(false);
           }}
         >
-          {selectedRegion.mode === 'doudizhu' ? '进入斗地主' : '出征讨伐'}
+          {selectedRegion.mode === 'doudizhu' ? '进入斗地主' : selectedRegion.mode === 'naval' ? '扬帆出战' : '出征讨伐'}
         </GameButton>
       </main>
     );
   }
 
   return (
-    <main className="screen battle-screen">
+    <main className={`screen battle-screen ${mode === 'naval' ? 'is-naval' : ''}`} style={mode === 'naval' ? { '--battle-bg': `url(${imageUrl('assets/ui/ui_naval_battle.png', 512)})` } as CSSProperties : undefined}>
       <header className="screen-header">
         <div>
-          <span className="eyebrow">自动回合战</span>
-          <h2>{runtime.phase === 'intro' ? '整军出征' : resultTitle}</h2>
+          <span className="eyebrow">{wording.eyebrow}</span>
+          <h2>{runtime.phase === 'intro' ? wording.intro : resultTitle}</h2>
         </div>
         <span className="battle-record">胜 {wins} · 负 {losses}</span>
       </header>
 
       <section className="battle-arena">
-        <BattleFighter name={lord.name} title={weapon.name} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
+        <BattleFighter name={lord.name} title={mode === 'naval' ? `智谋 ${navalPower}` : weapon.name} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
         <div className="battle-vs">VS</div>
-        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl('assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
+        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(mode === 'naval' ? 'assets/ui/ui_naval_battle.png' : 'assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
       </section>
 
       <section className="battle-info">
@@ -340,8 +376,8 @@ export function BattleScreen({
           <strong>{enemy.name}</strong>
         </div>
         <div>
-          <span>当前兵器</span>
-          <strong>{weapon.name}</strong>
+          <span>{mode === 'naval' ? '比拼' : '当前兵器'}</span>
+          <strong>{mode === 'naval' ? '智谋' : weapon.name}</strong>
         </div>
         <div>
           <span>潜在奖励</span>
