@@ -19,6 +19,7 @@ interface HomeScreenProps {
   intelligence: number;
   charisma: number;
   dailyIncome: number;
+  farmIncome: number;
   recruitDiscount: number;
   onCollectIncome: () => number;
   onUpgrade: () => boolean;
@@ -50,6 +51,7 @@ export function HomeScreen({
   intelligence,
   charisma,
   dailyIncome,
+  farmIncome,
   recruitDiscount,
   onCollectIncome,
   onUpgrade,
@@ -142,7 +144,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营 · 核心循环</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金，智谋加成 +{Math.floor(intelligence / 10)}%）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmIncome > 0 ? `，西蜀屯田 ${farmIncome} 金` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />

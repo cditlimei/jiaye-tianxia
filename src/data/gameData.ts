@@ -350,6 +350,30 @@ export const courtEnemies: Enemy[] = [
   { id: 'regent', name: '权臣', power: 240, rewardGold: 30000, description: '挟天子以令诸侯' }
 ];
 
+export interface FarmLevel {
+  level: number;
+  name: string;
+  cost: number;
+  dailyIncome: number;
+  description: string;
+}
+
+// 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入；各级约 13 个游玩日回本
+export const farmLevels: FarmLevel[] = [
+  { level: 0, name: '荒地', cost: 0, dailyIncome: 0, description: '蜀地山间尚是一片荒坡。' },
+  { level: 1, name: '开荒', cost: 3000, dailyIncome: 15, description: '垦出第一块田，种下稻谷。' },
+  { level: 2, name: '引水', cost: 8000, dailyIncome: 40, description: '引山泉入田，旱涝无忧。' },
+  { level: 3, name: '修渠', cost: 20000, dailyIncome: 100, description: '沟渠纵横，梯田层层。' },
+  { level: 4, name: '筑仓', cost: 50000, dailyIncome: 250, description: '谷仓满囤，可供一军。' },
+  { level: 5, name: '沃野千里', cost: 120000, dailyIncome: 600, description: '蜀地粮仓，天下闻名。' }
+];
+
+export function findFarmLevel(level: number) {
+  return farmLevels.find((farm) => farm.level === level) ?? farmLevels[0];
+}
+
+export const FARM_UNLOCK_HOME_LEVEL = 3;
+
 export const homeLevels: HomeLevel[] = [
   { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level1.png' },
   { level: 2, name: '木屋', upgradeCost: 500, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },

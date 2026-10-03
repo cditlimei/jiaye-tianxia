@@ -1,5 +1,5 @@
 import type { GameState, Screen } from '../types';
-import { findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
+import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { getDailyEvent, quests } from '../data/progression';
 import { calculateIntelligence, effectiveDailyIncome } from '../lib/battle';
 
@@ -15,6 +15,7 @@ export const defaultGameState: GameState = {
   selectedLordId: null,
   gold: 1000,
   homeLevel: 1,
+  farmLevel: 0,
   equippedWeaponId: 'xuanjian',
   ownedWeaponIds: ['xuanjian'],
   ownedPartnerIds: [],
@@ -172,6 +173,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     selectedLordId,
     gold: sanitizeNumber(parsed.gold, defaultGameState.gold, 0),
     homeLevel,
+    farmLevel: farmLevels.some((farm) => farm.level === parsed.farmLevel) ? Number(parsed.farmLevel) : 0,
     equippedWeaponId,
     // 旧存档没有这个字段：玄铁剑 + 当时装备的兵器视为已拥有
     ownedWeaponIds: [...new Set(['xuanjian', equippedWeaponId, ...sanitizeIds(parsed.ownedWeaponIds, weapons)])],
@@ -248,8 +250,8 @@ function applyOfflineIncome(state: GameState): GameState {
   const lord = lords.find((item) => item.id === state.selectedLordId);
   const ownedPartners = partners.filter((item) => state.ownedPartnerIds.includes(item.id));
   const dailyIncome = lord
-    ? effectiveDailyIncome(findHomeLevel(state.homeLevel).dailyIncome, calculateIntelligence(lord, ownedPartners))
-    : findHomeLevel(state.homeLevel).dailyIncome;
+    ? effectiveDailyIncome(findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome, calculateIntelligence(lord, ownedPartners))
+    : findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome;
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
   let eventGold = 0;
   let eventCount = 0;

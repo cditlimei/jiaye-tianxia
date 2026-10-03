@@ -244,6 +244,12 @@ export function App() {
           totalPower={game.totalPower}
           navalPower={game.navalPower}
           courtPower={game.courtPower}
+          farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold }}
+          onUpgradeFarm={() => {
+            if (!game.upgradeFarm()) return false;
+            audio.playSfx('audio/sfx/sfx_coins.mp3', 0.4);
+            return true;
+          }}
           homeLevel={game.state.homeLevel}
           wins={game.state.battleWins}
           losses={game.state.battleLosses}
@@ -272,6 +278,7 @@ export function App() {
           intelligence={game.intelligence}
           charisma={game.charisma}
           dailyIncome={game.dailyIncome}
+          farmIncome={game.currentFarm.dailyIncome}
           recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
           onCollectIncome={game.collectIncome}

@@ -79,6 +79,13 @@ export const quests: Quest[] = [
     isComplete: (state) => state.courtWins >= 1
   },
   {
+    id: 'farm-first',
+    title: '西蜀屯田',
+    description: '在西蜀开垦第一块田。',
+    rewardGold: 1500,
+    isComplete: (state) => state.farmLevel >= 1
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',

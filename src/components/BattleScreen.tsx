@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { Enemy, Lord, Weapon } from '../data/gameData';
+import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
+import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { COURT_UNLOCK_HOME_LEVEL, matchCourtEnemy, matchEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
 import type { BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
@@ -14,6 +15,8 @@ interface BattleScreenProps {
   navalPower: number;
   courtPower: number;
   homeLevel: number;
+  farm: { current: FarmLevel; next: FarmLevel | null; gold: number };
+  onUpgradeFarm: () => boolean;
   wins: number;
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
@@ -25,7 +28,7 @@ interface BattleScreenProps {
 type BattlePhase = 'intro' | 'battle' | 'result';
 type VenueId = 'beginner' | 'middle' | 'high';
 type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
-type RegionMode = 'doudizhu' | BattleMode | 'locked';
+type RegionMode = 'doudizhu' | BattleMode | 'farm' | 'locked';
 interface Venue {
   id: VenueId;
   name: string;
@@ -57,7 +60,7 @@ const MAP_REGIONS: MapRegion[] = [
   { id: 'guandao', name: '官道', state: '自动讨伐', x: 52, y: 38, mode: 'land' },
   { id: 'jiangdong', name: '江东', state: '水战', x: 76, y: 72, mode: 'naval' },
   { id: 'xuchang', name: '许都', state: '朝堂', x: 70, y: 18, mode: 'court' },
-  { id: 'xishu', name: '西蜀', state: '未开', x: 19, y: 52, mode: 'locked' },
+  { id: 'xishu', name: '西蜀', state: '屯田', x: 19, y: 52, mode: 'farm' },
   { id: 'beijiang', name: '北疆', state: '未开', x: 30, y: 16, mode: 'locked' }
 ];
 
@@ -127,6 +130,8 @@ export function BattleScreen({
   navalPower,
   courtPower,
   homeLevel,
+  farm,
+  onUpgradeFarm,
   wins,
   losses,
   onPlayEffect,
@@ -140,19 +145,21 @@ export function BattleScreen({
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId>('jingzhou');
   const [venueId, setVenueId] = useState<VenueId>('beginner');
+  const [farmNotice, setFarmNotice] = useState('');
   const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
   const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' ? selectedRegion.mode : 'land';
   const wording = MODE_CONFIG[mode];
   const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower };
   const attackPower = powerByMode[mode];
-  const isModeLocked = (regionMode: RegionMode) => regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
+  const isModeLocked = (regionMode: RegionMode) =>
+    regionMode === 'farm' ? homeLevel < FARM_UNLOCK_HOME_LEVEL : regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
   const modeLocked = isModeLocked(selectedRegion.mode);
   const enemy = useMemo(() => MATCH_ENEMY[mode](powerByMode[mode]), [mode, powerByMode[mode]]);
   const maxPlayerHp = 100 + Math.round(attackPower * 0.5);
   const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
-  const canEnterSelectedRegion = selectedRegion.mode !== 'locked' && !selectedVenueLocked && !modeLocked;
+  const canEnterSelectedRegion = selectedRegion.mode !== 'locked' && selectedRegion.mode !== 'farm' && !selectedVenueLocked && !modeLocked;
   const [runtime, setRuntime] = useState<BattleRuntime>(() => ({
     phase: 'intro',
     playerHp: maxPlayerHp,
@@ -310,7 +317,9 @@ export function BattleScreen({
           {MAP_REGIONS.map((region) => {
             const lockedByHome = isModeLocked(region.mode);
             const available = region.mode !== 'locked' && !lockedByHome;
-            const stateLabel = lockedByHome && region.mode !== 'doudizhu' && region.mode !== 'locked' ? `${MODE_CONFIG[region.mode].unlockHomeName}后开放` : region.state;
+            const stateLabel = lockedByHome
+              ? region.mode === 'farm' ? '砖瓦宅后开放' : region.mode !== 'doudizhu' && region.mode !== 'locked' ? `${MODE_CONFIG[region.mode].unlockHomeName}后开放` : region.state
+              : region.mode === 'farm' && farm.current.level > 0 ? `屯田 ${farm.current.level} 级` : region.state;
             return (
               <button
                 key={region.id}
@@ -358,6 +367,40 @@ export function BattleScreen({
               : `本场缴获 ${selectedVenue.rewardGold.toLocaleString()} 金。`}
           </p>
           </section>
+        ) : selectedRegion.mode === 'farm' ? (
+          <section className="venue-panel farm-panel" aria-label="屯田" style={{ '--battle-bg': `url(${imageUrl('assets/ui/ui_farm_xishu.png', 512)})` } as CSSProperties}>
+            <div className="section-title">
+              <span>西蜀 · 屯田 · 每日 +{farm.current.dailyIncome} 金</span>
+              <strong>{modeLocked ? '尚未开放' : `${farm.current.name}${farm.current.level > 0 ? ` · ${farm.current.level} 级` : ''}`}</strong>
+            </div>
+            <p className="venue-summary">
+              {modeLocked
+                ? `宅邸升至砖瓦宅（${FARM_UNLOCK_HOME_LEVEL} 级）后可开垦。屯田是独立于宅邸的田产，投入一次，每日收入永久提高。`
+                : farm.next
+                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farm.next.cost.toLocaleString()} 金，每日收入 +${farm.next.dailyIncome} 金（累计 +${farm.next.dailyIncome} 金/日）。`
+                  : `${farm.current.description} 屯田已达顶级。`}
+            </p>
+            {farmNotice && (
+              <p className="partner-market__notice" role="status">
+                {farmNotice}
+              </p>
+            )}
+            {!modeLocked && farm.next && (
+              <GameButton
+                block
+                variant={farm.gold >= farm.next.cost ? 'primary' : 'secondary'}
+                onClick={() => {
+                  if (onUpgradeFarm()) {
+                    setFarmNotice(`屯田升至「${farm.next?.name}」。`);
+                    return;
+                  }
+                  setFarmNotice(`金不足，还差 ${Math.max(0, (farm.next?.cost ?? 0) - farm.gold).toLocaleString()} 金。`);
+                }}
+              >
+                {farm.gold >= farm.next.cost ? `投入 ${farm.next.cost.toLocaleString()} 金 · ${farm.next.name}` : `差 ${(farm.next.cost - farm.gold).toLocaleString()} 金 · ${farm.next.name}`}
+              </GameButton>
+            )}
+          </section>
         ) : (
           <section className="venue-panel" aria-label={`${wording.title}说明`}>
             <div className="section-title">
@@ -372,6 +415,7 @@ export function BattleScreen({
           </section>
         )}
 
+        {selectedRegion.mode !== 'farm' && (
         <GameButton
           block
           variant="danger"
@@ -392,6 +436,7 @@ export function BattleScreen({
         >
           {selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}
         </GameButton>
+        )}
       </main>
     );
   }

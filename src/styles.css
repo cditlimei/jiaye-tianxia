@@ -3985,3 +3985,11 @@ body {
   color: #ffb45a;
   text-shadow: 0 0 18px rgba(255, 140, 40, 0.5);
 }
+
+.farm-panel {
+  background: linear-gradient(180deg, rgba(8, 10, 20, 0.72), rgba(8, 10, 20, 0.9)), var(--battle-bg) center / cover no-repeat;
+}
+
+.farm-panel .venue-summary {
+  margin-bottom: 10px;
+}

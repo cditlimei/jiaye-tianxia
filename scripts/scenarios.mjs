@@ -243,6 +243,36 @@ await scenario('许都朝堂', async () => {
   await page.context().close();
 });
 
+await scenario('西蜀屯田', async () => {
+  const locked = await open(save({ homeLevel: 2 }));
+  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByText('九州征途').first().waitFor();
+  const node = locked.getByRole('button', { name: /西蜀/ });
+  check('宅邸 2 级时西蜀未开放', await node.isDisabled() && (await node.innerText()).includes('砖瓦宅后开放'));
+  await locked.context().close();
+
+  const page = await open(save({ homeLevel: 3, gold: 5000, ownedPartnerIds: [], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
+  const n0 = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByText('九州征途').first().waitFor();
+  await page.getByRole('button', { name: /西蜀/ }).click();
+  await page.getByRole('button', { name: /投入 3,000 金/ }).click();
+  await page.waitForTimeout(500);
+  let s = await read(page);
+  check('开荒扣 3000 金并升到 1 级', s.gold === 2000 && s.farmLevel === 1);
+  check('金不足时显示差额', await page.getByRole('button', { name: /差 6,000 金/ }).isVisible());
+  await page.getByRole('button', { name: /差 6,000 金/ }).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  check('金不足不能升级', s.farmLevel === 1 && (await page.locator('.partner-market__notice').innerText()).includes('金不足'));
+  await page.getByRole('button', { name: '回府' }).click();
+  await page.getByText('主城经营').first().waitFor();
+  const n1 = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
+  check('屯田后每日收入提高', n1 - n0 >= 15, `${n0} → ${n1}`);
+  check('任务「西蜀屯田」可领赏', await page.locator('.quest-item').filter({ hasText: '西蜀屯田' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

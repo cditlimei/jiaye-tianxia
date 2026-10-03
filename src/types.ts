@@ -5,6 +5,7 @@ export interface GameState {
   selectedLordId: string | null;
   gold: number;
   homeLevel: number;
+  farmLevel: number;
   equippedWeaponId: string;
   ownedWeaponIds: string[];
   ownedPartnerIds: string[];

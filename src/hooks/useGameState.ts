@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
-import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
+import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
 import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
@@ -14,6 +14,7 @@ type Action =
   | { type: 'selectStarterPartner'; partner: Partner }
   | { type: 'collectIncome'; amount: number }
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
+  | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'buyWeapon'; weaponId: string; price: number }
@@ -93,6 +94,25 @@ function reducer(state: GameState, action: Action): GameState {
         eventLog
       };
     }
+    case 'upgradeFarm':
+      if (state.gold < action.cost || action.nextLevel !== state.farmLevel + 1) {
+        return state;
+      }
+      return {
+        ...state,
+        gold: state.gold - action.cost,
+        farmLevel: action.nextLevel,
+        eventLog: [
+          {
+            id: `farm-${action.nextLevel}-${Date.now()}`,
+            day: state.day,
+            title: '西蜀屯田',
+            detail: `投入 ${action.cost.toLocaleString()} 金，屯田升至「${findFarmLevel(action.nextLevel).name}」，每日多收 ${findFarmLevel(action.nextLevel).dailyIncome} 金。`,
+            goldDelta: -action.cost
+          },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
     case 'upgradeHome':
       return {
         ...state,
@@ -311,7 +331,9 @@ export function useGameState() {
   const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
 
-  const dailyIncome = effectiveDailyIncome(currentHome.dailyIncome, intelligence);
+  const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
+  const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
+  const dailyIncome = effectiveDailyIncome(currentHome.dailyIncome + currentFarm.dailyIncome, intelligence);
   const recruitDiscount = recruitDiscountPercent(charisma);
   const recruitCostFor = useCallback((partner: Partner) => effectiveRecruitCost(partner.recruitCost, charisma), [charisma]);
 
@@ -340,6 +362,14 @@ export function useGameState() {
     [recruitCostFor, state.gold, state.ownedPartnerIds]
   );
 
+  const upgradeFarm = useCallback(() => {
+    if (!nextFarm || state.gold < nextFarm.cost) {
+      return false;
+    }
+    dispatch({ type: 'upgradeFarm', nextLevel: nextFarm.level, cost: nextFarm.cost });
+    return true;
+  }, [nextFarm, state.gold]);
+
   const buyWeapon = useCallback(
     (weapon: Weapon) => {
       if (state.ownedWeaponIds.includes(weapon.id) || state.gold < weapon.price) {
@@ -357,6 +387,8 @@ export function useGameState() {
     equippedWeapon,
     currentHome,
     nextHome,
+    currentFarm,
+    nextFarm,
     ownedPartners,
     totalPower,
     navalPower,
@@ -375,6 +407,7 @@ export function useGameState() {
     upgradeHome,
     recruitPartner,
     buyWeapon,
+    upgradeFarm,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land') => dispatch({ type: 'recordBattle', win, rewardGold, mode }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
