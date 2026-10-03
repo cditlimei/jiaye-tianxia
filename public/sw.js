@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jiaye-tianxia-v6';
+const CACHE_NAME = 'jiaye-tianxia-__BUILD_ID__';
 const MEDIA_CACHE_NAME = 'jiaye-tianxia-media-v3';
 const BASE_PATH = self.location.pathname.replace(/sw\.js$/, '');
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}icon.svg`];
@@ -52,15 +52,16 @@ self.addEventListener('fetch', (event) => {
 
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
+  let response;
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      await cache.put(request, response.clone());
-    }
-    return response;
+    response = await fetch(request);
   } catch {
     return (await cache.match(request)) || (await cache.match(BASE_PATH)) || Response.error();
   }
+  if (response.ok) {
+    await safePut(cache, request, response.clone());
+  }
+  return response;
 }
 
 async function cacheFirst(request, cacheName) {
@@ -72,9 +73,18 @@ async function cacheFirst(request, cacheName) {
   const response = await fetch(request);
   if (response.ok || response.type === 'opaque') {
     const cache = await caches.open(cacheName);
-    await cache.put(request, response.clone());
+    await safePut(cache, request, response.clone());
   }
   return response;
+}
+
+// cache.put 会在配额满或响应是 206（媒体 Range 请求）时抛错，缓存失败不应影响返回响应
+async function safePut(cache, request, response) {
+  try {
+    await cache.put(request, response);
+  } catch {
+    // ignore
+  }
 }
 
 async function staleWhileRevalidate(request, cacheName) {
@@ -82,8 +92,8 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request);
   const update = fetch(request)
     .then((response) => {
-      if (response.ok || response.type === 'opaque') {
-        void cache.put(request, response.clone());
+      if ((response.ok || response.type === 'opaque') && response.status !== 206) {
+        void safePut(cache, request, response.clone());
       }
       return response;
     })
