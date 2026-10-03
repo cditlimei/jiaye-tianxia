@@ -14,7 +14,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 先在干净环境里跑完整测试，任何一步失败都不发布
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and build (Pages base path)
+        run: npm run build
+        env:
+          GITHUB_PAGES: 'true'
+
+      - name: Doudizhu rules
+        run: npm run rules:doudizhu
+
+      - name: Gameplay stress (logic failures only)
+        # p95 阈值按本地 Mac 定的，CI 机器慢；只要求 1000 局没有逻辑失败
+        run: node scripts/gameplay-stress.mjs --max-p95-ms 100000
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start preview server
+        run: |
+          npx vite preview --host 127.0.0.1 --port 4173 > preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4173/jiaye-tianxia/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat preview.log
+          exit 1
+        env:
+          GITHUB_PAGES: 'true'
+
+      - name: Smoke
+        run: npm run smoke
+        env:
+          JIAYE_URL: http://127.0.0.1:4173/jiaye-tianxia/
+
+      - name: Scenario regression
+        run: npm run scenarios
+        env:
+          JIAYE_URL: http://127.0.0.1:4173/jiaye-tianxia/
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-log
+          path: preview.log
+          if-no-files-found: ignore
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
