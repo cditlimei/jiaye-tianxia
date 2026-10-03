@@ -3962,3 +3962,13 @@ body {
     font-size: 13px;
   }
 }
+
+.weapon-list__summary {
+  margin: 0 0 4px;
+  color: rgba(245, 230, 200, 0.72);
+  font-size: 12px;
+}
+
+.weapon-card.is-locked .weapon-card__image {
+  filter: saturate(0.55) brightness(0.8);
+}

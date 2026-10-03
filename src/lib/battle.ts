@@ -20,6 +20,23 @@ export function partnerCharismaBonus(partner: Partner, lordId: string) {
   return partner.bestMatchLordId === lordId ? Math.round(raw * 1.3) : raw;
 }
 
+// 智谋每 10 点让处理政务收入 +1%，声望每 10 点让招募伴侣便宜 1%（最多 30%）
+export function incomeMultiplier(intelligence: number) {
+  return 1 + Math.floor(intelligence / 10) / 100;
+}
+
+export function effectiveDailyIncome(baseIncome: number, intelligence: number) {
+  return Math.round(baseIncome * incomeMultiplier(intelligence));
+}
+
+export function recruitDiscountPercent(charisma: number) {
+  return Math.min(30, Math.floor(charisma / 10));
+}
+
+export function effectiveRecruitCost(baseCost: number, charisma: number) {
+  return Math.round(baseCost * (1 - recruitDiscountPercent(charisma) / 100));
+}
+
 export function calculateTotalPower(lord: Lord, ownedPartners: Partner[], weapon: Weapon, home: HomeLevel) {
   const homeBonus = home.level * 5;
   const partnerBonus = ownedPartners.reduce((sum, partner) => sum + partnerStrengthBonus(partner, lord.id), 0);

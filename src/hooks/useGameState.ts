@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
-import type { Partner } from '../data/gameData';
+import type { Partner, Weapon } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
-import { calculateCharisma, calculateIntelligence, calculateTotalPower } from '../lib/battle';
+import { calculateCharisma, calculateIntelligence, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { GameState, Screen } from '../types';
 
@@ -14,8 +14,9 @@ type Action =
   | { type: 'selectStarterPartner'; partner: Partner }
   | { type: 'collectIncome'; amount: number }
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
-  | { type: 'recruitPartner'; partner: Partner }
+  | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
+  | { type: 'buyWeapon'; weaponId: string; price: number }
   | { type: 'recordBattle'; win: boolean; rewardGold: number }
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
@@ -113,7 +114,7 @@ function reducer(state: GameState, action: Action): GameState {
       }
       return {
         ...state,
-        gold: state.gold - action.partner.recruitCost,
+        gold: state.gold - action.cost,
         ownedPartnerIds: [...state.ownedPartnerIds, action.partner.id],
         eventLog: [
           {
@@ -125,7 +126,30 @@ function reducer(state: GameState, action: Action): GameState {
           ...state.eventLog
         ].slice(0, 18)
       };
+    case 'buyWeapon':
+      if (state.ownedWeaponIds.includes(action.weaponId) || state.gold < action.price) {
+        return state;
+      }
+      return {
+        ...state,
+        gold: state.gold - action.price,
+        ownedWeaponIds: [...state.ownedWeaponIds, action.weaponId],
+        equippedWeaponId: action.weaponId,
+        eventLog: [
+          {
+            id: `weapon-buy-${action.weaponId}-${Date.now()}`,
+            day: state.day,
+            title: '购入兵器',
+            detail: `以 ${action.price.toLocaleString()} 金购入 ${findWeapon(action.weaponId).name} 并装备。`,
+            goldDelta: -action.price
+          },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
     case 'equipWeapon':
+      if (!state.ownedWeaponIds.includes(action.weaponId)) {
+        return state;
+      }
       return {
         ...state,
         equippedWeaponId: action.weaponId,
@@ -281,11 +305,14 @@ export function useGameState() {
   const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
 
+  const dailyIncome = effectiveDailyIncome(currentHome.dailyIncome, intelligence);
+  const recruitDiscount = recruitDiscountPercent(charisma);
+  const recruitCostFor = useCallback((partner: Partner) => effectiveRecruitCost(partner.recruitCost, charisma), [charisma]);
+
   const collectIncome = useCallback(() => {
-    const amount = currentHome.dailyIncome;
-    dispatch({ type: 'collectIncome', amount });
-    return amount;
-  }, [currentHome.dailyIncome]);
+    dispatch({ type: 'collectIncome', amount: dailyIncome });
+    return dailyIncome;
+  }, [dailyIncome]);
 
   const upgradeHome = useCallback(() => {
     if (!nextHome || state.gold < nextHome.upgradeCost) {
@@ -297,13 +324,25 @@ export function useGameState() {
 
   const recruitPartner = useCallback(
     (partner: Partner) => {
-      if (state.gold < partner.recruitCost || state.ownedPartnerIds.includes(partner.id)) {
+      const cost = recruitCostFor(partner);
+      if (state.gold < cost || state.ownedPartnerIds.includes(partner.id)) {
         return false;
       }
-      dispatch({ type: 'recruitPartner', partner });
+      dispatch({ type: 'recruitPartner', partner, cost });
       return true;
     },
-    [state.gold, state.ownedPartnerIds]
+    [recruitCostFor, state.gold, state.ownedPartnerIds]
+  );
+
+  const buyWeapon = useCallback(
+    (weapon: Weapon) => {
+      if (state.ownedWeaponIds.includes(weapon.id) || state.gold < weapon.price) {
+        return false;
+      }
+      dispatch({ type: 'buyWeapon', weaponId: weapon.id, price: weapon.price });
+      return true;
+    },
+    [state.gold, state.ownedWeaponIds]
   );
 
   return {
@@ -316,6 +355,9 @@ export function useGameState() {
     totalPower,
     intelligence,
     charisma,
+    dailyIncome,
+    recruitDiscount,
+    recruitCostFor,
     questStatuses,
     hasSave: Boolean(state.selectedLordId),
     setScreen: (screen: Screen) => dispatch({ type: 'setScreen', screen }),
@@ -324,6 +366,7 @@ export function useGameState() {
     collectIncome,
     upgradeHome,
     recruitPartner,
+    buyWeapon,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number) => dispatch({ type: 'recordBattle', win, rewardGold }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),

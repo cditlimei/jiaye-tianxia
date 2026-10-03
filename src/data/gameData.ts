@@ -31,6 +31,7 @@ export interface Weapon {
   id: string;
   name: string;
   rarity: Rarity;
+  price: number;
   strengthBonus: number;
   themeColor: string;
   bestMatchLordId: string | null;
@@ -244,7 +245,7 @@ export const partners: Partner[] = [
     name: '糜夫人',
     description: '端庄坚韧，增强家业凝聚与忠义声望。',
     bonus: { strength: 8, charisma: 16 },
-    bestMatchLordId: 'guanyu',
+    bestMatchLordId: 'liubei',
     recruitCost: 800,
     imagePath: 'assets/partners/partner_mifuren.png'
   },
@@ -262,7 +263,7 @@ export const partners: Partner[] = [
     name: '步练师',
     description: '温婉而有谋度，适合稳固后宅与江东政务。',
     bonus: { intelligence: 12, charisma: 16 },
-    bestMatchLordId: 'zhaoyun',
+    bestMatchLordId: 'sunquan',
     recruitCost: 800,
     imagePath: 'assets/partners/partner_bulianshi.png'
   }
@@ -273,6 +274,7 @@ export const weapons: Weapon[] = [
     id: 'xuanjian',
     name: '玄铁剑',
     rarity: 'common',
+    price: 0,
     strengthBonus: 18,
     themeColor: '#C9CED6',
     bestMatchLordId: null,
@@ -284,6 +286,7 @@ export const weapons: Weapon[] = [
     id: 'qinggang',
     name: '青釭剑',
     rarity: 'epic',
+    price: 1500,
     strengthBonus: 36,
     themeColor: '#8AB8FF',
     bestMatchLordId: 'caocao',
@@ -295,6 +298,7 @@ export const weapons: Weapon[] = [
     id: 'qinglong',
     name: '青龙偃月刀',
     rarity: 'legendary',
+    price: 5000,
     strengthBonus: 48,
     themeColor: '#D4A843',
     bestMatchLordId: 'guanyu',
@@ -306,6 +310,7 @@ export const weapons: Weapon[] = [
     id: 'fangtian',
     name: '方天画戟',
     rarity: 'legendary',
+    price: 5000,
     strengthBonus: 55,
     themeColor: '#E16A4E',
     bestMatchLordId: 'lvbu',
@@ -317,6 +322,7 @@ export const weapons: Weapon[] = [
     id: 'shuanggu',
     name: '雌雄双股剑',
     rarity: 'epic',
+    price: 1500,
     strengthBonus: 34,
     themeColor: '#B88CFF',
     bestMatchLordId: 'liubei',

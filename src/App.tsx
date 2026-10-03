@@ -120,16 +120,25 @@ export function App() {
 
   const handleEquip = (weaponId: string) => {
     const weapon = weapons.find((item) => item.id === weaponId);
-    if (!weapon) return;
+    if (!weapon) return false;
     audio.unlock();
+    if (!game.state.ownedWeaponIds.includes(weapon.id)) {
+      if (!game.buyWeapon(weapon)) {
+        audio.playSfx('audio/sfx/sfx_button.mp3', 0.2);
+        return false;
+      }
+      audio.playSfx('audio/sfx/sfx_coins.mp3', 0.3);
+    } else {
+      game.equipWeapon(weapon.id);
+    }
     audio.playSfx(weapon.sfxPath, 0.52);
-    game.equipWeapon(weapon.id);
     void effects.playEffect({
       videoPath: weapon.videoPath,
       posterPath: weapon.imagePath,
       title: weapon.name,
       fallbackMs: 1500
     });
+    return true;
   };
 
   const handleUpgradeEffect = () => {
@@ -259,6 +268,8 @@ export function App() {
           totalPower={game.totalPower}
           intelligence={game.intelligence}
           charisma={game.charisma}
+          dailyIncome={game.dailyIncome}
+          recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
           onCollectIncome={game.collectIncome}
           onUpgrade={game.upgradeHome}
@@ -276,13 +287,13 @@ export function App() {
           onUpgradeEffect={handleUpgradeEffect}
         />
         {modal === 'partner' && (
-          <PartnerModal state={game.state} lord={game.selectedLord} onClose={() => setModal(null)} onRecruit={handleRecruit} />
+          <PartnerModal state={game.state} lord={game.selectedLord} costFor={game.recruitCostFor} discount={game.recruitDiscount} onClose={() => setModal(null)} onRecruit={handleRecruit} />
         )}
         {modal === 'partnerTalk' && (
           <PartnerTalkModal lord={game.selectedLord} ownedPartners={game.ownedPartners} onClose={() => setModal(null)} />
         )}
         {modal === 'weapon' && (
-          <WeaponModal lord={game.selectedLord} equippedWeaponId={game.state.equippedWeaponId} onClose={() => setModal(null)} onEquip={handleEquip} />
+          <WeaponModal lord={game.selectedLord} state={game.state} onClose={() => setModal(null)} onEquip={handleEquip} />
         )}
         {modal === 'settings' && (
           <SettingsModal

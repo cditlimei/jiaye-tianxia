@@ -6,6 +6,7 @@ export interface GameState {
   gold: number;
   homeLevel: number;
   equippedWeaponId: string;
+  ownedWeaponIds: string[];
   ownedPartnerIds: string[];
   claimedQuestIds: string[];
   day: number;

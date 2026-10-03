@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Lord } from '../data/gameData';
+import type { Lord, Partner } from '../data/gameData';
 import { partners } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import type { GameState } from '../types';
@@ -10,11 +10,13 @@ import { ModalShell } from './common/ModalShell';
 interface PartnerModalProps {
   state: GameState;
   lord: Lord;
+  costFor: (partner: Partner) => number;
+  discount: number;
   onClose: () => void;
   onRecruit: (partnerId: string) => boolean;
 }
 
-export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalProps) {
+export function PartnerModal({ state, lord, costFor, discount, onClose, onRecruit }: PartnerModalProps) {
   const [notice, setNotice] = useState('');
   const sortedPartners = useMemo(
     () =>
@@ -22,12 +24,12 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
         const leftOwned = state.ownedPartnerIds.includes(left.id);
         const rightOwned = state.ownedPartnerIds.includes(right.id);
         const leftScore =
-          (left.bestMatchLordId === lord.id ? -3 : 0) + (leftOwned ? 10 : 0) + (state.gold >= left.recruitCost ? -1 : 0);
+          (left.bestMatchLordId === lord.id ? -3 : 0) + (leftOwned ? 10 : 0) + (state.gold >= costFor(left) ? -1 : 0);
         const rightScore =
-          (right.bestMatchLordId === lord.id ? -3 : 0) + (rightOwned ? 10 : 0) + (state.gold >= right.recruitCost ? -1 : 0);
+          (right.bestMatchLordId === lord.id ? -3 : 0) + (rightOwned ? 10 : 0) + (state.gold >= costFor(right) ? -1 : 0);
         return leftScore - rightScore;
       }),
-    [lord.id, state.gold, state.ownedPartnerIds]
+    [costFor, lord.id, state.gold, state.ownedPartnerIds]
   );
 
   return (
@@ -43,8 +45,8 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
             <strong>{state.ownedPartnerIds.length}/{partners.length}</strong>
           </div>
           <div>
-            <span>主公</span>
-            <strong>{lord.name}</strong>
+            <span>声望优惠</span>
+            <strong>-{discount}%</strong>
           </div>
         </div>
         {notice && (
@@ -56,7 +58,8 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
           {sortedPartners.map((partner) => {
             const owned = state.ownedPartnerIds.includes(partner.id);
             const best = partner.bestMatchLordId === lord.id;
-            const missingGold = Math.max(0, partner.recruitCost - state.gold);
+            const cost = costFor(partner);
+            const missingGold = Math.max(0, cost - state.gold);
             const bonusCopy = Object.entries(partner.bonus)
               .map(([key, value]) => `${translateBonus(key)} +${best ? Math.round((value ?? 0) * 1.3) : value}`)
               .join(' · ');
@@ -70,7 +73,7 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
                 <div className="partner-card__body">
                   <div className="partner-card__title">
                     <h3>{partner.name}</h3>
-                    <em>{best ? `良缘 · ${partner.recruitCost.toLocaleString()}` : partner.recruitCost.toLocaleString()}</em>
+                    <em>{best ? `良缘 · ${cost.toLocaleString()}` : cost.toLocaleString()}</em>
                   </div>
                   <p>{partner.description}</p>
                   <strong>{bonusCopy}</strong>
@@ -89,7 +92,7 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
                       ? '已招募'
                       : missingGold > 0
                         ? `差 ${missingGold.toLocaleString()} 金`
-                        : `召集 · ${partner.recruitCost.toLocaleString()} 金`}
+                        : `召集 · ${cost.toLocaleString()} 金`}
                   </GameButton>
                 </div>
               </article>
