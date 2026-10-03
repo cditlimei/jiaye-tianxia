@@ -49,6 +49,10 @@ function reducer(state: GameState, action: Action): GameState {
         ]
       };
     case 'selectStarterPartner':
+      // 已有伴侣（如另一标签页已选过）时不再免费追加
+      if (state.ownedPartnerIds.length > 0) {
+        return { ...state, screen: 'home', lastScreen: 'home' };
+      }
       return {
         ...state,
         screen: 'home',

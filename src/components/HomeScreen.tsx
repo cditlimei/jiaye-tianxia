@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
+import { weaponBonusForLord } from '../lib/battle';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -140,16 +141,16 @@ export function HomeScreen({
             <p>处理政务可推进 1 日并收入 {currentHome.dailyIncome} 金，战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
-            <StatBar label="武力" value={totalPower} max={420} tone="red" />
-            <StatBar label="智谋" value={intelligence} max={150} tone="blue" />
-            <StatBar label="声望" value={charisma} max={150} tone="gold" />
+            <StatBar label="武力" value={totalPower} max={280} tone="red" />
+            <StatBar label="智谋" value={intelligence} max={230} tone="blue" />
+            <StatBar label="声望" value={charisma} max={230} tone="gold" />
           </div>
         </div>
         <div className="home-support-grid">
           <div>
             <span>当前兵器</span>
             <strong>{weapon.name}</strong>
-            <small>武力 +{weapon.strengthBonus}</small>
+            <small>武力 +{weaponBonusForLord(weapon, lord.id)}</small>
           </div>
           <div>
             <span>伴侣状态</span>

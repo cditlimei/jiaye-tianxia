@@ -59,8 +59,8 @@ const MAP_REGIONS: MapRegion[] = [
 
 const VENUES: Venue[] = [
   { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 1200 },
-  { id: 'middle', name: '中级场', requiredPower: 180, prize: '更高金币奖励', rewardGold: 3000 },
-  { id: 'high', name: '高级场', requiredPower: 320, prize: '名望与重赏', rewardGold: 8000 }
+  { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 3000 },
+  { id: 'high', name: '高级场', requiredPower: 190, prize: '名望与重赏', rewardGold: 8000 }
 ];
 
 export function BattleScreen({

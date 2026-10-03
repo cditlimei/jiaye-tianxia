@@ -1,6 +1,6 @@
 import type { GameState, Screen } from '../types';
 import { findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
-import { quests } from '../data/progression';
+import { getDailyEvent, quests } from '../data/progression';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -238,7 +238,17 @@ function applyOfflineIncome(state: GameState): GameState {
   }
 
   const dailyIncome = findHomeLevel(state.homeLevel).dailyIncome;
-  const offlineGold = ticks * dailyIncome;
+  // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
+  let eventGold = 0;
+  let eventCount = 0;
+  for (let day = state.day + 1; day <= state.day + ticks; day += 1) {
+    const dailyEvent = getDailyEvent(day, dailyIncome);
+    if (dailyEvent) {
+      eventGold += dailyEvent.goldDelta;
+      eventCount += 1;
+    }
+  }
+  const offlineGold = ticks * dailyIncome + eventGold;
   return {
     ...state,
     gold: state.gold + offlineGold,
@@ -248,7 +258,9 @@ function applyOfflineIncome(state: GameState): GameState {
         id: `offline-${Date.now()}`,
         day: state.day + ticks,
         title: '离线经营',
-        detail: `离开期间宅邸照常运转，折算 ${ticks} 天收益。`,
+        detail: eventCount > 0
+          ? `离开期间宅邸照常运转，折算 ${ticks} 天收益，另有 ${eventCount} 桩府中喜事。`
+          : `离开期间宅邸照常运转，折算 ${ticks} 天收益。`,
         goldDelta: offlineGold
       },
       ...state.eventLog

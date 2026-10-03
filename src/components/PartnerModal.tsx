@@ -70,7 +70,7 @@ export function PartnerModal({ state, lord, onClose, onRecruit }: PartnerModalPr
                 <div className="partner-card__body">
                   <div className="partner-card__title">
                     <h3>{partner.name}</h3>
-                    <em>{best ? '良缘' : partner.recruitCost.toLocaleString()}</em>
+                    <em>{best ? `良缘 · ${partner.recruitCost.toLocaleString()}` : partner.recruitCost.toLocaleString()}</em>
                   </div>
                   <p>{partner.description}</p>
                   <strong>{bonusCopy}</strong>

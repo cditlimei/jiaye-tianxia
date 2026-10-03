@@ -339,9 +339,9 @@ export const enemies: Enemy[] = [
   { id: 'yellow-turban', name: '黄巾贼兵', power: 30, rewardGold: 200, description: '新手敌军' },
   { id: 'bandit-chief', name: '山贼头目', power: 60, rewardGold: 500, description: '低阶过渡' },
   { id: 'rebel-captain', name: '叛军校尉', power: 100, rewardGold: 1200, description: '初期挑战' },
-  { id: 'enemy-vanguard', name: '敌国先锋', power: 160, rewardGold: 3000, description: '中前期门槛' },
-  { id: 'enemy-general', name: '敌国大将', power: 250, rewardGold: 8000, description: '中后期挑战' },
-  { id: 'chaos-warlord', name: '乱世枭雄', power: 400, rewardGold: 20000, description: '高阶目标' }
+  { id: 'enemy-vanguard', name: '敌国先锋', power: 140, rewardGold: 3000, description: '中前期门槛' },
+  { id: 'enemy-general', name: '敌国大将', power: 190, rewardGold: 8000, description: '中后期挑战' },
+  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 20000, description: '高阶目标' }
 ];
 
 export function findLord(id: string | null) {

@@ -60,9 +60,9 @@ export const quests: Quest[] = [
   {
     id: 'power-200',
     title: '威震一郡',
-    description: '总战力达到 200。',
+    description: '总战力达到 180。',
     rewardGold: 3000,
-    isComplete: (_state, context) => context.totalPower >= 200
+    isComplete: (_state, context) => context.totalPower >= 180
   },
   {
     id: 'three-partners',

@@ -97,8 +97,9 @@ try {
     selectedLordId: 'lvbu',
     gold: 12000,
     homeLevel: 4,
-    equippedWeaponId: 'fangtian',
-    ownedPartnerIds: ['diaochan', 'zhurong'],
+    // 战力 183：够中级场（140），不够高级场（190），用来验证场次门槛
+    equippedWeaponId: 'qinglong',
+    ownedPartnerIds: ['diaochan'],
     day: 18,
     battleWins: 1,
     battleLosses: 0,

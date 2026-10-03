@@ -72,6 +72,16 @@ export function App() {
 
   const handleLordConfirm = async (lordId: string) => {
     if (transitioning) return;
+    // 选主公会重置存档；导入存档后从选伴侣页返回时也会走到这里，有进度就先确认
+    const current = game.state;
+    const hasProgress = game.hasSave && (
+      current.day > 1 ||
+      current.homeLevel > 1 ||
+      current.battleWins + current.battleLosses > 0 ||
+      current.claimedQuestIds.length > 0 ||
+      current.ownedPartnerIds.length > 0
+    );
+    if (hasProgress && !confirmReset('重选主公会清空当前家业进度。')) return;
     setTransitioning(true);
     try {
       audio.unlock();
