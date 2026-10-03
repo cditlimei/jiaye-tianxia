@@ -212,6 +212,37 @@ await scenario('江东水战', async () => {
   await page.context().close();
 });
 
+await scenario('许都朝堂', async () => {
+  const locked = await open(save({ homeLevel: 3 }));
+  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByText('九州征途').first().waitFor();
+  const node = locked.getByRole('button', { name: /许都/ });
+  check('宅邸 3 级时许都未开放', await node.isDisabled() && (await node.innerText()).includes('府邸后开放'));
+  await locked.context().close();
+
+  // 刘备（声望 96）+ 糜夫人（良缘 · 声望 16×1.3）+ 4 级府邸
+  const page = await open(save({ selectedLordId: 'liubei', homeLevel: 4, ownedPartnerIds: ['mifuren'], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByText('九州征途').first().waitFor();
+  await page.getByRole('button', { name: /许都/ }).click();
+  const panel = await page.locator('[aria-label="朝堂说明"]').innerText();
+  const reward = Number(panel.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  check('朝堂面板显示声望与缴获', /当前声望 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
+  const before = await read(page);
+  await page.getByRole('button', { name: '入朝议事' }).click();
+  await page.getByText(/朝议得胜|失势出京/).first().waitFor({ timeout: 90000 });
+  const win = (await page.locator('h2').first().innerText()).includes('朝议得胜');
+  await page.waitForTimeout(500);
+  const after = await read(page);
+  check('朝议结算与存档一致', win
+    ? after.gold - before.gold === reward && after.courtWins === before.courtWins + 1 && after.navalWins === before.navalWins
+    : after.gold === before.gold && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+  await page.getByRole('button', { name: '返回家业' }).click();
+  await page.getByText('主城经营').first().waitFor();
+  check('主城显示分战场战绩', /讨伐 \d+ · 水战 \d+ · 朝议 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

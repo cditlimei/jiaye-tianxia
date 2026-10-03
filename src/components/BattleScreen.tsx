@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { Lord, Weapon } from '../data/gameData';
-import { matchEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
+import type { Enemy, Lord, Weapon } from '../data/gameData';
+import { COURT_UNLOCK_HOME_LEVEL, matchCourtEnemy, matchEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
 import type { BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
@@ -12,6 +12,7 @@ interface BattleScreenProps {
   weapon: Weapon;
   totalPower: number;
   navalPower: number;
+  courtPower: number;
   homeLevel: number;
   wins: number;
   losses: number;
@@ -24,7 +25,7 @@ interface BattleScreenProps {
 type BattlePhase = 'intro' | 'battle' | 'result';
 type VenueId = 'beginner' | 'middle' | 'high';
 type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
-type RegionMode = 'doudizhu' | 'battle' | 'naval' | 'locked';
+type RegionMode = 'doudizhu' | BattleMode | 'locked';
 interface Venue {
   id: VenueId;
   name: string;
@@ -53,12 +54,65 @@ interface BattleRuntime {
 
 const MAP_REGIONS: MapRegion[] = [
   { id: 'jingzhou', name: '荆州', state: '斗地主', x: 47, y: 58, mode: 'doudizhu' },
-  { id: 'guandao', name: '官道', state: '自动讨伐', x: 52, y: 38, mode: 'battle' },
+  { id: 'guandao', name: '官道', state: '自动讨伐', x: 52, y: 38, mode: 'land' },
   { id: 'jiangdong', name: '江东', state: '水战', x: 76, y: 72, mode: 'naval' },
-  { id: 'xuchang', name: '许都', state: '未开', x: 70, y: 18, mode: 'locked' },
+  { id: 'xuchang', name: '许都', state: '朝堂', x: 70, y: 18, mode: 'court' },
   { id: 'xishu', name: '西蜀', state: '未开', x: 19, y: 52, mode: 'locked' },
   { id: 'beijiang', name: '北疆', state: '未开', x: 30, y: 16, mode: 'locked' }
 ];
+
+interface ModeConfig {
+  region: string;
+  title: string;
+  statLabel: string;
+  unlockHomeLevel: number;
+  unlockHomeName: string;
+  enterLabel: string;
+  background: string | null;
+  summary: string;
+  eyebrow: string;
+  intro: string;
+  fighting: string;
+  attack: string;
+  crit: string;
+  counter: string;
+  counterCrit: string;
+  win: string;
+  loss: string;
+  enemyBroken: string;
+  exhausted: string;
+  retreat: string;
+  scoutReport: (enemy: string) => string;
+  departure: (lord: string, weapon: string) => string;
+  battleStart: (weapon: string) => string;
+}
+
+// 三个战场：官道比武力、江东比智谋、许都比声望；后两者不计兵器
+const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
+  land: {
+    region: '官道', title: '自动回合战', statLabel: '战力', unlockHomeLevel: 1, unlockHomeName: '', enterLabel: '出征讨伐', background: null,
+    summary: '普通讨伐将自动结算攻防回合',
+    eyebrow: '自动回合战', intro: '整军出征', fighting: '激战正酣', attack: '出手', crit: '暴击', counter: '反击', counterCrit: '反扑暴击',
+    win: '讨伐得胜', loss: '败退整军', enemyBroken: '阵脚崩溃', exhausted: '兵势已尽，只得暂退', retreat: '鸣金收兵',
+    scoutReport: (enemy) => `斥候回报：${enemy}列阵于前。`, departure: (lord, weapon) => `${lord}提${weapon}出征。`, battleStart: (weapon) => `${weapon}锋芒毕露，战斗开始。`
+  },
+  naval: {
+    region: '江东', title: '水战', statLabel: '智谋', unlockHomeLevel: NAVAL_UNLOCK_HOME_LEVEL, unlockHomeName: '砖瓦宅', enterLabel: '扬帆出战', background: 'assets/ui/ui_naval_battle.png',
+    summary: '水战比智谋（主公 + 伴侣 + 宅邸），兵器不计',
+    eyebrow: '江东水战', intro: '整船列阵', fighting: '鏖战江上', attack: '放箭', crit: '火攻', counter: '撞船反扑', counterCrit: '火船逼近',
+    win: '水战告捷', loss: '折戟江上', enemyBroken: '船阵溃散', exhausted: '战船受损，只得回港', retreat: '鸣金收兵',
+    scoutReport: (enemy) => `哨船回报：${enemy}列阵江上。`, departure: (lord) => `${lord}登楼船督战。`, battleStart: () => '战鼓擂响，船阵前压。'
+  },
+  court: {
+    region: '许都', title: '朝堂', statLabel: '声望', unlockHomeLevel: COURT_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '入朝议事', background: 'assets/ui/ui_court_battle.png',
+    summary: '朝议比声望（主公 + 伴侣 + 宅邸），兵器不计',
+    eyebrow: '许都朝堂', intro: '整冠入朝', fighting: '朝议正酣', attack: '进言', crit: '弹劾', counter: '结党反驳', counterCrit: '构陷', 
+    win: '朝议得胜', loss: '失势出京', enemyBroken: '理屈词穷', exhausted: '孤立无援，只得拂袖而去', retreat: '拂袖退朝',
+    scoutReport: (enemy) => `朝中传报：${enemy}已联络党羽。`, departure: (lord) => `${lord}持笏入殿。`, battleStart: () => '钟鼓齐鸣，朝议开始。'
+  }
+};
+
+const MATCH_ENEMY: Record<BattleMode, (power: number) => Enemy> = { land: matchEnemy, naval: matchNavalEnemy, court: matchCourtEnemy };
 
 const VENUES: Venue[] = [
   { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 1200 },
@@ -71,6 +125,7 @@ export function BattleScreen({
   weapon,
   totalPower,
   navalPower,
+  courtPower,
   homeLevel,
   wins,
   losses,
@@ -87,19 +142,17 @@ export function BattleScreen({
   const [venueId, setVenueId] = useState<VenueId>('beginner');
   const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
-  const mode: BattleMode = selectedRegion.mode === 'naval' ? 'naval' : 'land';
-  const navalLocked = homeLevel < NAVAL_UNLOCK_HOME_LEVEL;
-  // 水战比智谋、不看兵器；陆战比武力
-  const attackPower = mode === 'naval' ? navalPower : totalPower;
-  const enemy = useMemo(() => (mode === 'naval' ? matchNavalEnemy(navalPower) : matchEnemy(totalPower)), [mode, navalPower, totalPower]);
+  const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' ? selectedRegion.mode : 'land';
+  const wording = MODE_CONFIG[mode];
+  const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower };
+  const attackPower = powerByMode[mode];
+  const isModeLocked = (regionMode: RegionMode) => regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
+  const modeLocked = isModeLocked(selectedRegion.mode);
+  const enemy = useMemo(() => MATCH_ENEMY[mode](powerByMode[mode]), [mode, powerByMode[mode]]);
   const maxPlayerHp = 100 + Math.round(attackPower * 0.5);
   const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
-  const canEnterSelectedRegion =
-    selectedRegion.mode !== 'locked' && !selectedVenueLocked && !(selectedRegion.mode === 'naval' && navalLocked);
-  const wording = mode === 'naval'
-    ? { eyebrow: '江东水战', intro: '整船列阵', fighting: '鏖战江上', attack: '放箭', crit: '火攻', counter: '撞船反扑', counterCrit: '火船逼近', win: '水战告捷', loss: '折戟江上', enemyBroken: '船阵溃散', exhausted: '战船受损，只得回港' }
-    : { eyebrow: '自动回合战', intro: '整军出征', fighting: '激战正酣', attack: '出手', crit: '暴击', counter: '反击', counterCrit: '反扑暴击', win: '讨伐得胜', loss: '败退整军', enemyBroken: '阵脚崩溃', exhausted: '兵势已尽，只得暂退' };
+  const canEnterSelectedRegion = selectedRegion.mode !== 'locked' && !selectedVenueLocked && !modeLocked;
   const [runtime, setRuntime] = useState<BattleRuntime>(() => ({
     phase: 'intro',
     playerHp: maxPlayerHp,
@@ -134,7 +187,7 @@ export function BattleScreen({
         setRuntime((prev) => ({
           ...prev,
           phase: 'battle',
-          logs: [mode === 'naval' ? '战鼓擂响，船阵前压。' : `${weapon.name}锋芒毕露，战斗开始。`, ...prev.logs]
+          logs: [wording.battleStart(weapon.name), ...prev.logs]
         }));
       }
     }
@@ -143,7 +196,7 @@ export function BattleScreen({
     return () => {
       cancelled = true;
     };
-  }, [doudizhuOpen, lord.name, mapOpen, mode, onPlayEffect, onSfx, weapon]);
+  }, [doudizhuOpen, lord.name, mapOpen, onPlayEffect, onSfx, weapon, wording]);
 
   useEffect(() => {
     if (runtime.phase !== 'battle') {
@@ -219,11 +272,11 @@ export function BattleScreen({
       ...prev,
       phase: 'result',
       result: 'retreat',
-      logs: ['鸣金收兵，保全实力，来日再战。', ...prev.logs]
+      logs: [`${wording.retreat}，保全实力，来日再战。`, ...prev.logs]
     }));
   };
 
-  const resultTitle = runtime.result === 'win' ? wording.win : runtime.result === 'retreat' ? '鸣金收兵' : runtime.result === 'loss' ? wording.loss : wording.fighting;
+  const resultTitle = runtime.result === 'win' ? wording.win : runtime.result === 'retreat' ? wording.retreat : runtime.result === 'loss' ? wording.loss : wording.fighting;
 
   if (doudizhuOpen) {
     return (
@@ -255,8 +308,9 @@ export function BattleScreen({
         <section className="expedition-map" aria-label="三国地图">
           <div className="expedition-map__terrain" />
           {MAP_REGIONS.map((region) => {
-            const available = region.mode !== 'locked' && !(region.mode === 'naval' && navalLocked);
-            const stateLabel = region.mode === 'naval' && navalLocked ? '砖瓦宅后开放' : region.state;
+            const lockedByHome = isModeLocked(region.mode);
+            const available = region.mode !== 'locked' && !lockedByHome;
+            const stateLabel = lockedByHome && region.mode !== 'doudizhu' && region.mode !== 'locked' ? `${MODE_CONFIG[region.mode].unlockHomeName}后开放` : region.state;
             return (
               <button
                 key={region.id}
@@ -304,26 +358,16 @@ export function BattleScreen({
               : `本场缴获 ${selectedVenue.rewardGold.toLocaleString()} 金。`}
           </p>
           </section>
-        ) : selectedRegion.mode === 'naval' ? (
-          <section className="venue-panel" aria-label="水战说明">
-            <div className="section-title">
-              <span>江东 · 水战 · 当前智谋 {navalPower}</span>
-              <strong>{navalLocked ? '尚未开放' : enemy.name}</strong>
-            </div>
-            <p className="venue-summary">
-              {navalLocked
-                ? `宅邸升至砖瓦宅（${NAVAL_UNLOCK_HOME_LEVEL} 级）后可出战。水战比的是智谋，兵器不计。`
-                : `水战比智谋（主公 + 伴侣 + 宅邸），兵器不计；胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
-            </p>
-          </section>
         ) : (
-          <section className="venue-panel" aria-label="自动讨伐说明">
+          <section className="venue-panel" aria-label={`${wording.title}说明`}>
             <div className="section-title">
-              <span>官道 · 自动回合战 · 当前战力 {totalPower}</span>
-              <strong>{enemy.name}</strong>
+              <span>{wording.region} · {wording.title} · 当前{wording.statLabel} {attackPower}</span>
+              <strong>{modeLocked ? '尚未开放' : enemy.name}</strong>
             </div>
             <p className="venue-summary">
-              普通讨伐将自动结算攻防回合，胜利可缴获 {enemy.rewardGold.toLocaleString()} 金。
+              {modeLocked
+                ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
+                : `${wording.summary}，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
             </p>
           </section>
         )}
@@ -339,23 +383,21 @@ export function BattleScreen({
               playerHp: maxPlayerHp,
               enemyHp: maxEnemyHp,
               round: 0,
-              logs: mode === 'naval'
-                ? [`哨船回报：${enemy.name}列阵江上。`, `${lord.name}登楼船督战。`]
-                : [`斥候回报：${enemy.name}列阵于前。`, `${lord.name}提${weapon.name}出征。`],
+              logs: [wording.scoutReport(enemy.name), wording.departure(lord.name, weapon.name)],
               result: null
             });
             setDoudizhuOpen(selectedRegion.mode === 'doudizhu');
             setMapOpen(false);
           }}
         >
-          {selectedRegion.mode === 'doudizhu' ? '进入斗地主' : selectedRegion.mode === 'naval' ? '扬帆出战' : '出征讨伐'}
+          {selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}
         </GameButton>
       </main>
     );
   }
 
   return (
-    <main className={`screen battle-screen ${mode === 'naval' ? 'is-naval' : ''}`} style={mode === 'naval' ? { '--battle-bg': `url(${imageUrl('assets/ui/ui_naval_battle.png', 512)})` } as CSSProperties : undefined}>
+    <main className={`screen battle-screen ${wording.background ? 'has-backdrop' : ''}`} style={wording.background ? ({ '--battle-bg': `url(${imageUrl(wording.background, 512)})` } as CSSProperties) : undefined}>
       <header className="screen-header">
         <div>
           <span className="eyebrow">{wording.eyebrow}</span>
@@ -365,9 +407,9 @@ export function BattleScreen({
       </header>
 
       <section className="battle-arena">
-        <BattleFighter name={lord.name} title={mode === 'naval' ? `智谋 ${navalPower}` : weapon.name} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
+        <BattleFighter name={lord.name} title={mode === 'land' ? weapon.name : `${wording.statLabel} ${attackPower}`} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
         <div className="battle-vs">VS</div>
-        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(mode === 'naval' ? 'assets/ui/ui_naval_battle.png' : 'assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
+        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(wording.background ?? 'assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
       </section>
 
       <section className="battle-info">
@@ -376,8 +418,8 @@ export function BattleScreen({
           <strong>{enemy.name}</strong>
         </div>
         <div>
-          <span>{mode === 'naval' ? '比拼' : '当前兵器'}</span>
-          <strong>{mode === 'naval' ? '智谋' : weapon.name}</strong>
+          <span>{mode === 'land' ? '当前兵器' : '比拼'}</span>
+          <strong>{mode === 'land' ? weapon.name : wording.statLabel}</strong>
         </div>
         <div>
           <span>潜在奖励</span>
@@ -392,7 +434,7 @@ export function BattleScreen({
       </section>
 
       <GameButton block variant={runtime.phase === 'result' ? 'primary' : 'danger'} onClick={retreat}>
-        {runtime.phase === 'result' ? '返回家业' : '鸣金收兵'}
+        {runtime.phase === 'result' ? '返回家业' : wording.retreat}
       </GameButton>
     </main>
   );

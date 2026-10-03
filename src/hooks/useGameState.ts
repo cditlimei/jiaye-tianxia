@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
-import { calculateCharisma, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
+import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 
@@ -170,13 +170,14 @@ function reducer(state: GameState, action: Action): GameState {
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
         navalWins: action.win && action.mode === 'naval' ? state.navalWins + 1 : state.navalWins,
+        courtWins: action.win && action.mode === 'court' ? state.courtWins + 1 : state.courtWins,
         eventLog: [
           {
             id: `battle-${Date.now()}`,
             day: state.day,
-            title: action.win ? (action.mode === 'naval' ? '水战告捷' : '讨伐得胜') : '整军再战',
+            title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜' } as const)[action.mode] : '整军再战',
             detail: action.win
-              ? `${action.mode === 'naval' ? '江上缴获' : '军中缴获'} ${action.rewardGold.toLocaleString()} 金。`
+              ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐' } as const)[action.mode]} ${action.rewardGold.toLocaleString()} 金。`
               : '此战未竟，需回府整顿。',
             goldDelta: action.win ? action.rewardGold : undefined
           },
@@ -305,6 +306,7 @@ export function useGameState() {
 
   const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome) : 0;
   const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome) : 0;
+  const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome) : 0;
   const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners) : 0;
   const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
@@ -358,6 +360,7 @@ export function useGameState() {
     ownedPartners,
     totalPower,
     navalPower,
+    courtPower,
     intelligence,
     charisma,
     dailyIncome,

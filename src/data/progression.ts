@@ -72,6 +72,13 @@ export const quests: Quest[] = [
     isComplete: (state) => state.navalWins >= 1
   },
   {
+    id: 'court-first-win',
+    title: '名动许都',
+    description: '在许都赢得一场朝议。',
+    rewardGold: 3000,
+    isComplete: (state) => state.courtWins >= 1
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',

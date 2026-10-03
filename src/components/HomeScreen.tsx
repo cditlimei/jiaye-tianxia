@@ -261,7 +261,7 @@ export function HomeScreen({
       </section>
 
       <footer className="home-footer">
-        <span>胜 {state.battleWins} · 负 {state.battleLosses}</span>
+        <span>讨伐 {state.battleWins - state.navalWins - state.courtWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 负 {state.battleLosses}</span>
         <button onClick={onOpenSettings}>设置与存档</button>
       </footer>
     </main>

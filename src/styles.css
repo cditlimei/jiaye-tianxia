@@ -3973,7 +3973,7 @@ body {
   filter: saturate(0.55) brightness(0.8);
 }
 
-.battle-screen.is-naval .battle-arena {
+.battle-screen.has-backdrop .battle-arena {
   position: relative;
   padding: 10px;
   border: 1px solid rgba(212, 168, 67, 0.28);
@@ -3981,7 +3981,7 @@ body {
   background: linear-gradient(180deg, rgba(8, 10, 20, 0.55), rgba(8, 10, 20, 0.82)), var(--battle-bg) center / cover no-repeat;
 }
 
-.battle-screen.is-naval .battle-vs {
+.battle-screen.has-backdrop .battle-vs {
   color: #ffb45a;
   text-shadow: 0 0 18px rgba(255, 140, 40, 0.5);
 }

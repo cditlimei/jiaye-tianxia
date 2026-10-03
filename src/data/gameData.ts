@@ -341,6 +341,15 @@ export const navalEnemies: Enemy[] = [
   { id: 'legendary-admiral', name: '水师名将', power: 230, rewardGold: 25000, description: '威震长江的一代名将' }
 ];
 
+// 许都朝堂：比声望（主公 + 伴侣声望 + 宅邸），门槛最高，缴获约为同档陆战的 1.5 倍
+export const courtEnemies: Enemy[] = [
+  { id: 'county-aide', name: '郡丞', power: 60, rewardGold: 750, description: '地方小吏，惯于推诿' },
+  { id: 'prefect', name: '太守', power: 110, rewardGold: 1800, description: '一郡之守，门生众多' },
+  { id: 'nine-ministers', name: '九卿', power: 160, rewardGold: 4500, description: '朝中重臣，党羽遍布' },
+  { id: 'three-dukes', name: '三公', power: 200, rewardGold: 12000, description: '位极人臣，一言九鼎' },
+  { id: 'regent', name: '权臣', power: 240, rewardGold: 30000, description: '挟天子以令诸侯' }
+];
+
 export const homeLevels: HomeLevel[] = [
   { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level1.png' },
   { level: 2, name: '木屋', upgradeCost: 500, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },

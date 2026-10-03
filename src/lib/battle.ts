@@ -1,5 +1,5 @@
 import type { Enemy, HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
-import { enemies, navalEnemies } from '../data/gameData';
+import { courtEnemies, enemies, navalEnemies } from '../data/gameData';
 
 export function weaponBonusForLord(weapon: Weapon, lordId: string) {
   return weapon.bestMatchLordId === lordId ? Math.round(weapon.strengthBonus * 1.5) : weapon.strengthBonus;
@@ -73,6 +73,10 @@ export function matchNavalEnemy(navalPower: number): Enemy {
   return matchEnemyFrom(navalEnemies, navalPower);
 }
 
+export function matchCourtEnemy(courtPower: number): Enemy {
+  return matchEnemyFrom(courtEnemies, courtPower);
+}
+
 function matchEnemyFrom(list: Enemy[], power: number): Enemy {
   const beatable = list.filter((enemy) => enemy.power <= power);
   const tier = beatable[beatable.length - 1] ?? list[0];
@@ -84,7 +88,13 @@ export function calculateNavalPower(lord: Lord, ownedPartners: Partner[], home: 
   return calculateIntelligence(lord, ownedPartners) + home.level * 5;
 }
 
+// 朝堂不看兵器：声望 + 宅邸
+export function calculateCourtPower(lord: Lord, ownedPartners: Partner[], home: HomeLevel) {
+  return calculateCharisma(lord, ownedPartners) + home.level * 5;
+}
+
 export const NAVAL_UNLOCK_HOME_LEVEL = 3;
+export const COURT_UNLOCK_HOME_LEVEL = 4;
 
 function enemyScale(totalPower: number) {
   const points = ENEMY_SCALE_POINTS;

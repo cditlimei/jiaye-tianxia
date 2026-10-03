@@ -13,6 +13,7 @@ export interface GameState {
   battleWins: number;
   battleLosses: number;
   navalWins: number;
+  courtWins: number;
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;
@@ -21,7 +22,7 @@ export interface GameState {
 }
 
 export type BattleOutcome = 'win' | 'loss' | 'retreat';
-export type BattleMode = 'land' | 'naval';
+export type BattleMode = 'land' | 'naval' | 'court';
 
 export interface GameEvent {
   id: string;

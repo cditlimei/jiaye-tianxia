@@ -243,6 +243,7 @@ export function App() {
           weapon={game.equippedWeapon}
           totalPower={game.totalPower}
           navalPower={game.navalPower}
+          courtPower={game.courtPower}
           homeLevel={game.state.homeLevel}
           wins={game.state.battleWins}
           losses={game.state.battleLosses}
