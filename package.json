@@ -12,7 +12,9 @@
     "stress:gameplay": "node scripts/gameplay-stress.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:live": "JIAYE_URL=https://cditlimei.github.io/jiaye-tianxia/ node scripts/smoke.mjs",
-    "smoke:chrome": "JIAYE_USE_SYSTEM_CHROME=1 node scripts/smoke.mjs"
+    "smoke:chrome": "JIAYE_USE_SYSTEM_CHROME=1 node scripts/smoke.mjs",
+    "scenarios": "node scripts/scenarios.mjs",
+    "scenarios:live": "JIAYE_URL=https://cditlimei.github.io/jiaye-tianxia/ node scripts/scenarios.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",
