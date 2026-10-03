@@ -1,5 +1,5 @@
 export const RAW_BASE = 'https://raw.githubusercontent.com/cditlimei/jiaye-tianxia/main';
-const OPTIMIZED_ASSET_VERSION = '20260501a';
+const OPTIMIZED_ASSET_VERSION = '20261003a';
 
 interface OptimizedImageConfig {
   prefix: string;

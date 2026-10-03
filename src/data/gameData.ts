@@ -201,7 +201,8 @@ export const partners: Partner[] = [
     bonus: { intelligence: 10, charisma: 18 },
     bestMatchLordId: 'sunquan',
     recruitCost: 800,
-    imagePath: 'assets/partners/partner_daqiao.png'
+    // 大乔原图素材缺失（原文件误传为曹操像），在补图前借用小乔立绘
+    imagePath: 'assets/partners/partner_xiaoqiao.png'
   },
   {
     id: 'xiaoqiao',
