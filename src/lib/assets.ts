@@ -1,5 +1,5 @@
 export const RAW_BASE = 'https://raw.githubusercontent.com/cditlimei/jiaye-tianxia/main';
-const OPTIMIZED_ASSET_VERSION = '20261003c';
+const OPTIMIZED_ASSET_VERSION = '20261003d';
 
 interface OptimizedImageConfig {
   prefix: string;
@@ -17,7 +17,8 @@ const OPTIMIZED_IMAGE_CONFIGS: OptimizedImageConfig[] = [
 ];
 
 export function rawUrl(path: string) {
-  return `${RAW_BASE}/${path}`;
+  // 带版本号：媒体文件同名换内容时（如 2026-10 视频错位修正）避免读到 CDN/Service Worker 里的旧缓存
+  return `${RAW_BASE}/${path}?v=${OPTIMIZED_ASSET_VERSION}`;
 }
 
 export function imageUrl(path: string, width: number) {
