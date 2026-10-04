@@ -54,6 +54,9 @@ interface PlayerProfile {
 
 const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu', 'machao', 'sunce', 'luxun'];
 const HAND_EDGE_PERCENT = 7.2;
+// 竖屏手牌超过这个张数就分两行，避免 20 张挤成一排看不清点数
+const TWO_ROW_THRESHOLD = 12;
+const PORTRAIT_QUERY = '(orientation: portrait) and (max-width: 700px)';
 
 export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
@@ -71,8 +74,16 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
     [profiles]
   );
   const styles = useMemo(() => ({ 0: profiles[0].style, 1: profiles[1].style, 2: profiles[2].style }) satisfies Record<PlayerIndex, AiStyle | null>, [profiles]);
+  const [portrait, setPortrait] = useState(() => typeof window !== 'undefined' && window.matchMedia(PORTRAIT_QUERY).matches);
+  useEffect(() => {
+    const media = window.matchMedia(PORTRAIT_QUERY);
+    const update = () => setPortrait(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const playerHand = table.hands[0];
   const displayedHand = useMemo(() => sortCardsDescending(playerHand), [playerHand]);
+  const twoRows = portrait && displayedHand.length > TWO_ROW_THRESHOLD;
   const selectedCards = useMemo(
     () => sortCards(playerHand.filter((card) => table.selectedIds.includes(card.id))),
     [playerHand, table.selectedIds]
@@ -205,7 +216,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
       return;
     }
 
-    const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, displayedHand.length);
+    const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, event.clientY, displayedHand.length, twoRows);
     const card = displayedHand[index];
     if (card) {
       toggleCard(card.id);
@@ -303,7 +314,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
         <strong>{selectedCopy}</strong>
       </section>
 
-      <section className="player-hand" aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
+      <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
         {displayedHand.map((card, index) => {
           const selected = table.selectedIds.includes(card.id);
           const joker = isJoker(card);
@@ -312,7 +323,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
               key={card.id}
               type="button"
               className={`poker-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''} ${selected ? 'is-selected' : ''}`}
-              style={handCardStyle(index, displayedHand.length, selected)}
+              style={handCardStyle(index, displayedHand.length, selected, twoRows)}
               onClick={(event) => event.preventDefault()}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -464,28 +475,45 @@ function isJoker(card: Card) {
   return card.value >= 16;
 }
 
-function handCardStyle(index: number, count: number, selected: boolean): CSSProperties {
-  const progress = count <= 1 ? 0.5 : index / (count - 1);
+/** 两行时：前一半在上排（往上抬 46px），后一半在下排 */
+function handRowLayout(index: number, count: number, twoRows: boolean) {
+  if (!twoRows) return { row: 0, indexInRow: index, countInRow: count, rows: 1 };
+  const upper = Math.ceil(count / 2);
+  return index < upper
+    ? { row: 0, indexInRow: index, countInRow: upper, rows: 2 }
+    : { row: 1, indexInRow: index - upper, countInRow: count - upper, rows: 2 };
+}
+
+function handCardStyle(index: number, count: number, selected: boolean, twoRows: boolean): CSSProperties {
+  const { row, indexInRow, countInRow, rows } = handRowLayout(index, count, twoRows);
+  const progress = countInRow <= 1 ? 0.5 : indexInRow / (countInRow - 1);
   const left = HAND_EDGE_PERCENT + progress * (100 - HAND_EDGE_PERCENT * 2);
   const spread = progress - 0.5;
-  const rotate = spread * 4.8;
-  const edgeDrop = Math.abs(spread) * 5;
+  const rotate = rows === 2 ? 0 : spread * 4.8;
+  const edgeDrop = rows === 2 ? 0 : Math.abs(spread) * 5;
+  const rowLift = rows === 2 && row === 0 ? 46 : 0;
   const selectedRise = selected ? 4 : 0;
 
   return {
     left: `${left}%`,
-    transform: `translateX(-50%) translateY(${edgeDrop - selectedRise}px) rotate(${rotate}deg)`,
-    zIndex: index + 1
+    transform: `translateX(-50%) translateY(${edgeDrop - rowLift - selectedRise}px) rotate(${rotate}deg)`,
+    zIndex: row * 100 + indexInRow + 1
   };
 }
 
-function handIndexFromPointer(handBox: DOMRect, clientX: number, count: number) {
+function handIndexFromPointer(handBox: DOMRect, clientX: number, clientY: number, count: number, twoRows: boolean) {
   if (count <= 1) return 0;
 
   const edge = handBox.width * (HAND_EDGE_PERCENT / 100);
   const span = Math.max(1, handBox.width - edge * 2);
   const progress = Math.min(1, Math.max(0, (clientX - handBox.left - edge) / span));
-  return Math.round(progress * (count - 1));
+  if (!twoRows) return Math.round(progress * (count - 1));
+
+  const upper = Math.ceil(count / 2);
+  const inUpperRow = clientY < handBox.top + handBox.height * 0.45;
+  const countInRow = inUpperRow ? upper : count - upper;
+  const indexInRow = Math.round(progress * Math.max(0, countInRow - 1));
+  return inUpperRow ? indexInRow : upper + indexInRow;
 }
 
 function cardIdFromPointer(hand: EventTarget & HTMLElement, clientX: number, clientY: number) {

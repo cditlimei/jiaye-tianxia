@@ -560,6 +560,26 @@ await scenario('主公与称号页', async () => {
   await page.context().close();
 });
 
+await scenario('竖屏两行手牌', async () => {
+  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await page.getByRole('button', { name: '进入斗地主' }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  const cards = page.locator('.player-hand .poker-card');
+  const n = await cards.count();
+  const tops = new Set((await cards.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)))).map((t) => Math.round(t / 10)));
+  const widths = await cards.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
+  check('20 张手牌在竖屏分两行', n === 20 && tops.size === 2 && Math.min(...widths) >= 56, `rows=${tops.size} width=${Math.min(...widths)}`);
+  const target = cards.nth(3);
+  const id = await target.getAttribute('data-card-id');
+  await target.click();
+  await page.waitForTimeout(200);
+  const selected = await page.locator('.player-hand .poker-card.is-selected').getAttribute('data-card-id');
+  check('点上排的牌能选中正确的那张', selected === id, `${id} → ${selected}`);
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

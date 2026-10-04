@@ -4285,3 +4285,16 @@ small.stat-legend {
     font-size: 13px;
   }
 }
+
+@media (orientation: portrait) and (max-width: 700px) {
+  body.is-doudizhu-table .doudizhu-screen {
+    grid-template-rows: auto auto minmax(0, 1fr) 34px auto auto;
+  }
+
+  body.is-doudizhu-table .player-hand--two-rows {
+    --hand-card-edge: 30px;
+    height: 150px;
+    min-height: 150px;
+    padding-top: 10px;
+  }
+}
