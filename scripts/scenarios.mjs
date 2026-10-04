@@ -177,6 +177,28 @@ await scenario('兵器与经济', async () => {
   await market.context().close();
 });
 
+await scenario('选择对手', async () => {
+  // 诸葛亮开局战力约 81：推荐山贼头目；可自选更强的叛军校尉，胜率更低、缴获更高；弱档几乎必胜
+  const page = await open(save({ selectedLordId: 'zhugeliang', ownedPartnerIds: [], homeLevel: 1 }));
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByText('九州征途').first().waitFor();
+  await page.getByRole('button', { name: /官道/ }).click();
+  const cards = page.locator('.tier-card');
+  const texts = await cards.allInnerTexts();
+  const odds = texts.map((t) => Number(t.match(/胜率约 (\d+)%/)?.[1] ?? -1));
+  check('对手列表显示六档与胜率', texts.length === 6 && odds.every((o) => o >= 0), odds.join('/'));
+  const recommended = texts.findIndex((t) => t.includes('推荐'));
+  check('推荐档是不高于战力的最强档且胜率 60%+', recommended === 1 && odds[1] >= 60, `推荐=${texts[recommended]?.split('\n')[0]} 胜率 ${odds[1]}%`);
+  check('更弱档胜率更高、更强档胜率更低且有梯度', odds[0] >= odds[1] && odds[2] < odds[1] && odds[2] >= 20 && odds[3] < odds[2], odds.join('/'));
+  await cards.nth(2).click();
+  const summary = await page.locator('.venue-summary').innerText();
+  check('自选对手后摘要更新', summary.includes('叛军校尉') && summary.includes('600 金'), summary);
+  // 力不能及的档位不可选
+  const hopeless = await page.locator('.tier-card.is-hopeless').count();
+  check('远超实力的档位标为力不能及并禁用', hopeless >= 1 && hopeless <= 3 && (await page.locator('.tier-card.is-hopeless').first().isDisabled()), `hopeless=${hopeless}`);
+  await page.context().close();
+});
+
 await scenario('江东水战', async () => {
   // 宅邸 2 级：江东不可进，提示解锁条件
   const locked = await open(save({ homeLevel: 2 }));
@@ -192,7 +214,7 @@ await scenario('江东水战', async () => {
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /江东/ }).click();
   const panel = await page.locator('[aria-label="水战说明"]').innerText();
-  const reward = Number(panel.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const reward = Number((await page.locator('[aria-label="水战说明"] .venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
   check('水战面板显示智谋与缴获', /当前智谋 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
   const before = await read(page);
   await page.getByRole('button', { name: '扬帆出战' }).click();
@@ -226,7 +248,7 @@ await scenario('许都朝堂', async () => {
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /许都/ }).click();
   const panel = await page.locator('[aria-label="朝堂说明"]').innerText();
-  const reward = Number(panel.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const reward = Number((await page.locator('[aria-label="朝堂说明"] .venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
   check('朝堂面板显示声望与缴获', /当前声望 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
   const before = await read(page);
   await page.getByRole('button', { name: '入朝议事' }).click();

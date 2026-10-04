@@ -1,4 +1,5 @@
 import type { Enemy, HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
+import type { BattleMode } from '../types';
 import { courtEnemies, enemies, frontierEnemies, navalEnemies } from '../data/gameData';
 
 export function weaponBonusForLord(weapon: Weapon, lordId: string) {
@@ -82,9 +83,61 @@ export function matchFrontierEnemy(totalPower: number): Enemy {
 }
 
 function matchEnemyFrom(list: Enemy[], power: number): Enemy {
-  const beatable = list.filter((enemy) => enemy.power <= power);
-  const tier = beatable[beatable.length - 1] ?? list[0];
-  return { ...tier, power: Math.round(power * enemyScale(power)) };
+  return enemyForTier(list, recommendedTierIndex(list, power), power);
+}
+
+export const ROSTERS: Record<BattleMode, Enemy[]> = { land: enemies, naval: navalEnemies, court: courtEnemies, frontier: frontierEnemies };
+
+/** 推荐档：不高于己方实力的最强一档 */
+export function recommendedTierIndex(list: Enemy[], power: number) {
+  let index = 0;
+  list.forEach((enemy, i) => {
+    if (enemy.power <= power) index = i;
+  });
+  return index;
+}
+
+// 对手实力相对推荐档的倍率。伤害公式对实力比很敏感，直接用档位原始实力会让高一档就 0% 胜率，
+// 所以按与推荐档的档位差定倍率：约 -2 档 ~100%、-1 档 ~95%、推荐 ~75%、+1 档 ~45%、+2 档 ~20%、+3 档 ~5%
+const TIER_OFFSET_MULTIPLIER: Record<number, number> = { [-3]: 0.8, [-2]: 0.86, [-1]: 0.93, 0: 1, 1: 1.04, 2: 1.08, 3: 1.16 };
+
+/** 推荐档按己方实力浮动（胜率约 75%）；自选其他档位按档位差加减实力：打弱的稳赢拿小钱，打强的赌运气拿大钱 */
+export function enemyForTier(list: Enemy[], index: number, power: number): Enemy {
+  const safeIndex = Math.min(Math.max(0, index), list.length - 1);
+  const tier = list[safeIndex];
+  const offset = safeIndex - recommendedTierIndex(list, power);
+  const multiplier = TIER_OFFSET_MULTIPLIER[offset] ?? (offset > 0 ? 1.24 : 0.8);
+  return { ...tier, power: Math.round(power * enemyScale(power) * multiplier) };
+}
+
+export const PLAYER_CRIT_RATE = 0.18;
+export const ENEMY_CRIT_RATE = 0.12;
+
+export function playerMaxHp(attackPower: number) {
+  return 100 + Math.round(attackPower * 0.5);
+}
+
+export function enemyMaxHp(enemyPower: number) {
+  return 90 + Math.round(enemyPower * 0.55);
+}
+
+/** 与战斗页同一套回合规则的快速模拟，给玩家看预估胜率 */
+export function estimateWinRate(attackPower: number, enemyPower: number, runs = 400) {
+  let wins = 0;
+  for (let i = 0; i < runs; i += 1) {
+    let playerHp = playerMaxHp(attackPower);
+    let enemyHp = enemyMaxHp(enemyPower);
+    for (let round = 0; round < 500; round += 1) {
+      enemyHp -= rollDamage(attackPower, enemyPower, Math.random() < PLAYER_CRIT_RATE);
+      if (enemyHp <= 0) {
+        wins += 1;
+        break;
+      }
+      playerHp -= rollDamage(enemyPower, attackPower, Math.random() < ENEMY_CRIT_RATE);
+      if (playerHp <= 0) break;
+    }
+  }
+  return wins / runs;
 }
 
 // 水战不看兵器：智谋 + 宅邸

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
-import { COURT_UNLOCK_HOME_LEVEL, matchCourtEnemy, matchEnemy, matchFrontierEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
+import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, estimateWinRate, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidRemainingMs } from '../lib/frontier';
 import type { BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
@@ -124,8 +124,6 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
   }
 };
 
-const MATCH_ENEMY: Record<BattleMode, (power: number) => Enemy> = { land: matchEnemy, naval: matchNavalEnemy, court: matchCourtEnemy, frontier: matchFrontierEnemy };
-
 const VENUES: Venue[] = [
   { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 600 },
   { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 1500 },
@@ -155,6 +153,8 @@ export function BattleScreen({
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId>('jingzhou');
   const [venueId, setVenueId] = useState<VenueId>('beginner');
+  // 每个战场自选的对手档位；null = 推荐档。边患不可选
+  const [tierByMode, setTierByMode] = useState<Record<BattleMode, number | null>>({ land: null, naval: null, court: null, frontier: null });
   const [farmNotice, setFarmNotice] = useState('');
   const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
@@ -165,9 +165,17 @@ export function BattleScreen({
   const isModeLocked = (regionMode: RegionMode) =>
     regionMode === 'farm' ? homeLevel < FARM_UNLOCK_HOME_LEVEL : regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
   const modeLocked = isModeLocked(selectedRegion.mode);
-  const enemy = useMemo(() => MATCH_ENEMY[mode](powerByMode[mode]), [mode, powerByMode[mode]]);
-  const maxPlayerHp = 100 + Math.round(attackPower * 0.5);
-  const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
+  const roster = ROSTERS[mode];
+  const recommendedTier = recommendedTierIndex(roster, attackPower);
+  const selectedTier = mode === 'frontier' ? recommendedTier : tierByMode[mode] ?? recommendedTier;
+  const enemy = useMemo(() => enemyForTier(roster, selectedTier, attackPower), [roster, selectedTier, attackPower]);
+  // 各档预估胜率（仅地图面板需要）
+  const tierOdds = useMemo(
+    () => (mapOpen && mode !== 'frontier' ? roster.map((_tier, index) => estimateWinRate(attackPower, enemyForTier(roster, index, attackPower).power)) : []),
+    [attackPower, mapOpen, mode, roster]
+  );
+  const maxPlayerHp = playerMaxHp(attackPower);
+  const maxEnemyHp = enemyMaxHp(enemy.power);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
   const raidActive = Boolean(frontier.raid);
   const canEnterSelectedRegion =
@@ -228,8 +236,8 @@ export function BattleScreen({
           return prev;
         }
 
-        const playerCrit = Math.random() < 0.18;
-        const enemyCrit = Math.random() < 0.12;
+        const playerCrit = Math.random() < PLAYER_CRIT_RATE;
+        const enemyCrit = Math.random() < ENEMY_CRIT_RATE;
         const playerDamage = rollDamage(attackPower, enemy.power, playerCrit);
         let nextEnemyHp = Math.max(0, prev.enemyHp - playerDamage);
         let nextPlayerHp = prev.playerHp;
@@ -419,6 +427,28 @@ export function BattleScreen({
               <span>{wording.region} · {wording.title} · 当前{wording.statLabel} {attackPower}</span>
               <strong>{modeLocked ? '尚未开放' : enemy.name}</strong>
             </div>
+            {!modeLocked && mode !== 'frontier' && (
+              <div className="venue-grid tier-grid" aria-label="选择对手">
+                {roster.map((tier, index) => {
+                  const odds = tierOdds[index] ?? 0;
+                  const hopeless = odds < 0.05;
+                  const recommended = index === recommendedTier;
+                  return (
+                    <button
+                      key={tier.id}
+                      type="button"
+                      className={`venue-card tier-card ${index === selectedTier ? 'is-selected' : ''} ${hopeless ? 'is-hopeless' : ''}`}
+                      disabled={hopeless}
+                      onClick={() => setTierByMode((prev) => ({ ...prev, [mode]: index }))}
+                    >
+                      <strong>{tier.name}{recommended ? ' · 推荐' : ''}</strong>
+                      <span>胜率约 {Math.round(odds * 20) * 5}%</span>
+                      <em>{hopeless ? '力不能及' : `缴获 ${tier.rewardGold.toLocaleString()} 金`}</em>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <p className="venue-summary">
               {modeLocked
                 ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
@@ -426,7 +456,7 @@ export function BattleScreen({
                   ? frontier.raid
                     ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
                     : `边境安宁，下次边患约在第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日。${wording.summary}。`
-                  : `${wording.summary}，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
+                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
             </p>
           </section>
         )}
