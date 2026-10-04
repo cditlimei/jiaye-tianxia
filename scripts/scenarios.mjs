@@ -500,6 +500,24 @@ await scenario('伴侣心事', async () => {
   await next.context().close();
 });
 
+await scenario('新主公', async () => {
+  const page = await open(null);
+  await page.evaluate((k) => localStorage.removeItem(k), KEY);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: '开始游戏' }).click();
+  await page.getByText('乱世择主').first().waitFor();
+  const names = await page.locator('main').innerText();
+  check('选主公页出现三位新主公', ['马超', '孙策', '陆逊'].every((n) => names.includes(n)));
+  await page.getByRole('button', { name: /陆逊/ }).first().click();
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  const s = await read(page);
+  check('可用陆逊开局', s.selectedLordId === 'luxun' && (await page.locator('.home-hud').innerText()).includes('陆逊'));
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

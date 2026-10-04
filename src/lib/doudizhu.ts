@@ -174,7 +174,8 @@ export const AI_STYLE_LABEL: Record<AiStyle, string> = { aggressive: '激进', c
 export const LORD_AI_STYLE: Record<string, AiStyle> = {
   caocao: 'aggressive', lvbu: 'aggressive', zhangfei: 'aggressive',
   guanyu: 'balanced', zhaoyun: 'balanced', zhouyu: 'balanced',
-  liubei: 'cautious', sunquan: 'cautious', simayi: 'cautious', zhugeliang: 'cautious'
+  liubei: 'cautious', sunquan: 'cautious', simayi: 'cautious', zhugeliang: 'cautious', luxun: 'cautious',
+  machao: 'aggressive', sunce: 'aggressive'
 };
 
 export interface AiContext {

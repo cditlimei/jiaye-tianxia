@@ -51,7 +51,7 @@ interface PlayerProfile {
   style: AiStyle | null;
 }
 
-const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu'];
+const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu', 'machao', 'sunce', 'luxun'];
 const HAND_EDGE_PERCENT = 7.2;
 
 export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {

@@ -174,6 +174,40 @@ export const lords: Lord[] = [
     description: '天下骁勇之最，初始武力独步乱世，但经营需要更多补足。',
     imagePath: 'assets/lords/lord_lvbu.png'
   }
+,
+  {
+    id: 'machao',
+    name: '马超',
+    title: '锦马超',
+    camp: 'qun',
+    strength: 95,
+    intelligence: 60,
+    charisma: 78,
+    description: '西凉铁骑之主，冲阵无人能挡，陆战与边患所向披靡，但谋略与人望须靠伴侣补足。',
+    imagePath: 'assets/lords/lord_machao.png'
+  },
+  {
+    id: 'sunce',
+    name: '孙策',
+    title: '江东小霸王',
+    camp: 'wu',
+    strength: 90,
+    intelligence: 70,
+    charisma: 92,
+    description: '少年横扫江东，武力与人望俱佳，官道与朝堂两头得利，唯独水战要靠周郎。',
+    imagePath: 'assets/lords/lord_sunce.png'
+  },
+  {
+    id: 'luxun',
+    name: '陆逊',
+    title: '社稷之臣',
+    camp: 'wu',
+    strength: 62,
+    intelligence: 96,
+    charisma: 86,
+    description: '书生拜将，火烧连营。水战与经营收益极强，陆战吃力，适合稳扎稳打的玩法。',
+    imagePath: 'assets/lords/lord_luxun.png'
+  }
 ];
 
 export const partners: Partner[] = [
