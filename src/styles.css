@@ -4266,3 +4266,22 @@ small.stat-legend {
 .title-row.is-earned strong {
   color: var(--gold-light);
 }
+
+@media (orientation: portrait) and (max-width: 700px) {
+  body.is-doudizhu-table .doudizhu-header h2 {
+    font-size: 18px;
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side,
+  body.is-doudizhu-table .doudizhu-header__side .battle-record,
+  body.is-doudizhu-table .doudizhu-header__side .game-button span {
+    white-space: nowrap;
+  }
+
+  body.is-doudizhu-table .doudizhu-header__side .game-button {
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+}

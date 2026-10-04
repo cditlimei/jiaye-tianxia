@@ -228,7 +228,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
           <span className="battle-record">胜 {wins} · 负 {losses}</span>
           {table.winner === null && (
             <GameButton variant="ghost" onClick={leaveTable}>
-              认输 · 损失 {lossGold.toLocaleString()} 金
+              认输 −{lossGold.toLocaleString()}金
             </GameButton>
           )}
         </div>
