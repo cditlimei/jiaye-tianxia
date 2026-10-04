@@ -166,6 +166,75 @@ export function findPlayableCombos(hand: Card[], target: Combo | null) {
   return playable.sort((left, right) => compareCandidates(left, right, target));
 }
 
+export type AiStyle = 'aggressive' | 'cautious' | 'balanced';
+
+export const AI_STYLE_LABEL: Record<AiStyle, string> = { aggressive: '激进', cautious: '稳健', balanced: '均衡' };
+
+// 主公性格决定牌桌上的打法：激进派敢压敢炸，稳健派攒大牌，均衡派中规中矩
+export const LORD_AI_STYLE: Record<string, AiStyle> = {
+  caocao: 'aggressive', lvbu: 'aggressive', zhangfei: 'aggressive',
+  guanyu: 'balanced', zhaoyun: 'balanced', zhouyu: 'balanced',
+  liubei: 'cautious', sunquan: 'cautious', simayi: 'cautious', zhugeliang: 'cautious'
+};
+
+export interface AiContext {
+  /** 地主剩余手牌数 */
+  landlordCards: number;
+  /** 当前要压的牌是否是队友打出的 */
+  teammateLeads: boolean;
+}
+
+const isBig = (combo: Combo) => combo.type === 'bomb' || combo.type === 'rocket';
+
+/** 农民 AI 的出牌决策；返回 null 表示不要 */
+export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle, ctx: AiContext): Card[] | null {
+  const whole = evaluateCards(hand);
+  if (whole && canBeat(whole, target)) return hand;
+
+  const playable = findPlayableCombos(hand, target);
+  if (playable.length === 0) return null;
+
+  if (ctx.teammateLeads) {
+    // 队友出的牌：只用普通小牌跟，不炸队友；激进派在地主快走完时也会用 2 顶上
+    const limit = style === 'aggressive' && ctx.landlordCards <= 3 ? 15 : 14;
+    const follow = playable.find((cards) => { const c = evaluateCards(cards); return c !== null && !isBig(c) && c.value <= limit; });
+    return follow ?? null;
+  }
+
+  if (!target) {
+    if (style === 'aggressive') {
+      // 领出时先甩长牌型（顺子/连对/飞机），把节奏打快
+      const longest = [...playable].filter((cards) => !isBig(evaluateCards(cards)!)).sort((a, b) => b.length - a.length || (evaluateCards(a)!.value - evaluateCards(b)!.value))[0];
+      return longest ?? playable[0];
+    }
+    return playable[0];
+  }
+
+  // 压地主
+  const normal = playable.filter((cards) => !isBig(evaluateCards(cards)!));
+  const bombs = playable.filter((cards) => isBig(evaluateCards(cards)!));
+  const smallest = normal[0] ?? null;
+  const smallestValue = smallest ? evaluateCards(smallest)!.value : 99;
+
+  if (style === 'cautious') {
+    // 稳健：2 和王留着，除非地主快走完或自己也快走完
+    const pressure = ctx.landlordCards <= 4 || hand.length <= 3;
+    if (smallest && (smallestValue <= 14 || pressure)) return smallest;
+    if (bombs.length > 0 && ctx.landlordCards <= 2) return bombs[0];
+    return null;
+  }
+  if (style === 'aggressive') {
+    if (smallest) return smallest;
+    // 没普通牌能压：地主手牌不多或对方出的是大牌时就炸
+    if (bombs.length > 0 && (ctx.landlordCards <= 6 || target.value >= 13)) return bombs[0];
+    return null;
+  }
+  // 均衡
+  if (smallest) return smallest;
+  if (bombs.length > 0 && ctx.landlordCards <= 8) return bombs[0];
+  return null;
+}
+
 export function findFirstPlayable(hand: Card[], target: Combo | null) {
   return findPlayableCombos(hand, target)[0] ?? null;
 }

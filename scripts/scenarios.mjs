@@ -507,6 +507,8 @@ await scenario('斗地主', async () => {
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await page.getByText('斗地主牌局').first().waitFor();
+  // 对手座位显示性格标签，且两局对手不同
+  const names1 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
   await page.getByRole('button', { name: '认输回府' }).click();
   await page.getByText('主城经营').first().waitFor();
   check('认输回府记一负', (await read(page)).battleLosses === 1);
@@ -517,6 +519,10 @@ await scenario('斗地主', async () => {
   const before = await read(page);
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await page.getByText('斗地主牌局').first().waitFor();
+  const badges = await page.locator('.table-seat--opponent-left .seat-turn-badge, .table-seat--opponent-right .seat-turn-badge').allInnerTexts();
+  check('对手座位标注性格', badges.some((b) => /激进|稳健|均衡/.test(b)), badges.join('/'));
+  const names2 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
+  check('下一局换对手', names1.join() !== names2.join(), `${names1.join('+')} → ${names2.join('+')}`);
   const t0 = Date.now();
   let stuck = 0;
   while (Date.now() - t0 < 180000) {

@@ -120,8 +120,8 @@ try {
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await expectText(page, '斗地主牌局', 9000);
   await expectText(page, '三人同桌');
-  await expectText(page, '曹操');
-  await expectText(page, '孙权');
+  await page.locator('.table-seat--opponent-left .table-seat__copy strong').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('.table-seat--opponent-right .table-seat__copy strong').waitFor({ state: 'visible', timeout: 5000 });
   await assertPortraitDoudizhuFits(page);
   await page.setViewportSize({ width: 844, height: 390 });
   await assertLandscapeTable(page);

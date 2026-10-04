@@ -14,7 +14,7 @@ const compiled = ts.transpileModule(source, {
 const modulePath = path.join(tmpdir(), `jiaye-doudizhu-${Date.now()}.mjs`);
 writeFileSync(modulePath, compiled);
 
-const { canBeat, evaluateCards, findPlayableCombos } = await import(pathToFileURL(modulePath).href);
+const { canBeat, evaluateCards, findPlayableCombos, chooseAiPlay } = await import(pathToFileURL(modulePath).href);
 
 const suitByIndex = ['♠', '♥', '♣', '♦'];
 const redSuits = new Set(['♥', '♦']);
@@ -112,5 +112,24 @@ assertEqual(evaluateCards(pairHint)?.value, 6, 'pair_hint_value');
 
 const leadHint = findPlayableCombos(cards([3, 4, 5, 6, 7, 9, 10]), null)[0];
 assertEqual(evaluateCards(leadHint)?.type, 'straight', 'lead_hint_prefers_combo');
+
+// AI 性格：地主出单 K，手里只有 2 能压
+const bigOnly = cards([3, 3, 4, 5, 6, 15]);
+const kingTarget = comboOf([13]);
+assertEqual(chooseAiPlay(bigOnly, kingTarget, 'cautious', { landlordCards: 12, teammateLeads: false }), null, 'cautious keeps the 2 while landlord has many cards');
+assertTrue(chooseAiPlay(bigOnly, kingTarget, 'cautious', { landlordCards: 3, teammateLeads: false }) !== null, 'cautious spends the 2 under pressure');
+assertTrue(chooseAiPlay(bigOnly, kingTarget, 'aggressive', { landlordCards: 12, teammateLeads: false }) !== null, 'aggressive beats with the 2 right away');
+// 只有炸弹能压：激进在地主剩 6 张内炸，均衡 8 张内，稳健 2 张内
+const bombOnly = cards([3, 3, 3, 3, 4, 5]);
+const twoTarget = comboOf([15]);
+assertTrue(chooseAiPlay(bombOnly, twoTarget, 'aggressive', { landlordCards: 6, teammateLeads: false }) !== null, 'aggressive bombs at 6');
+assertEqual(chooseAiPlay(bombOnly, twoTarget, 'cautious', { landlordCards: 6, teammateLeads: false }), null, 'cautious holds bomb at 6');
+assertTrue(chooseAiPlay(bombOnly, twoTarget, 'cautious', { landlordCards: 2, teammateLeads: false }) !== null, 'cautious bombs at 2');
+// 队友领出：谁都不炸队友
+assertEqual(chooseAiPlay(bombOnly, twoTarget, 'aggressive', { landlordCards: 2, teammateLeads: true }), null, 'nobody bombs a teammate');
+// 激进领出先甩长牌
+const leadHand = cards([3, 4, 5, 6, 7, 9, 9, 12]);
+assertEqual(chooseAiPlay(leadHand, null, 'aggressive', { landlordCards: 17, teammateLeads: false }).length, 5, 'aggressive leads the straight');
+assertTrue(chooseAiPlay(leadHand, null, 'cautious', { landlordCards: 17, teammateLeads: false }) !== null, 'cautious still leads something');
 
 console.log('doudizhu_rules_ok');
