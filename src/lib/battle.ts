@@ -110,6 +110,21 @@ export function enemyForTier(list: Enemy[], index: number, power: number): Enemy
   return { ...tier, power: Math.round(power * enemyScale(power) * multiplier) };
 }
 
+// 传位：宅邸到王城后可把家业传给下一代。全部金币换成家业点（每 10 万金 1 点，最多累计 20 点），
+// 每点让处理政务与屯田收入永久 +5%；主公、伴侣、兵器、宅邸、屯田、任务全部重来
+export const SUCCESSION_HOME_LEVEL = 6;
+export const LEGACY_GOLD_PER_POINT = 100000;
+export const LEGACY_MAX_POINTS = 20;
+export const LEGACY_INCOME_PER_POINT = 0.05;
+
+export function legacyPointsFor(gold: number) {
+  return Math.floor(Math.max(0, gold) / LEGACY_GOLD_PER_POINT);
+}
+
+export function legacyIncomeMultiplier(points: number) {
+  return 1 + Math.min(LEGACY_MAX_POINTS, Math.max(0, points)) * LEGACY_INCOME_PER_POINT;
+}
+
 export const PLAYER_CRIT_RATE = 0.18;
 export const ENEMY_CRIT_RATE = 0.12;
 

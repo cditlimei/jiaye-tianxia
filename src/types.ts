@@ -18,6 +18,8 @@ export interface GameState {
   frontierWins: number;
   frontierRaid: { startDay: number; startedAt: number; dueAt: number } | null;
   nextRaidDay: number;
+  generation: number;
+  legacyPoints: number;
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;

@@ -115,7 +115,7 @@ export function HomeScreen({
           <ImageWithFallback src={imageUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
           <div>
             <strong>{lord.name}</strong>
-            <span>{lord.title}</span>
+            <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
           </div>
         </div>
         <div className="home-hud__chips">

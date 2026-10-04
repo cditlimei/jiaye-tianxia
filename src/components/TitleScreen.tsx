@@ -27,7 +27,7 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
       {hasSave ? (
         <div className="title-screen__save">
           <span>{lordName ?? '旧主'}</span>
-          <strong>第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
+          <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
         </div>
       ) : (
         <div className="title-screen__save title-screen__save--empty">

@@ -377,6 +377,39 @@ await scenario('北疆边患', async () => {
   await fight.context().close();
 });
 
+await scenario('传位', async () => {
+  // 未到王城：按钮禁用并说明条件
+  const early = await open(save({ homeLevel: 5, gold: 500000 }));
+  await early.getByRole('button', { name: '设置与存档' }).click();
+  await early.getByText('当前存档').first().waitFor();
+  check('未到王城不能传位', (await early.getByRole('button', { name: '传位给下一代' }).isDisabled()) && (await early.locator('.succession-panel').innerText()).includes('王城'));
+  await early.context().close();
+
+  // 王城 + 250,000 金：传位得 2 点，回到选主公，世代 2；重选主公后保留家业点且收入 +10%
+  const page = await open(save({ homeLevel: 6, gold: 250000, ownedPartnerIds: ['diaochan'], equippedWeaponId: 'fangtian', farmLevel: 2 }));
+  const plain = await open(save({ homeLevel: 1, gold: 1000, ownedPartnerIds: ['zhenji'], generation: 1, legacyPoints: 0 }));
+  const baseIncome = income(await plain.getByRole('button', { name: /处理政务/ }).innerText());
+  await plain.context().close();
+  await page.getByRole('button', { name: '设置与存档' }).click();
+  await page.getByText('当前存档').first().waitFor();
+  check('传位面板预告可得点数', (await page.locator('.succession-panel').innerText()).includes('可得 2 点'));
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: '传位给下一代' }).click();
+  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  let s = await read(page);
+  check('传位后进入选主公且重置', s.generation === 2 && s.legacyPoints === 2 && s.gold === 1000 && s.homeLevel === 1 && s.farmLevel === 0 && s.ownedPartnerIds.length === 0 && s.equippedWeaponId === 'xuanjian', JSON.stringify({ g: s.generation, lp: s.legacyPoints, gold: s.gold }));
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /处理政务/ }).waitFor({ timeout: 8000 });
+  s = await read(page);
+  const nextIncome = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
+  check('新一代保留家业点且收入提高', s.generation === 2 && s.legacyPoints === 2 && nextIncome > baseIncome, `${baseIncome} → ${nextIncome}`);
+  check('主城显示第 2 代', (await page.locator('.home-hud').innerText()).includes('第 2 代'));
+  check('任务「传承家业」可领', await page.locator('.quest-item').filter({ hasText: '传承家业' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

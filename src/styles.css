@@ -4023,3 +4023,18 @@ body {
 .tier-card.is-hopeless {
   opacity: 0.45;
 }
+
+.succession-panel {
+  display: grid;
+  gap: 6px;
+}
+
+.succession-panel p {
+  margin: 0;
+  color: rgba(245, 230, 200, 0.72);
+  font-size: 12px;
+}
+
+.succession-panel p.is-ok {
+  color: var(--gold-light);
+}

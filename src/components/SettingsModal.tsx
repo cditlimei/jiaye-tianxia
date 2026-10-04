@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { GameState } from '../types';
+import { LEGACY_GOLD_PER_POINT, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL } from '../lib/battle';
 import { GameButton } from './common/GameButton';
 import { ModalShell } from './common/ModalShell';
 
@@ -13,6 +14,7 @@ interface SettingsModalProps {
   onInstall: () => void;
   onReturnTitle: () => void;
   onReset: () => void;
+  onSucceed: () => void;
 }
 
 export function SettingsModal({
@@ -24,8 +26,18 @@ export function SettingsModal({
   canInstall,
   onInstall,
   onReturnTitle,
-  onReset
+  onReset,
+  onSucceed
 }: SettingsModalProps) {
+  const gainedPoints = legacyPointsFor(state.gold);
+  const canSucceed = state.homeLevel >= SUCCESSION_HOME_LEVEL && gainedPoints >= 1 && state.legacyPoints < LEGACY_MAX_POINTS;
+  const successionHint = state.homeLevel < SUCCESSION_HOME_LEVEL
+    ? `宅邸升至王城（${SUCCESSION_HOME_LEVEL} 级）后可传位。`
+    : state.legacyPoints >= LEGACY_MAX_POINTS
+      ? '家业点已达上限，传位不再增加加成。'
+      : gainedPoints < 1
+        ? `至少需 ${LEGACY_GOLD_PER_POINT.toLocaleString()} 金才能换到 1 点家业点。`
+        : `现在传位可得 ${gainedPoints} 点家业点，累计 ${Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gainedPoints)} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gainedPoints)) - 1) * 100)}%。`;
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -62,6 +74,15 @@ export function SettingsModal({
           <span>当前存档</span>
           <strong>第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
           <p>胜 {state.battleWins}（讨伐 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins}）· 负 {state.battleLosses}</p>
+        </section>
+        <section className="succession-panel">
+          <span>传位 · 第 {state.generation} 代</span>
+          <strong>家业点 {state.legacyPoints}/{LEGACY_MAX_POINTS} · 收入 +{Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%</strong>
+          <p>把全部金币换成家业点（每 {LEGACY_GOLD_PER_POINT.toLocaleString()} 金 1 点），每点让处理政务与屯田收入永久 +5%。主公、伴侣、兵器、宅邸、屯田与任务从头再来。</p>
+          <p className={canSucceed ? 'is-ok' : ''}>{successionHint}</p>
+          <GameButton variant={canSucceed ? 'primary' : 'ghost'} disabled={!canSucceed} onClick={onSucceed}>
+            传位给下一代
+          </GameButton>
         </section>
         <section className="save-import-panel">
           <span>备份恢复</span>

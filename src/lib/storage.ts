@@ -1,7 +1,7 @@
 import type { GameState, Screen } from '../types';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { getDailyEvent, quests } from '../data/progression';
-import { calculateIntelligence, effectiveDailyIncome } from '../lib/battle';
+import { calculateIntelligence, effectiveDailyIncome, LEGACY_MAX_POINTS, legacyIncomeMultiplier } from '../lib/battle';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
@@ -29,6 +29,8 @@ export const defaultGameState: GameState = {
   frontierWins: 0,
   frontierRaid: null,
   nextRaidDay: RAID_INTERVAL_DAYS,
+  generation: 1,
+  legacyPoints: 0,
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -190,6 +192,8 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     courtWins: sanitizeNumber(parsed.courtWins, defaultGameState.courtWins, 0),
     frontierWins: sanitizeNumber(parsed.frontierWins, defaultGameState.frontierWins, 0),
     frontierRaid: sanitizeRaid(parsed.frontierRaid),
+    generation: sanitizeNumber(parsed.generation, 1, 1),
+    legacyPoints: Math.min(LEGACY_MAX_POINTS, sanitizeNumber(parsed.legacyPoints, 0, 0)),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -287,8 +291,8 @@ function applyOfflineIncome(state: GameState): GameState {
   const lord = lords.find((item) => item.id === state.selectedLordId);
   const ownedPartners = partners.filter((item) => state.ownedPartnerIds.includes(item.id));
   const dailyIncome = lord
-    ? effectiveDailyIncome(findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome, calculateIntelligence(lord, ownedPartners))
-    : findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome;
+    ? effectiveDailyIncome(Math.round((findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome) * legacyIncomeMultiplier(state.legacyPoints)), calculateIntelligence(lord, ownedPartners))
+    : Math.round((findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome) * legacyIncomeMultiplier(state.legacyPoints));
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
   let eventGold = 0;
   let eventCount = 0;

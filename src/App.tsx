@@ -182,6 +182,16 @@ export function App() {
     }
   };
 
+  const succeed = () => {
+    if (!confirmReset(`传位后金币、主公、伴侣、兵器、宅邸与屯田全部重来，换取永久收入加成。`)) {
+      return;
+    }
+    audio.unlock();
+    audio.playSfx('audio/sfx/sfx_home_upgrade.mp3', 0.5);
+    setModal(null);
+    game.succeed();
+  };
+
   const returnTitle = () => {
     setModal(null);
     game.setScreen('title');
@@ -317,6 +327,7 @@ export function App() {
             onInstall={installApp}
             onReturnTitle={returnTitle}
             onReset={resetGame}
+            onSucceed={succeed}
           />
         )}
       </>

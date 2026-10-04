@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
-import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
+import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
@@ -24,6 +24,7 @@ type Action =
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
   | { type: 'restore'; state: GameState }
+  | { type: 'succeed' }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
 
@@ -42,12 +43,16 @@ function reducer(state: GameState, action: Action): GameState {
         screen: 'partnerSelect',
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
+        generation: state.generation,
+        legacyPoints: state.legacyPoints,
         eventLog: [
           {
             id: `lord-${Date.now()}`,
             day: 1,
-            title: '择主立业',
-            detail: '乱世基业已定，待择良缘共理家业。'
+            title: state.generation > 1 ? `第 ${state.generation} 代择主` : '择主立业',
+            detail: state.generation > 1
+              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%。`
+              : '乱世基业已定，待择良缘共理家业。'
           }
         ]
       };
@@ -265,6 +270,29 @@ function reducer(state: GameState, action: Action): GameState {
           ...action.state.eventLog
         ].slice(0, 18)
       };
+    case 'succeed': {
+      const gained = legacyPointsFor(state.gold);
+      if (state.homeLevel < SUCCESSION_HOME_LEVEL || gained < 1) {
+        return state;
+      }
+      const legacyPoints = Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gained);
+      return {
+        ...defaultGameState,
+        screen: 'lordSelect',
+        lastScreen: 'lordSelect',
+        soundEnabled: state.soundEnabled,
+        generation: state.generation + 1,
+        legacyPoints,
+        eventLog: [
+          {
+            id: `succeed-${Date.now()}`,
+            day: 1,
+            title: '传位',
+            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${gained}，累计 ${legacyPoints}。`
+          }
+        ]
+      };
+    }
     case 'reset':
       clearGameState();
       return {
@@ -341,7 +369,7 @@ export function useGameState() {
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
-  const dailyIncome = effectiveDailyIncome(currentHome.dailyIncome + currentFarm.dailyIncome, intelligence);
+  const dailyIncome = effectiveDailyIncome(Math.round((currentHome.dailyIncome + currentFarm.dailyIncome) * legacyIncomeMultiplier(state.legacyPoints)), intelligence);
   const recruitDiscount = recruitDiscountPercent(charisma);
   const recruitCostFor = useCallback((partner: Partner) => effectiveRecruitCost(partner.recruitCost, charisma), [charisma]);
 
@@ -422,6 +450,7 @@ export function useGameState() {
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),
     restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
+    succeed: () => dispatch({ type: 'succeed' }),
     resetGame: () => dispatch({ type: 'reset' })
   };
 }

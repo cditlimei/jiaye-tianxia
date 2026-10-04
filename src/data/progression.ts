@@ -93,6 +93,13 @@ export const quests: Quest[] = [
     isComplete: (state) => state.frontierWins >= 1
   },
   {
+    id: 'succession',
+    title: '传承家业',
+    description: '完成一次传位，开启新的一代。',
+    rewardGold: 5000,
+    isComplete: (state) => state.generation >= 2
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',
