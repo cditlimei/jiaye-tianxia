@@ -396,7 +396,7 @@ function PlayerSeat({
 }) {
   return (
     <article className={`table-seat table-seat--${seat} ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
-      <span className="seat-turn-badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? `${profile.role} · ${AI_STYLE_LABEL[profile.style]}` : profile.role}</span>
+      <span className="seat-turn-badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? AI_STYLE_LABEL[profile.style] : profile.role}</span>
       <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} className="table-seat__avatar" />
       <div className="table-seat__copy">
         <strong>{profile.name}</strong>
