@@ -350,6 +350,16 @@ export const courtEnemies: Enemy[] = [
   { id: 'regent', name: '权臣', power: 240, rewardGold: 30000, description: '挟天子以令诸侯' }
 ];
 
+// 北疆边患：比武力，限时迎战，缴获约为同档陆战的 2 倍
+export const frontierEnemies: Enemy[] = [
+  { id: 'border-raiders', name: '边地流寇', power: 30, rewardGold: 400, description: '趁乱劫掠的流民' },
+  { id: 'nomad-riders', name: '胡骑游勇', power: 60, rewardGold: 1000, description: '来去如风的散骑' },
+  { id: 'nomad-centurion', name: '胡骑百长', power: 100, rewardGold: 2400, description: '统领百骑的悍将' },
+  { id: 'xiongnu-thousand', name: '匈奴千骑', power: 140, rewardGold: 6000, description: '黑压压的千人铁骑' },
+  { id: 'xianbei-chief', name: '鲜卑大人', power: 190, rewardGold: 16000, description: '部族首领亲自南下' },
+  { id: 'northern-khan', name: '北疆单于', power: 230, rewardGold: 40000, description: '草原霸主倾巢而出' }
+];
+
 export interface FarmLevel {
   level: number;
   name: string;

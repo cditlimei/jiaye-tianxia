@@ -1,5 +1,5 @@
 import type { Enemy, HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
-import { courtEnemies, enemies, navalEnemies } from '../data/gameData';
+import { courtEnemies, enemies, frontierEnemies, navalEnemies } from '../data/gameData';
 
 export function weaponBonusForLord(weapon: Weapon, lordId: string) {
   return weapon.bestMatchLordId === lordId ? Math.round(weapon.strengthBonus * 1.5) : weapon.strengthBonus;
@@ -75,6 +75,10 @@ export function matchNavalEnemy(navalPower: number): Enemy {
 
 export function matchCourtEnemy(courtPower: number): Enemy {
   return matchEnemyFrom(courtEnemies, courtPower);
+}
+
+export function matchFrontierEnemy(totalPower: number): Enemy {
+  return matchEnemyFrom(frontierEnemies, totalPower);
 }
 
 function matchEnemyFrom(list: Enemy[], power: number): Enemy {

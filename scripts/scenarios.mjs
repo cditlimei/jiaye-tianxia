@@ -239,7 +239,7 @@ await scenario('许都朝堂', async () => {
     : after.gold === before.gold && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
   await page.getByText('主城经营').first().waitFor();
-  check('主城显示分战场战绩', /讨伐 \d+ · 水战 \d+ · 朝议 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
+  check('主城显示分战场战绩', /讨伐 \d+ · 水战 \d+ · 朝议 \d+ · 靖边 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
   await page.context().close();
 });
 
@@ -271,6 +271,63 @@ await scenario('西蜀屯田', async () => {
   check('屯田后每日收入提高', n1 - n0 >= 15, `${n0} → ${n1}`);
   check('任务「西蜀屯田」可领赏', await page.locator('.quest-item').filter({ hasText: '西蜀屯田' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
+});
+
+await scenario('北疆边患', async () => {
+  // 宅邸 3 级：北疆未开放
+  const locked = await open(save({ homeLevel: 3 }));
+  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByText('九州征途').first().waitFor();
+  check('宅邸 3 级时北疆未开放', await locked.getByRole('button', { name: /北疆/ }).isDisabled());
+  await locked.context().close();
+
+  // 第 9 日 → 第 10 日起边患：主城提醒、地图标红
+  const start = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null }));
+  await start.getByRole('button', { name: /处理政务/ }).click();
+  await start.waitForTimeout(500);
+  let s = await read(start);
+  check('第 10 日起边患并记录到期日', s.frontierRaid?.startDay === 10 && s.frontierRaid?.dueDay === 13, JSON.stringify(s.frontierRaid));
+  check('主城显示边患提醒', await start.locator('.frontier-alert').isVisible());
+  await start.getByRole('button', { name: '出征讨伐' }).click();
+  await start.getByText('九州征途').first().waitFor();
+  check('地图北疆显示边患', (await start.getByRole('button', { name: /北疆/ }).innerText()).includes('边患'));
+  await start.context().close();
+
+  // 逾期不管：下一次处理政务扣 5%（封顶 5000）
+  const ignore = await open(save({ homeLevel: 4, day: 13, gold: 40000, frontierRaid: { startDay: 10, dueDay: 13 }, nextRaidDay: 10 }));
+  await ignore.getByRole('button', { name: /处理政务/ }).click();
+  await ignore.waitForTimeout(500);
+  s = await read(ignore);
+  const incomeGain = s.gold - (40000 - 2000);
+  check('逾期失守扣 5% 并解除边患', s.frontierRaid === null && incomeGain > 0 && incomeGain < 2000 && s.nextRaidDay === 24, `gold=${s.gold} next=${s.nextRaidDay}`);
+  await ignore.context().close();
+
+  // 无边患时不能出关
+  const calm = await open(save({ homeLevel: 4, frontierRaid: null, nextRaidDay: 30 }));
+  await calm.getByRole('button', { name: '出征讨伐' }).click();
+  await calm.getByText('九州征途').first().waitFor();
+  await calm.getByRole('button', { name: /北疆/ }).click();
+  check('边境安宁时出关按钮禁用', await calm.getByRole('button', { name: '出关迎战' }).isDisabled());
+  await calm.context().close();
+
+  // 迎战：胜则缴获 + 靖边 +1 + 解除；败则扣 5% + 解除
+  const fight = await open(save({ homeLevel: 4, day: 11, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], frontierRaid: { startDay: 10, dueDay: 13 }, nextRaidDay: 10,
+    claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third', 'first-win'] }));
+  await fight.getByRole('button', { name: '出征讨伐' }).click();
+  await fight.getByText('九州征途').first().waitFor();
+  await fight.getByRole('button', { name: /北疆/ }).click();
+  const panel = await fight.locator('[aria-label="边患说明"]').innerText();
+  const reward = Number(panel.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const before = await read(fight);
+  await fight.getByRole('button', { name: '出关迎战' }).click();
+  await fight.getByText(/靖边得胜|边郡失守/).first().waitFor({ timeout: 90000 });
+  const win = (await fight.locator('h2').first().innerText()).includes('靖边得胜');
+  await fight.waitForTimeout(500);
+  const after = await read(fight);
+  check('边患迎战结算一致', after.frontierRaid === null && after.nextRaidDay === 21 && (win
+    ? after.gold - before.gold === reward && after.frontierWins === 1
+    : before.gold - after.gold === 1000 && after.frontierWins === 0), `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+  await fight.context().close();
 });
 
 await scenario('斗地主', async () => {

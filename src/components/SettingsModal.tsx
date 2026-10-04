@@ -61,7 +61,7 @@ export function SettingsModal({
         <section>
           <span>当前存档</span>
           <strong>第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
-          <p>胜 {state.battleWins}（讨伐 {state.battleWins - state.navalWins - state.courtWins} · 水战 {state.navalWins} · 朝议 {state.courtWins}）· 负 {state.battleLosses}</p>
+          <p>胜 {state.battleWins}（讨伐 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins}）· 负 {state.battleLosses}</p>
         </section>
         <section className="save-import-panel">
           <span>备份恢复</span>

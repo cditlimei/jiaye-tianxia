@@ -86,6 +86,13 @@ export const quests: Quest[] = [
     isComplete: (state) => state.farmLevel >= 1
   },
   {
+    id: 'frontier-first-win',
+    title: '北疆靖边',
+    description: '击退一次北疆边患。',
+    rewardGold: 4000,
+    isComplete: (state) => state.frontierWins >= 1
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',

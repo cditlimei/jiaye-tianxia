@@ -245,6 +245,7 @@ export function App() {
           navalPower={game.navalPower}
           courtPower={game.courtPower}
           farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold }}
+          frontier={{ raid: game.state.frontierRaid, nextRaidDay: game.state.nextRaidDay, day: game.state.day }}
           onUpgradeFarm={() => {
             if (!game.upgradeFarm()) return false;
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.4);

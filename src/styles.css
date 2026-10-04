@@ -3993,3 +3993,25 @@ body {
 .farm-panel .venue-summary {
   margin-bottom: 10px;
 }
+
+.frontier-alert {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(225, 106, 78, 0.6);
+  border-radius: 14px;
+  color: #ffd9c2;
+  background: linear-gradient(90deg, rgba(139, 26, 26, 0.55), rgba(90, 20, 20, 0.35));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.map-node.is-alert {
+  border-color: #ffb45a;
+  box-shadow: 0 0 0 1px rgba(255, 180, 90, 0.35), 0 0 22px rgba(255, 120, 40, 0.55);
+  animation: frontier-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes frontier-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 180, 90, 0.35), 0 0 14px rgba(255, 120, 40, 0.35); }
+  50% { box-shadow: 0 0 0 1px rgba(255, 180, 90, 0.6), 0 0 28px rgba(255, 120, 40, 0.75); }
+}

@@ -5,6 +5,7 @@ import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
 import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
+import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
 
@@ -75,22 +76,21 @@ function reducer(state: GameState, action: Action): GameState {
     case 'collectIncome': {
       const nextDay = state.day + 1;
       const dailyEvent = getDailyEvent(nextDay, action.amount);
-      const eventLog = dailyEvent
-        ? [
-            {
-              id: `daily-${nextDay}`,
-              day: nextDay,
-              title: dailyEvent.title,
-              detail: dailyEvent.detail,
-              goldDelta: dailyEvent.goldDelta
-            },
-            ...state.eventLog
-          ].slice(0, 18)
-        : state.eventLog;
+      const goldAfterIncome = state.gold + action.amount + (dailyEvent?.goldDelta ?? 0);
+      const frontier = advanceFrontier({ ...state, gold: goldAfterIncome }, nextDay);
+      const eventLog = [
+        ...(frontier.event ? [frontier.event] : []),
+        ...(dailyEvent
+          ? [{ id: `daily-${nextDay}`, day: nextDay, title: dailyEvent.title, detail: dailyEvent.detail, goldDelta: dailyEvent.goldDelta }]
+          : []),
+        ...state.eventLog
+      ].slice(0, 18);
       return {
         ...state,
-        gold: state.gold + action.amount + (dailyEvent?.goldDelta ?? 0),
+        gold: goldAfterIncome + frontier.goldDelta,
         day: nextDay,
+        frontierRaid: frontier.frontierRaid,
+        nextRaidDay: frontier.nextRaidDay,
         eventLog
       };
     }
@@ -183,10 +183,16 @@ function reducer(state: GameState, action: Action): GameState {
           ...state.eventLog
         ].slice(0, 18)
       };
-    case 'recordBattle':
+    case 'recordBattle': {
+      // 北疆：胜则边患解除并排下一次；败则视为失守，立刻扣金
+      const frontierPenalty = action.mode === 'frontier' && !action.win && state.frontierRaid ? raidPenalty(state.gold) : 0;
+      const frontierPatch = action.mode === 'frontier' && state.frontierRaid
+        ? { frontierRaid: null, nextRaidDay: state.day + RAID_INTERVAL_DAYS, frontierWins: action.win ? state.frontierWins + 1 : state.frontierWins }
+        : {};
       return {
         ...state,
-        gold: action.win ? state.gold + action.rewardGold : state.gold,
+        ...frontierPatch,
+        gold: (action.win ? state.gold + action.rewardGold : state.gold) - frontierPenalty,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
         navalWins: action.win && action.mode === 'naval' ? state.navalWins + 1 : state.navalWins,
@@ -195,15 +201,16 @@ function reducer(state: GameState, action: Action): GameState {
           {
             id: `battle-${Date.now()}`,
             day: state.day,
-            title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜' } as const)[action.mode] : '整军再战',
+            title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : action.mode === 'frontier' ? '边患失守' : '整军再战',
             detail: action.win
-              ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐' } as const)[action.mode]} ${action.rewardGold.toLocaleString()} 金。`
-              : '此战未竟，需回府整顿。',
+              ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${action.rewardGold.toLocaleString()} 金。`
+              : action.mode === 'frontier' ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : '此战未竟，需回府整顿。',
             goldDelta: action.win ? action.rewardGold : undefined
           },
           ...state.eventLog
         ].slice(0, 18)
       };
+    }
     case 'claimQuest': {
       if (state.claimedQuestIds.includes(action.questId)) {
         return state;

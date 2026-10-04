@@ -133,6 +133,12 @@ export function HomeScreen({
         </button>
       </header>
 
+      {state.frontierRaid && (
+        <p className="frontier-alert" role="status">
+          北疆边患！第 {state.frontierRaid.dueDay} 日前出征北疆迎战，否则边郡失守、损失 5% 金币。
+        </p>
+      )}
+
       <section className="home-estate">
         <div className="home-estate__image-wrap">
           <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
@@ -263,7 +269,7 @@ export function HomeScreen({
       </section>
 
       <footer className="home-footer">
-        <span>讨伐 {state.battleWins - state.navalWins - state.courtWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 负 {state.battleLosses}</span>
+        <span>讨伐 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins} · 负 {state.battleLosses}</span>
         <button onClick={onOpenSettings}>设置与存档</button>
       </footer>
     </main>

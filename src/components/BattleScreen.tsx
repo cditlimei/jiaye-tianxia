@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
-import { COURT_UNLOCK_HOME_LEVEL, matchCourtEnemy, matchEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
+import { COURT_UNLOCK_HOME_LEVEL, matchCourtEnemy, matchEnemy, matchFrontierEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
+import { FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE } from '../lib/frontier';
 import type { BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
@@ -16,6 +17,7 @@ interface BattleScreenProps {
   courtPower: number;
   homeLevel: number;
   farm: { current: FarmLevel; next: FarmLevel | null; gold: number };
+  frontier: { raid: { startDay: number; dueDay: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
   wins: number;
   losses: number;
@@ -61,7 +63,7 @@ const MAP_REGIONS: MapRegion[] = [
   { id: 'jiangdong', name: '江东', state: '水战', x: 76, y: 72, mode: 'naval' },
   { id: 'xuchang', name: '许都', state: '朝堂', x: 70, y: 18, mode: 'court' },
   { id: 'xishu', name: '西蜀', state: '屯田', x: 19, y: 52, mode: 'farm' },
-  { id: 'beijiang', name: '北疆', state: '未开', x: 30, y: 16, mode: 'locked' }
+  { id: 'beijiang', name: '北疆', state: '边境安宁', x: 30, y: 16, mode: 'frontier' }
 ];
 
 interface ModeConfig {
@@ -112,10 +114,17 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
     eyebrow: '许都朝堂', intro: '整冠入朝', fighting: '朝议正酣', attack: '进言', crit: '弹劾', counter: '结党反驳', counterCrit: '构陷', 
     win: '朝议得胜', loss: '失势出京', enemyBroken: '理屈词穷', exhausted: '孤立无援，只得拂袖而去', retreat: '拂袖退朝',
     scoutReport: (enemy) => `朝中传报：${enemy}已联络党羽。`, departure: (lord) => `${lord}持笏入殿。`, battleStart: () => '钟鼓齐鸣，朝议开始。'
+  },
+  frontier: {
+    region: '北疆', title: '边患', statLabel: '战力', unlockHomeLevel: FRONTIER_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '出关迎战', background: 'assets/ui/ui_frontier_battle.png',
+    summary: '边患每 10 日一起，须在 3 日内出关迎战（比武力），缴获为陆战两倍；不管或战败则边郡失守，损失 5% 金币',
+    eyebrow: '北疆边患', intro: '点兵出关', fighting: '鏖战边塞', attack: '冲阵', crit: '箭雨', counter: '胡骑回冲', counterCrit: '铁骑合围',
+    win: '靖边得胜', loss: '边郡失守', enemyBroken: '溃散北遁', exhausted: '力竭退守关内', retreat: '退守关内',
+    scoutReport: (enemy) => `烽燧急报：${enemy}已过长城。`, departure: (lord, weapon) => `${lord}提${weapon}点兵出关。`, battleStart: (weapon) => `${weapon}寒光一闪，边塞之战开始。`
   }
 };
 
-const MATCH_ENEMY: Record<BattleMode, (power: number) => Enemy> = { land: matchEnemy, naval: matchNavalEnemy, court: matchCourtEnemy };
+const MATCH_ENEMY: Record<BattleMode, (power: number) => Enemy> = { land: matchEnemy, naval: matchNavalEnemy, court: matchCourtEnemy, frontier: matchFrontierEnemy };
 
 const VENUES: Venue[] = [
   { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 1200 },
@@ -131,6 +140,7 @@ export function BattleScreen({
   courtPower,
   homeLevel,
   farm,
+  frontier,
   onUpgradeFarm,
   wins,
   losses,
@@ -148,9 +158,9 @@ export function BattleScreen({
   const [farmNotice, setFarmNotice] = useState('');
   const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
-  const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' ? selectedRegion.mode : 'land';
+  const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' || selectedRegion.mode === 'frontier' ? selectedRegion.mode : 'land';
   const wording = MODE_CONFIG[mode];
-  const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower };
+  const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower, frontier: totalPower };
   const attackPower = powerByMode[mode];
   const isModeLocked = (regionMode: RegionMode) =>
     regionMode === 'farm' ? homeLevel < FARM_UNLOCK_HOME_LEVEL : regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
@@ -159,7 +169,9 @@ export function BattleScreen({
   const maxPlayerHp = 100 + Math.round(attackPower * 0.5);
   const maxEnemyHp = 90 + Math.round(enemy.power * 0.55);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
-  const canEnterSelectedRegion = selectedRegion.mode !== 'locked' && selectedRegion.mode !== 'farm' && !selectedVenueLocked && !modeLocked;
+  const raidActive = Boolean(frontier.raid);
+  const canEnterSelectedRegion =
+    selectedRegion.mode !== 'locked' && selectedRegion.mode !== 'farm' && !selectedVenueLocked && !modeLocked && !(selectedRegion.mode === 'frontier' && !raidActive);
   const [runtime, setRuntime] = useState<BattleRuntime>(() => ({
     phase: 'intro',
     playerHp: maxPlayerHp,
@@ -319,12 +331,12 @@ export function BattleScreen({
             const available = region.mode !== 'locked' && !lockedByHome;
             const stateLabel = lockedByHome
               ? region.mode === 'farm' ? '砖瓦宅后开放' : region.mode !== 'doudizhu' && region.mode !== 'locked' ? `${MODE_CONFIG[region.mode].unlockHomeName}后开放` : region.state
-              : region.mode === 'farm' && farm.current.level > 0 ? `屯田 ${farm.current.level} 级` : region.state;
+              : region.mode === 'farm' && farm.current.level > 0 ? `屯田 ${farm.current.level} 级` : region.mode === 'frontier' && raidActive ? '边患！' : region.state;
             return (
               <button
                 key={region.id}
                 type="button"
-                className={`map-node ${available ? 'is-available' : 'is-locked'} ${region.id === selectedRegionId ? 'is-selected' : ''}`}
+                className={`map-node ${available ? 'is-available' : 'is-locked'} ${region.id === selectedRegionId ? 'is-selected' : ''} ${region.mode === 'frontier' && raidActive ? 'is-alert' : ''}`}
                 style={{ left: `${region.x}%`, top: `${region.y}%` }}
                 disabled={!available}
                 onClick={() => setSelectedRegionId(region.id)}
@@ -410,7 +422,11 @@ export function BattleScreen({
             <p className="venue-summary">
               {modeLocked
                 ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
-                : `${wording.summary}，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
+                : mode === 'frontier'
+                  ? frontier.raid
+                    ? `胡骑犯边！须在第 ${frontier.raid.dueDay} 日前出关迎战，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
+                    : `边境安宁，下次边患约在第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日。${wording.summary}。`
+                  : `${wording.summary}，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
             </p>
           </section>
         )}

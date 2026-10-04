@@ -15,6 +15,9 @@ export interface GameState {
   battleLosses: number;
   navalWins: number;
   courtWins: number;
+  frontierWins: number;
+  frontierRaid: { startDay: number; dueDay: number } | null;
+  nextRaidDay: number;
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;
@@ -23,7 +26,7 @@ export interface GameState {
 }
 
 export type BattleOutcome = 'win' | 'loss' | 'retreat';
-export type BattleMode = 'land' | 'naval' | 'court';
+export type BattleMode = 'land' | 'naval' | 'court' | 'frontier';
 
 export interface GameEvent {
   id: string;
