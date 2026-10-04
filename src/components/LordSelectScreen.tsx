@@ -20,7 +20,7 @@ export function LordSelectScreen({ onConfirm, onBack, disabled = false }: LordSe
     <main className="screen lord-screen">
       <header className="screen-header">
         <div>
-          <span className="eyebrow">第二屏 · 选择主公</span>
+          <span className="eyebrow">选择主公</span>
           <h2>乱世择主</h2>
         </div>
         <GameButton variant="ghost" onClick={onBack} disabled={disabled}>

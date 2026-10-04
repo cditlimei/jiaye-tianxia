@@ -20,7 +20,7 @@ type Action =
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'buyWeapon'; weaponId: string; price: number }
-  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode; retreat?: boolean }
+  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode; retreat?: boolean; lossGold?: number }
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
@@ -248,6 +248,8 @@ function reducer(state: GameState, action: Action): GameState {
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
       const rewardGold = Math.round(action.rewardGold * bonus);
       const frontierSettled = action.mode === 'frontier' && !action.retreat;
+      // 非北疆战场：战败/认输损失约定的军资（北疆走失守扣金）
+      const lossGold = !action.win && action.mode !== 'frontier' ? Math.min(state.gold, Math.max(0, Math.round(action.lossGold ?? 0))) : 0;
       const frontierPenalty = frontierSettled && !action.win && state.frontierRaid ? raidPenalty(state.gold) : 0;
       const frontierPatch = frontierSettled
         ? { frontierRaid: null, nextRaidDay: state.day + RAID_INTERVAL_DAYS, frontierWins: action.win ? state.frontierWins + 1 : state.frontierWins }
@@ -255,7 +257,7 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...state,
         ...frontierPatch,
-        gold: (action.win ? state.gold + rewardGold : state.gold) - frontierPenalty,
+        gold: (action.win ? state.gold + rewardGold : state.gold) - frontierPenalty - lossGold,
         nextBattleBonus: action.win && state.nextBattleBonus ? null : state.nextBattleBonus,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
@@ -268,8 +270,8 @@ function reducer(state: GameState, action: Action): GameState {
             title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '边患失守' : '整军再战',
             detail: action.win
               ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${rewardGold.toLocaleString()} 金${bonus > 1 ? '（练兵之策翻倍）' : ''}。`
-              : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : '此战未竟，需回府整顿。',
-            goldDelta: action.win ? rewardGold : frontierPenalty > 0 ? -frontierPenalty : undefined,
+              : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : action.retreat ? `认输回府，折损军资 ${lossGold.toLocaleString()} 金。` : `此战未竟，折损军资 ${lossGold.toLocaleString()} 金。`,
+            goldDelta: action.win ? rewardGold : frontierPenalty > 0 ? -frontierPenalty : lossGold > 0 ? -lossGold : undefined,
           },
           ...state.eventLog
         ].slice(0, 18)
@@ -307,7 +309,10 @@ function reducer(state: GameState, action: Action): GameState {
     case 'completeTutorial':
       return {
         ...state,
-        tutorialDone: true
+        tutorialDone: true,
+        eventLog: state.tutorialDone
+          ? state.eventLog
+          : [{ id: `tutorial-${Date.now()}`, day: state.day, title: '引导完成', detail: '家业已上正轨。往后看任务面板与称号提示决定下一步。' }, ...state.eventLog].slice(0, 18)
       };
     case 'sync':
       return {
@@ -508,7 +513,7 @@ export function useGameState() {
     buyWeapon,
     upgradeFarm,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
-    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat }),
+    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),

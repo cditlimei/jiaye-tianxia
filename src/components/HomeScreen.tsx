@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
@@ -81,7 +81,7 @@ export function HomeScreen({
     () => [
       { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
       { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
-      { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑，战力一下子上去。' },
+      { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑。第 5 日伴侣会来说心事，了却后任务「良缘佳话」正好奖 1,500 金。' },
       { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点「出征讨伐」，到官道挑一个推荐对手打一场，缴获比处理政务多得多。' }
     ],
     [nextHome, state.battleWins, state.equippedWeaponId, state.gold, state.homeLevel, state.ownedPartnerIds.length]
@@ -109,6 +109,11 @@ export function HomeScreen({
     const claimed = questStatuses.filter((quest) => quest.claimed);
     return [...ready, ...active, ...claimed].slice(0, 4);
   }, [questStatuses]);
+
+  const choiceRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (state.pendingChoice) choiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [state.pendingChoice]);
 
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -176,7 +181,7 @@ export function HomeScreen({
         if (!event) return null;
         const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === event.id.slice('partner:'.length)) : null;
         return (
-          <section className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={partner ? '伴侣心事' : '府中事件'}>
+          <section ref={choiceRef} className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={partner ? '伴侣心事' : '府中事件'}>
             {partner && <ImageWithFallback src={imageUrl(partner.imagePath, 160)} alt={partner.name} className="choice-card__portrait" />}
             <span>第 {state.pendingChoice.day} 日 · {partner ? `${partner.name} · ` : ''}{event.title}</span>
             <strong>{event.prompt}</strong>
@@ -244,8 +249,8 @@ export function HomeScreen({
       </section>
 
       <section className="action-grid">
-        <GameButton onClick={handleCollectIncome} className={guided('income')}>
-          处理政务 · +{dailyIncome.toLocaleString()}金
+        <GameButton onClick={handleCollectIncome} className={guided('income')} disabled={Boolean(state.pendingChoice)}>
+          {state.pendingChoice ? '先决断上方事件' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
         </GameButton>
         <GameButton onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
           {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金</small></>) : '宅邸已满'}

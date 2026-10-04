@@ -33,6 +33,7 @@ export interface GameState {
 }
 
 export type BattleOutcome = 'win' | 'loss' | 'retreat';
+export const LOSS_PENALTY_RATE = 0.2;
 export type BattleMode = 'land' | 'naval' | 'court' | 'frontier';
 
 export interface GameEvent {

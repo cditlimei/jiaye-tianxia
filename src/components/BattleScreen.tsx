@@ -3,7 +3,7 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, estimateWinRate, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidRemainingMs } from '../lib/frontier';
-import type { BattleMode } from '../types';
+import { LOSS_PENALTY_RATE, type BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
 import { GameButton } from './common/GameButton';
@@ -23,7 +23,7 @@ interface BattleScreenProps {
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number, mode: BattleMode, retreat?: boolean) => void;
+  onResolved: (win: boolean, rewardGold: number, mode: BattleMode, retreat?: boolean, lossGold?: number) => void;
   onReturnHome: () => void;
 }
 
@@ -174,6 +174,7 @@ export function BattleScreen({
     () => (mapOpen && mode !== 'frontier' ? roster.map((_tier, index) => estimateWinRate(attackPower, enemyForTier(roster, index, attackPower).power)) : []),
     [attackPower, mapOpen, mode, roster]
   );
+  const lossGold = Math.round(enemy.rewardGold * LOSS_PENALTY_RATE);
   const maxPlayerHp = playerMaxHp(attackPower);
   const maxEnemyHp = enemyMaxHp(enemy.power);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
@@ -282,8 +283,8 @@ export function BattleScreen({
     settledRef.current = true;
     const win = runtime.result === 'win';
     onSfx(win ? 'audio/sfx/sfx_victory.mp3' : 'audio/sfx/sfx_defeat.mp3', 0.58);
-    onResolved(win, win ? enemy.rewardGold : 0, mode);
-  }, [enemy.rewardGold, mode, onResolved, onSfx, runtime.result]);
+    onResolved(win, win ? enemy.rewardGold : 0, mode, false, lossGold);
+  }, [enemy.rewardGold, lossGold, mode, onResolved, onSfx, runtime.result]);
 
   const retreat = () => {
     if (runtime.phase === 'result') {
@@ -293,13 +294,13 @@ export function BattleScreen({
 
     if (!settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0, mode, true);
+      onResolved(false, 0, mode, true, lossGold);
     }
     setRuntime((prev) => ({
       ...prev,
       phase: 'result',
       result: 'retreat',
-      logs: [`${wording.retreat}，保全实力，来日再战。`, ...prev.logs]
+      logs: [mode === 'frontier' ? `${wording.retreat}，边患未解，来日再战。` : `${wording.retreat}，折损军资 ${lossGold.toLocaleString()} 金。`, ...prev.logs]
     }));
   };
 
@@ -312,8 +313,9 @@ export function BattleScreen({
         wins={wins}
         losses={losses}
         rewardGold={selectedVenue.rewardGold}
+        lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
-        onResolved={(win, rewardGold) => onResolved(win, rewardGold, 'land')}
+        onResolved={(win, rewardGold, lossGold) => onResolved(win, rewardGold, 'land', false, lossGold)}
         onReturnHome={onReturnHome}
       />
     );
@@ -324,7 +326,7 @@ export function BattleScreen({
       <main className="screen battle-screen expedition-screen">
         <header className="screen-header">
           <div>
-            <span className="eyebrow">第五屏 · 出征地图</span>
+            <span className="eyebrow">出征地图</span>
             <h2>九州征途</h2>
           </div>
           <GameButton variant="ghost" onClick={onReturnHome}>
@@ -384,7 +386,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场缴获 ${selectedVenue.rewardGold.toLocaleString()} 金。`}
+              : `本场胜缴获 ${selectedVenue.rewardGold.toLocaleString()} 金，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
           </p>
           </section>
         ) : selectedRegion.mode === 'farm' ? (
@@ -424,7 +426,7 @@ export function BattleScreen({
         ) : (
           <section className="venue-panel" aria-label={`${wording.title}说明`}>
             <div className="section-title">
-              <span>{wording.region} · {wording.title} · 当前{wording.statLabel} {attackPower}</span>
+              <span>{wording.region} · {wording.title} · {mode === 'naval' || mode === 'court' ? `${wording.statLabel}实力 ${attackPower}（${wording.statLabel} ${attackPower - homeLevel * 5} + 宅邸 ${homeLevel * 5}）` : `当前${wording.statLabel} ${attackPower}`}</span>
               <strong>{modeLocked ? '尚未开放' : enemy.name}</strong>
             </div>
             {!modeLocked && mode !== 'frontier' && (
@@ -456,7 +458,7 @@ export function BattleScreen({
                   ? frontier.raid
                     ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
                     : `边境安宁，下次边患约在第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日。${wording.summary}。`
-                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
+                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%：胜缴获 ${enemy.rewardGold.toLocaleString()} 金，败折损 ${lossGold.toLocaleString()} 金。`}
             </p>
           </section>
         )}
@@ -513,8 +515,16 @@ export function BattleScreen({
           <strong>{mode === 'land' ? weapon.name : wording.statLabel}</strong>
         </div>
         <div>
-          <span>潜在奖励</span>
-          <strong>{enemy.rewardGold.toLocaleString()} 金</strong>
+          <span>{runtime.phase === 'result' ? '本战金币' : '胜 / 败'}</span>
+          <strong>
+            {runtime.phase === 'result'
+              ? runtime.result === 'win'
+                ? `+${enemy.rewardGold.toLocaleString()} 金`
+                : mode === 'frontier'
+                  ? runtime.result === 'retreat' ? '±0 金' : '失守扣金'
+                  : `−${lossGold.toLocaleString()} 金`
+              : `+${enemy.rewardGold.toLocaleString()} / −${mode === 'frontier' ? '失守' : lossGold.toLocaleString()} 金`}
+          </strong>
         </div>
       </section>
 
@@ -525,7 +535,7 @@ export function BattleScreen({
       </section>
 
       <GameButton block variant={runtime.phase === 'result' ? 'primary' : 'danger'} onClick={retreat}>
-        {runtime.phase === 'result' ? '返回家业' : wording.retreat}
+        {runtime.phase === 'result' ? '返回家业' : mode === 'frontier' ? wording.retreat : `认输 · 损失 ${lossGold.toLocaleString()} 金`}
       </GameButton>
     </main>
   );
@@ -551,7 +561,7 @@ function BattleFighter({ name, title, image, hp, maxHp, enemy = false }: BattleF
         <div className="hp-bar" aria-label={`${name}血量`}>
           <div style={{ width: `${width}%` }} />
         </div>
-        <small>{hp} / {maxHp}</small>
+        <small>兵力 {hp} / {maxHp}</small>
       </div>
     </article>
   );

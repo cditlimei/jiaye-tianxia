@@ -92,7 +92,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
                       ? '已招募'
                       : missingGold > 0
                         ? `差 ${missingGold.toLocaleString()} 金`
-                        : `召集 · ${cost.toLocaleString()} 金`}
+                        : `召集 ${cost.toLocaleString()}金`}
                   </GameButton>
                 </div>
               </article>

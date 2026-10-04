@@ -52,7 +52,7 @@ await scenario('存档安全', async () => {
   await page.context().close();
 
   // 离线 20 分钟：封顶 240 天，且补上府中事件（48 桩）
-  const offline = await open(save({ lastSavedAt: Date.now() - 20 * 60 * 1000 }));
+  const offline = await open(save({ lastSavedAt: Date.now() - 241 * 3600 * 1000 }));
   await offline.waitForTimeout(600);
   const s = await read(offline);
   check('离线结算封顶 240 天并含府中事件', s.day === 251 && /(\d+) 桩/.test(s.eventLog[0]?.detail ?? '') && Number((s.eventLog[0]?.detail ?? '').match(/(\d+) 桩/)[1]) >= 40, `day=${s.day} ${s.eventLog[0]?.detail ?? ''}`);
@@ -215,7 +215,7 @@ await scenario('江东水战', async () => {
   await page.getByRole('button', { name: /江东/ }).click();
   const panel = await page.locator('[aria-label="水战说明"]').innerText();
   const reward = Number((await page.locator('[aria-label="水战说明"] .venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
-  check('水战面板显示智谋与缴获', /当前智谋 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
+  check('水战面板显示智谋与缴获', /智谋实力 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
   const before = await read(page);
   await page.getByRole('button', { name: '扬帆出战' }).click();
   await page.getByText(/水战告捷|折戟江上/).first().waitFor({ timeout: 90000 });
@@ -224,7 +224,7 @@ await scenario('江东水战', async () => {
   const after = await read(page);
   check('水战结算与存档一致', win
     ? after.gold - before.gold === reward && after.navalWins === before.navalWins + 1 && after.battleWins === before.battleWins + 1
-    : after.gold === before.gold && after.navalWins === before.navalWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+    : before.gold - after.gold === Math.round(reward * 0.2) && after.navalWins === before.navalWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
   await page.getByText('主城经营').first().waitFor();
   if (win) {
@@ -249,7 +249,7 @@ await scenario('许都朝堂', async () => {
   await page.getByRole('button', { name: /许都/ }).click();
   const panel = await page.locator('[aria-label="朝堂说明"]').innerText();
   const reward = Number((await page.locator('[aria-label="朝堂说明"] .venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
-  check('朝堂面板显示声望与缴获', /当前声望 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
+  check('朝堂面板显示声望与缴获', /声望实力 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
   const before = await read(page);
   await page.getByRole('button', { name: '入朝议事' }).click();
   await page.getByText(/朝议得胜|失势出京/).first().waitFor({ timeout: 90000 });
@@ -258,7 +258,7 @@ await scenario('许都朝堂', async () => {
   const after = await read(page);
   check('朝议结算与存档一致', win
     ? after.gold - before.gold === reward && after.courtWins === before.courtWins + 1 && after.navalWins === before.navalWins
-    : after.gold === before.gold && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+    : before.gold - after.gold === Math.round(reward * 0.2) && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
   await page.getByText('主城经营').first().waitFor();
   check('主城显示分战场战绩', /讨伐 \d+ · 水战 \d+ · 朝议 \d+ · 靖边 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
@@ -323,12 +323,12 @@ await scenario('北疆边患', async () => {
   check('读档时逾期边患直接失守扣 5%', s.frontierRaid === null && s.gold === 38000 && s.nextRaidDay === 23 && s.eventLog[0]?.title === '边患失守', `gold=${s.gold} next=${s.nextRaidDay}`);
 
   // 连点政务烧不掉窗口；离线 20 分钟也不会起新边患
-  const burn = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, gold: 40000 }));
+  const burn = await open(save({ homeLevel: 4, day: 31, nextRaidDay: 32, frontierRaid: null, gold: 40000 }));
   for (let i = 0; i < 6; i++) { await burn.getByRole('button', { name: /^处理政务/ }).click(); await burn.waitForTimeout(120); }
   s = await read(burn);
-  check('连续处理政务不会让边患逾期', s.frontierRaid !== null && s.gold > 40000, `day=${s.day} raid=${Boolean(s.frontierRaid)}`);
+  check('连续处理政务不会让边患逾期', s.frontierRaid !== null && s.gold > 40000 && s.day === 37, `day=${s.day} raid=${Boolean(s.frontierRaid)}`);
   await burn.context().close();
-  const offline = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, lastSavedAt: Date.now() - 20 * 60 * 1000 }));
+  const offline = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, lastSavedAt: Date.now() - 241 * 3600 * 1000 }));
   await offline.waitForTimeout(500);
   s = await read(offline);
   check('离线期间不起新边患也不扣金', s.frontierRaid === null && s.day === 249 && !s.eventLog.some((e) => e.title === '边患失守'));
@@ -418,6 +418,9 @@ await scenario('府中事件二选一', async () => {
   await page.waitForTimeout(400);
   let s = await read(page);
   check('第 10 日挂起二选一且不自动入账', s.pendingChoice?.eventId === 'merchants' && s.gold === 5000 + inc && (await page.locator('.choice-card').isVisible()), `gold=${s.gold}`);
+  check('待决断时处理政务暂停', await page.getByRole('button', { name: '先决断上方事件' }).isDisabled());
+  const box = await page.locator('.choice-card').boundingBox();
+  check('事件卡片滚入视口', box !== null && box.y >= 0 && box.y < 844, `y=${box?.y}`);
   // 选减税招商：无现钱，后 10 日政务 +20%
   await page.locator('.choice-card__options button').nth(1).click();
   await page.waitForTimeout(300);
@@ -449,7 +452,7 @@ await scenario('府中事件二选一', async () => {
   await adv.waitForTimeout(400);
   const after = await read(adv);
   const won = (await adv.locator('h2').first().innerText()).includes('讨伐得胜');
-  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward * 2 && after.nextBattleBonus === null : after.nextBattleBonus === 2, `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
+  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward * 2 && after.nextBattleBonus === null : after.nextBattleBonus === 2 && before.gold - after.gold === Math.round(reward * 0.2), `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
   await adv.context().close();
 
   // 选现钱
@@ -553,9 +556,10 @@ await scenario('斗地主', async () => {
   await page.getByText('斗地主牌局').first().waitFor();
   // 对手座位显示性格标签，且两局对手不同
   const names1 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
-  await page.getByRole('button', { name: '认输回府' }).click();
+  const g0 = (await read(page)).gold;
+  await page.getByRole('button', { name: /^认输/ }).click();
   await page.getByText('主城经营').first().waitFor();
-  check('认输回府记一负', (await read(page)).battleLosses === 1);
+  check('认输记一负并折损 20% 缴获', (await read(page)).battleLosses === 1 && g0 - (await read(page)).gold === 300, `Δ=${g0 - (await read(page)).gold}`);
 
   // 用提示打完整局：不能卡死，胜负与金币一致
   await page.getByRole('button', { name: '出征讨伐' }).click();
@@ -590,7 +594,7 @@ await scenario('斗地主', async () => {
   await page.waitForTimeout(400);
   const after = await read(page);
   const delta = after.gold - before.gold;
-  check('斗地主整局可打完且结算一致', ended && (win ? delta === 1500 && after.battleWins === before.battleWins + 1 : delta === 0 && after.battleLosses === before.battleLosses + 1),
+  check('斗地主整局可打完且结算一致', ended && (win ? delta === 1500 && after.battleWins === before.battleWins + 1 : delta === -300 && after.battleLosses === before.battleLosses + 1),
     `${win ? '胜' : '负'} Δgold=${delta}`);
   await page.context().close();
 });

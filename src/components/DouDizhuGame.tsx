@@ -14,8 +14,9 @@ interface DouDizhuGameProps {
   wins: number;
   losses: number;
   rewardGold: number;
+  lossGold: number;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number) => void;
+  onResolved: (win: boolean, rewardGold: number, lossGold: number) => void;
   onReturnHome: () => void;
 }
 
@@ -54,12 +55,13 @@ interface PlayerProfile {
 const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu', 'machao', 'sunce', 'luxun'];
 const HAND_EDGE_PERCENT = 7.2;
 
-export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
+export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
   const [hintIndex, setHintIndex] = useState(0);
   const settledRef = useRef(false);
   const aiTimerRef = useRef<number | null>(null);
-  const profiles = useMemo(() => createPlayerProfiles(lord, wins + losses), [lord, wins, losses]);
+  const [gamesPlayedAtStart] = useState(() => wins + losses);
+  const profiles = useMemo(() => createPlayerProfiles(lord, gamesPlayedAtStart), [lord, gamesPlayedAtStart]);
   const playerNames = useMemo(
     () => ({
       0: profiles[0].name,
@@ -98,7 +100,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   const statusCopy = table.winner !== null
     ? table.winner === 0
       ? `牌局胜利，缴获 ${rewardGold.toLocaleString()} 金`
-      : `${playerNames[table.winner]}先走完牌，本局失利`
+      : `${playerNames[table.winner]}先走完牌，折损 ${lossGold.toLocaleString()} 金`
     : table.currentPlayer === 0
       ? targetCombo
         ? `请大过 ${playerNames[table.lastPlay!.player]} 的${comboLabel(targetCombo)}`
@@ -148,8 +150,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
     settledRef.current = true;
     const win = table.winner === 0;
     onSfx(win ? 'audio/sfx/sfx_victory.mp3' : 'audio/sfx/sfx_defeat.mp3', 0.58);
-    onResolved(win, win ? rewardGold : 0);
-  }, [onResolved, onSfx, rewardGold, table.winner]);
+    onResolved(win, win ? rewardGold : 0, lossGold);
+  }, [lossGold, onResolved, onSfx, rewardGold, table.winner]);
 
   const toggleCard = (cardId: string) => {
     if (table.currentPlayer !== 0 || table.winner !== null) return;
@@ -183,7 +185,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
   const leaveTable = () => {
     if (table.winner === null && !settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0);
+      onResolved(false, 0, lossGold);
     }
     onReturnHome();
   };
@@ -224,9 +226,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, onSfx, onResolved
         </div>
         <div className="doudizhu-header__side">
           <span className="battle-record">胜 {wins} · 负 {losses}</span>
-          <GameButton variant="ghost" onClick={leaveTable}>
-            {table.winner === null ? '认输回府' : '回府'}
-          </GameButton>
+          {table.winner === null && (
+            <GameButton variant="ghost" onClick={leaveTable}>
+              认输 · 损失 {lossGold.toLocaleString()} 金
+            </GameButton>
+          )}
         </div>
       </header>
 

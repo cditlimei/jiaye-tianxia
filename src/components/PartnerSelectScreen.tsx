@@ -24,7 +24,7 @@ export function PartnerSelectScreen({ lord, onConfirm, onBack }: PartnerSelectSc
     <main className="screen partner-select-screen">
       <header className="screen-header partner-select-header">
         <div>
-          <span className="eyebrow">第二屏 · 选择伴侣</span>
+          <span className="eyebrow">选择伴侣</span>
           <h2>良缘入府</h2>
           <p>主公，请选择您的伴侣</p>
         </div>

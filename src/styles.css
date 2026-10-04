@@ -4155,3 +4155,7 @@ body {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 229, 144, 0.75); }
   50% { box-shadow: 0 0 0 7px rgba(255, 229, 144, 0); }
 }
+
+.partner-card .game-button span {
+  white-space: nowrap;
+}

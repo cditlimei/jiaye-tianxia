@@ -7,8 +7,9 @@ import { mergePartnerBoost } from '../data/partnerEvents';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
-const OFFLINE_TICK_MS = 3000;
-const OFFLINE_MIN_MS = 30000;
+// 离线每满 1 小时折算 1 天（切后台几分钟不算离线），最多补 240 天
+const OFFLINE_TICK_MS = 60 * 60 * 1000;
+const OFFLINE_MIN_MS = 60 * 60 * 1000;
 const OFFLINE_MAX_TICKS = 240;
 const MAX_EVENT_LOG = 18;
 
