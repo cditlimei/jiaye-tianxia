@@ -116,24 +116,57 @@ export function getQuestStatuses(state: GameState, context: QuestContext): Quest
   }));
 }
 
-export function getDailyEvent(day: number, dailyIncome: number) {
+export interface ChoiceOption {
+  id: 'gold' | 'incomeBuff' | 'battleBonus';
+  label: string;
+  detail: string;
+}
+
+export interface ChoiceEvent {
+  id: 'merchants' | 'advisor';
+  title: string;
+  prompt: string;
+  options: [ChoiceOption, ChoiceOption];
+}
+
+export const INCOME_BUFF_PERCENT = 20;
+export const INCOME_BUFF_DAYS = 10;
+export const BATTLE_BONUS_MULTIPLIER = 2;
+
+/** 第 10/15 日的府中事件改为二选一：拿现钱，还是押一个之后的加成 */
+export function getChoiceEvent(day: number, dailyIncome: number): ChoiceEvent | null {
   if (day % 15 === 0) {
     return {
+      id: 'advisor',
       title: '门客献策',
-      detail: '府中门客进献经营之策，钱粮周转更顺。',
-      goldDelta: dailyIncome * 5
+      prompt: '府中门客进献两策，主公取其一。',
+      options: [
+        { id: 'gold', label: '经营之策', detail: `整顿钱粮，立得 ${(dailyIncome * 5).toLocaleString()} 金。` },
+        { id: 'battleBonus', label: '练兵之策', detail: `厉兵秣马，下一场胜利缴获翻 ${BATTLE_BONUS_MULTIPLIER} 倍。` }
+      ]
     };
   }
-
   if (day % 10 === 0) {
     return {
+      id: 'merchants',
       title: '商旅归附',
-      detail: '往来商旅愿在府前开市，额外纳入税金。',
-      goldDelta: dailyIncome * 3
+      prompt: '往来商旅愿在府前开市，如何安置？',
+      options: [
+        { id: 'gold', label: '收取市税', detail: `当下入账 ${(dailyIncome * 3).toLocaleString()} 金。` },
+        { id: 'incomeBuff', label: '减税招商', detail: `此后 ${INCOME_BUFF_DAYS} 日处理政务收入 +${INCOME_BUFF_PERCENT}%。` }
+      ]
     };
   }
+  return null;
+}
 
-  if (day % 5 === 0) {
+/** 二选一里「拿现钱」那一项的金额，离线无人决断时按此自动结算 */
+export function choiceGoldValue(event: ChoiceEvent, dailyIncome: number) {
+  return event.id === 'advisor' ? dailyIncome * 5 : dailyIncome * 3;
+}
+
+export function getDailyEvent(day: number, dailyIncome: number) {
+  if (day % 5 === 0 && day % 10 !== 0) {
     return {
       title: '乡望渐隆',
       detail: '乡里送来贺礼，家业声势小有增长。',

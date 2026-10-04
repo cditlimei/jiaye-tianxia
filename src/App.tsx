@@ -293,6 +293,10 @@ export function App() {
           recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
           onCollectIncome={game.collectIncome}
+          onResolveChoice={(optionId) => {
+            game.resolveChoice(optionId);
+            audio.playSfx('audio/sfx/sfx_coins.mp3', 0.3);
+          }}
           onUpgrade={game.upgradeHome}
           onOpenPartner={() => setModal('partner')}
           onOpenPartnerTalk={() => setModal('partnerTalk')}

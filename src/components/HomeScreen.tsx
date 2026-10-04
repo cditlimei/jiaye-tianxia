@@ -4,6 +4,7 @@ import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { weaponBonusForLord } from '../lib/battle';
 import { formatRemaining, raidRemainingMs } from '../lib/frontier';
+import { getChoiceEvent } from '../data/progression';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -23,6 +24,7 @@ interface HomeScreenProps {
   farmIncome: number;
   recruitDiscount: number;
   onCollectIncome: () => number;
+  onResolveChoice: (optionId: 'gold' | 'incomeBuff' | 'battleBonus') => void;
   onUpgrade: () => boolean;
   onOpenPartner: () => void;
   onOpenPartnerTalk: () => void;
@@ -55,6 +57,7 @@ export function HomeScreen({
   farmIncome,
   recruitDiscount,
   onCollectIncome,
+  onResolveChoice,
   onUpgrade,
   onOpenPartner,
   onOpenPartnerTalk,
@@ -146,6 +149,25 @@ export function HomeScreen({
           北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金币。
         </p>
       )}
+
+      {state.pendingChoice && (() => {
+        const event = getChoiceEvent(state.pendingChoice.day, state.pendingChoice.dailyIncome);
+        if (!event) return null;
+        return (
+          <section className="choice-card" aria-label="府中事件">
+            <span>第 {state.pendingChoice.day} 日 · {event.title}</span>
+            <strong>{event.prompt}</strong>
+            <div className="choice-card__options">
+              {event.options.map((option) => (
+                <button key={option.id} type="button" onClick={() => onResolveChoice(option.id)}>
+                  <strong>{option.label}</strong>
+                  <small>{option.detail}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
 
       <section className="home-estate">
         <div className="home-estate__image-wrap">

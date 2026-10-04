@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
-import { getDailyEvent, getQuestStatuses, quests } from '../data/progression';
+import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
@@ -25,6 +25,7 @@ type Action =
   | { type: 'completeTutorial' }
   | { type: 'restore'; state: GameState }
   | { type: 'succeed' }
+  | { type: 'resolveChoice'; optionId: 'gold' | 'incomeBuff' | 'battleBonus' }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
 
@@ -81,10 +82,22 @@ function reducer(state: GameState, action: Action): GameState {
     case 'collectIncome': {
       const nextDay = state.day + 1;
       const dailyEvent = getDailyEvent(nextDay, action.amount);
-      const goldAfterIncome = state.gold + action.amount + (dailyEvent?.goldDelta ?? 0);
+      // 减税招商：政务收入加成
+      const buffed = state.incomeBuff && nextDay <= state.incomeBuff.untilDay
+        ? Math.round(action.amount * (1 + state.incomeBuff.percent / 100))
+        : action.amount;
+      const incomeBuff = state.incomeBuff && nextDay <= state.incomeBuff.untilDay ? state.incomeBuff : null;
+      const choice = getChoiceEvent(nextDay, action.amount);
+      // 上一个二选一还没决断又来新的：旧的按「拿现钱」自动结算
+      const staleChoice = choice && state.pendingChoice ? getChoiceEvent(state.pendingChoice.day, state.pendingChoice.dailyIncome) : null;
+      const staleGold = staleChoice ? choiceGoldValue(staleChoice, state.pendingChoice!.dailyIncome) : 0;
+      const pendingChoice = choice ? { eventId: choice.id, day: nextDay, dailyIncome: action.amount } : state.pendingChoice;
+      const goldAfterIncome = state.gold + buffed + (dailyEvent?.goldDelta ?? 0) + staleGold;
       const frontier = advanceFrontier({ ...state, gold: goldAfterIncome }, nextDay);
       const eventLog = [
         ...(frontier.event ? [frontier.event] : []),
+        ...(choice ? [{ id: `choice-${nextDay}`, day: nextDay, title: choice.title, detail: `${choice.prompt} 请在主城决断。` }] : []),
+        ...(staleChoice ? [{ id: `choice-auto-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（自动）`, detail: '未及决断，按现钱入账。', goldDelta: staleGold }] : []),
         ...(dailyEvent
           ? [{ id: `daily-${nextDay}`, day: nextDay, title: dailyEvent.title, detail: dailyEvent.detail, goldDelta: dailyEvent.goldDelta }]
           : []),
@@ -96,7 +109,27 @@ function reducer(state: GameState, action: Action): GameState {
         day: nextDay,
         frontierRaid: frontier.frontierRaid,
         nextRaidDay: frontier.nextRaidDay,
+        incomeBuff,
+        pendingChoice,
         eventLog
+      };
+    }
+    case 'resolveChoice': {
+      if (!state.pendingChoice) return state;
+      const event = getChoiceEvent(state.pendingChoice.day, state.pendingChoice.dailyIncome);
+      if (!event) return { ...state, pendingChoice: null };
+      const option = event.options.find((item) => item.id === action.optionId) ?? event.options[0];
+      const gold = option.id === 'gold' ? choiceGoldValue(event, state.pendingChoice.dailyIncome) : 0;
+      return {
+        ...state,
+        pendingChoice: null,
+        gold: state.gold + gold,
+        incomeBuff: option.id === 'incomeBuff' ? { percent: INCOME_BUFF_PERCENT, untilDay: state.day + INCOME_BUFF_DAYS } : state.incomeBuff,
+        nextBattleBonus: option.id === 'battleBonus' ? BATTLE_BONUS_MULTIPLIER : state.nextBattleBonus,
+        eventLog: [
+          { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.detail, goldDelta: gold || undefined },
+          ...state.eventLog
+        ].slice(0, 18)
       };
     }
     case 'upgradeFarm':
@@ -190,6 +223,8 @@ function reducer(state: GameState, action: Action): GameState {
       };
     case 'recordBattle': {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
+      const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
+      const rewardGold = Math.round(action.rewardGold * bonus);
       const frontierSettled = action.mode === 'frontier' && !action.retreat;
       const frontierPenalty = frontierSettled && !action.win && state.frontierRaid ? raidPenalty(state.gold) : 0;
       const frontierPatch = frontierSettled
@@ -198,7 +233,8 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...state,
         ...frontierPatch,
-        gold: (action.win ? state.gold + action.rewardGold : state.gold) - frontierPenalty,
+        gold: (action.win ? state.gold + rewardGold : state.gold) - frontierPenalty,
+        nextBattleBonus: action.win && state.nextBattleBonus ? null : state.nextBattleBonus,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
         navalWins: action.win && action.mode === 'naval' ? state.navalWins + 1 : state.navalWins,
@@ -209,9 +245,9 @@ function reducer(state: GameState, action: Action): GameState {
             day: state.day,
             title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '边患失守' : '整军再战',
             detail: action.win
-              ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${action.rewardGold.toLocaleString()} 金。`
+              ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${rewardGold.toLocaleString()} 金${bonus > 1 ? '（练兵之策翻倍）' : ''}。`
               : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : '此战未竟，需回府整顿。',
-            goldDelta: action.win ? action.rewardGold : frontierPenalty > 0 ? -frontierPenalty : undefined,
+            goldDelta: action.win ? rewardGold : frontierPenalty > 0 ? -frontierPenalty : undefined,
           },
           ...state.eventLog
         ].slice(0, 18)
@@ -370,6 +406,8 @@ export function useGameState() {
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
   const dailyIncome = effectiveDailyIncome(Math.round((currentHome.dailyIncome + currentFarm.dailyIncome) * legacyIncomeMultiplier(state.legacyPoints)), intelligence);
+  const buffActive = Boolean(state.incomeBuff && state.day + 1 <= state.incomeBuff.untilDay);
+  const displayedIncome = buffActive && state.incomeBuff ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
   const recruitDiscount = recruitDiscountPercent(charisma);
   const recruitCostFor = useCallback((partner: Partner) => effectiveRecruitCost(partner.recruitCost, charisma), [charisma]);
 
@@ -431,7 +469,8 @@ export function useGameState() {
     courtPower,
     intelligence,
     charisma,
-    dailyIncome,
+    dailyIncome: displayedIncome,
+    buffActive,
     recruitDiscount,
     recruitCostFor,
     questStatuses,
@@ -451,6 +490,7 @@ export function useGameState() {
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),
     restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
     succeed: () => dispatch({ type: 'succeed' }),
+    resolveChoice: (optionId: 'gold' | 'incomeBuff' | 'battleBonus') => dispatch({ type: 'resolveChoice', optionId }),
     resetGame: () => dispatch({ type: 'reset' })
   };
 }

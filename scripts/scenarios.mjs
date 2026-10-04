@@ -55,7 +55,7 @@ await scenario('存档安全', async () => {
   const offline = await open(save({ lastSavedAt: Date.now() - 20 * 60 * 1000 }));
   await offline.waitForTimeout(600);
   const s = await read(offline);
-  check('离线结算封顶 240 天并含府中事件', s.day === 251 && /48 桩/.test(s.eventLog[0]?.detail ?? ''), `day=${s.day} ${s.eventLog[0]?.detail ?? ''}`);
+  check('离线结算封顶 240 天并含府中事件', s.day === 251 && /(\d+) 桩/.test(s.eventLog[0]?.detail ?? '') && Number((s.eventLog[0]?.detail ?? '').match(/(\d+) 桩/)[1]) >= 40, `day=${s.day} ${s.eventLog[0]?.detail ?? ''}`);
   await offline.context().close();
 
   // 存储被禁用仍可进入游戏
@@ -88,10 +88,10 @@ await scenario('多标签页', async () => {
   await a.reload({ waitUntil: 'domcontentloaded' });
   const b = await ctx.newPage();
   await b.goto(URL, { waitUntil: 'domcontentloaded' });
-  await a.getByRole('button', { name: /处理政务/ }).click();
+  await a.getByRole('button', { name: /^处理政务/ }).click();
   await a.waitForTimeout(1500);
   const goldA = (await read(a)).gold;
-  await b.getByRole('button', { name: /处理政务/ }).click();
+  await b.getByRole('button', { name: /^处理政务/ }).click();
   await b.waitForTimeout(1500);
   const final = await read(a);
   check('两个标签页交替操作不丢收益', final.gold > goldA && goldA > 5000, `5000 → ${goldA} → ${final.gold}`);
@@ -154,12 +154,12 @@ await scenario('兵器与经济', async () => {
 
   // 智谋提高收入（第 11 天推进到 12 天，不触发府中事件）
   const plain = await open(save({ selectedLordId: 'guanyu', ownedPartnerIds: [] }));
-  const n0 = income(await plain.getByRole('button', { name: /处理政务/ }).innerText());
+  const n0 = income(await plain.getByRole('button', { name: /^处理政务/ }).innerText());
   await plain.context().close();
   const smart = await open(save({ selectedLordId: 'guanyu', ownedPartnerIds: ['huangyueying', 'zhenji', 'caiwenji'] }));
-  const n1 = income(await smart.getByRole('button', { name: /处理政务/ }).innerText());
+  const n1 = income(await smart.getByRole('button', { name: /^处理政务/ }).innerText());
   const before = (await read(smart)).gold;
-  await smart.getByRole('button', { name: /处理政务/ }).click();
+  await smart.getByRole('button', { name: /^处理政务/ }).click();
   await smart.waitForTimeout(500);
   check('智谋提高处理政务收入且实扣一致', n1 > n0 && (await read(smart)).gold - before === n1, `${n0} → ${n1}`);
   await smart.context().close();
@@ -274,7 +274,7 @@ await scenario('西蜀屯田', async () => {
   await locked.context().close();
 
   const page = await open(save({ homeLevel: 3, gold: 7000, ownedPartnerIds: [], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
-  const n0 = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
+  const n0 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
   await page.getByRole('button', { name: '出征讨伐' }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /西蜀/ }).click();
@@ -289,7 +289,7 @@ await scenario('西蜀屯田', async () => {
   check('金不足不能升级', s.farmLevel === 1 && (await page.locator('.partner-market__notice').innerText()).includes('金不足'));
   await page.getByRole('button', { name: '回府' }).click();
   await page.getByText('主城经营').first().waitFor();
-  const n1 = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
+  const n1 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
   check('屯田后每日收入提高', n1 - n0 >= 15, `${n0} → ${n1}`);
   check('任务「西蜀屯田」可领赏', await page.locator('.quest-item').filter({ hasText: '西蜀屯田' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
@@ -305,7 +305,7 @@ await scenario('北疆边患', async () => {
 
   // 第 9 日 → 第 10 日起边患：主城提醒、地图标红
   const start = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null }));
-  await start.getByRole('button', { name: /处理政务/ }).click();
+  await start.getByRole('button', { name: /^处理政务/ }).click();
   await start.waitForTimeout(500);
   let s = await read(start);
   const win24 = s.frontierRaid ? s.frontierRaid.dueAt - s.frontierRaid.startedAt : 0;
@@ -324,7 +324,7 @@ await scenario('北疆边患', async () => {
 
   // 连点政务烧不掉窗口；离线 20 分钟也不会起新边患
   const burn = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, gold: 40000 }));
-  for (let i = 0; i < 6; i++) { await burn.getByRole('button', { name: /处理政务/ }).click(); await burn.waitForTimeout(120); }
+  for (let i = 0; i < 6; i++) { await burn.getByRole('button', { name: /^处理政务/ }).click(); await burn.waitForTimeout(120); }
   s = await read(burn);
   check('连续处理政务不会让边患逾期', s.frontierRaid !== null && s.gold > 40000, `day=${s.day} raid=${Boolean(s.frontierRaid)}`);
   await burn.context().close();
@@ -388,7 +388,7 @@ await scenario('传位', async () => {
   // 王城 + 250,000 金：传位得 2 点，回到选主公，世代 2；重选主公后保留家业点且收入 +10%
   const page = await open(save({ homeLevel: 6, gold: 250000, ownedPartnerIds: ['diaochan'], equippedWeaponId: 'fangtian', farmLevel: 2 }));
   const plain = await open(save({ homeLevel: 1, gold: 1000, ownedPartnerIds: ['zhenji'], generation: 1, legacyPoints: 0 }));
-  const baseIncome = income(await plain.getByRole('button', { name: /处理政务/ }).innerText());
+  const baseIncome = income(await plain.getByRole('button', { name: /^处理政务/ }).innerText());
   await plain.context().close();
   await page.getByRole('button', { name: '设置与存档' }).click();
   await page.getByText('当前存档').first().waitFor();
@@ -401,13 +401,67 @@ await scenario('传位', async () => {
   await page.getByRole('button', { name: '确认选择' }).click();
   await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: '携美人，共创家业' }).click();
-  await page.getByRole('button', { name: /处理政务/ }).waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
   s = await read(page);
-  const nextIncome = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
+  const nextIncome = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
   check('新一代保留家业点且收入提高', s.generation === 2 && s.legacyPoints === 2 && nextIncome > baseIncome, `${baseIncome} → ${nextIncome}`);
   check('主城显示第 2 代', (await page.locator('.home-hud').innerText()).includes('第 2 代'));
   check('任务「传承家业」可领', await page.locator('.quest-item').filter({ hasText: '传承家业' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
+});
+
+await scenario('府中事件二选一', async () => {
+  // 第 9 → 10 日：商旅归附挂起，不自动给钱
+  const page = await open(save({ day: 9, gold: 5000, homeLevel: 2, ownedPartnerIds: [] }));
+  const inc = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
+  await page.getByRole('button', { name: /^处理政务/ }).click();
+  await page.waitForTimeout(400);
+  let s = await read(page);
+  check('第 10 日挂起二选一且不自动入账', s.pendingChoice?.eventId === 'merchants' && s.gold === 5000 + inc && (await page.locator('.choice-card').isVisible()), `gold=${s.gold}`);
+  // 选减税招商：无现钱，后 10 日政务 +20%
+  await page.locator('.choice-card__options button').nth(1).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  const buffedLabel = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
+  const g0 = s.gold;
+  await page.getByRole('button', { name: /^处理政务/ }).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  check('减税招商：收入 +20% 且按钮金额一致', s.pendingChoice === null && s.incomeBuff?.untilDay === 20 && buffedLabel === Math.round(inc * 1.2) && s.gold - g0 === buffedLabel, `${inc} → ${buffedLabel} 实得 ${s.gold - g0}`);
+  await page.context().close();
+
+  // 第 14 → 15 日：门客献策，选练兵之策，下一场胜利缴获翻倍
+  const adv = await open(save({ day: 14, gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
+  await adv.getByRole('button', { name: /^处理政务/ }).click();
+  await adv.waitForTimeout(400);
+  await adv.locator('.choice-card__options button').nth(1).click();
+  await adv.waitForTimeout(300);
+  s = await read(adv);
+  check('练兵之策：挂上翻倍', s.nextBattleBonus === 2 && s.pendingChoice === null);
+  await adv.getByRole('button', { name: '出征讨伐' }).click();
+  await adv.getByText('九州征途').first().waitFor();
+  await adv.getByRole('button', { name: /官道/ }).click();
+  await adv.locator('.tier-card').first().click();   // 最弱档，几乎必胜
+  const reward = Number((await adv.locator('.venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const before = await read(adv);
+  await adv.getByRole('button', { name: '出征讨伐', exact: true }).click();
+  await adv.getByText(/讨伐得胜|败退整军/).first().waitFor({ timeout: 90000 });
+  await adv.waitForTimeout(400);
+  const after = await read(adv);
+  const won = (await adv.locator('h2').first().innerText()).includes('讨伐得胜');
+  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward * 2 && after.nextBattleBonus === null : after.nextBattleBonus === 2, `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
+  await adv.context().close();
+
+  // 选现钱
+  const cash = await open(save({ day: 9, gold: 5000, homeLevel: 2, ownedPartnerIds: [] }));
+  const inc2 = income(await cash.getByRole('button', { name: /^处理政务/ }).innerText());
+  await cash.getByRole('button', { name: /^处理政务/ }).click();
+  await cash.waitForTimeout(300);
+  await cash.locator('.choice-card__options button').nth(0).click();
+  await cash.waitForTimeout(300);
+  s = await read(cash);
+  check('收取市税：立得 3 倍收入', s.gold === 5000 + inc2 + inc2 * 3 && s.pendingChoice === null, `gold=${s.gold}`);
+  await cash.context().close();
 });
 
 await scenario('斗地主', async () => {

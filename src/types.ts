@@ -20,6 +20,9 @@ export interface GameState {
   nextRaidDay: number;
   generation: number;
   legacyPoints: number;
+  pendingChoice: { eventId: 'merchants' | 'advisor'; day: number; dailyIncome: number } | null;
+  incomeBuff: { percent: number; untilDay: number } | null;
+  nextBattleBonus: number | null;
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;

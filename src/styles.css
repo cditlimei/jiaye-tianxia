@@ -4038,3 +4038,55 @@ body {
 .succession-panel p.is-ok {
   color: var(--gold-light);
 }
+
+.choice-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(212, 168, 67, 0.5);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(60, 44, 12, 0.7), rgba(20, 16, 10, 0.85));
+}
+
+.choice-card > span {
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 12px;
+}
+
+.choice-card > strong {
+  color: var(--gold-light);
+  font-size: 15px;
+}
+
+.choice-card__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.choice-card__options button {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(212, 168, 67, 0.45);
+  border-radius: 12px;
+  background: rgba(10, 10, 18, 0.7);
+  color: #f5e6c8;
+  text-align: left;
+  cursor: pointer;
+}
+
+.choice-card__options button strong {
+  color: var(--gold-light);
+  font-size: 14px;
+}
+
+.choice-card__options button small {
+  color: rgba(245, 230, 200, 0.78);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.succession-panel .game-button {
+  color: #241303;
+}

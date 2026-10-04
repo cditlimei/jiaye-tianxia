@@ -1,6 +1,6 @@
 import type { GameState, Screen } from '../types';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
-import { getDailyEvent, quests } from '../data/progression';
+import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/progression';
 import { calculateIntelligence, effectiveDailyIncome, LEGACY_MAX_POINTS, legacyIncomeMultiplier } from '../lib/battle';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 
@@ -31,6 +31,9 @@ export const defaultGameState: GameState = {
   nextRaidDay: RAID_INTERVAL_DAYS,
   generation: 1,
   legacyPoints: 0,
+  pendingChoice: null,
+  incomeBuff: null,
+  nextBattleBonus: null,
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -194,6 +197,9 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     frontierRaid: sanitizeRaid(parsed.frontierRaid),
     generation: sanitizeNumber(parsed.generation, 1, 1),
     legacyPoints: Math.min(LEGACY_MAX_POINTS, sanitizeNumber(parsed.legacyPoints, 0, 0)),
+    pendingChoice: sanitizeChoice(parsed.pendingChoice),
+    incomeBuff: sanitizeBuff(parsed.incomeBuff),
+    nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -204,6 +210,20 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     eventLog: sanitizeEventLog(parsed.eventLog),
     lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now
   };
+}
+
+function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
+  if (!value || typeof value !== 'object') return null;
+  const c = value as { eventId?: unknown; day?: unknown; dailyIncome?: unknown };
+  if ((c.eventId !== 'merchants' && c.eventId !== 'advisor') || typeof c.day !== 'number' || typeof c.dailyIncome !== 'number') return null;
+  return { eventId: c.eventId, day: Math.floor(c.day), dailyIncome: Math.max(0, Math.floor(c.dailyIncome)) };
+}
+
+function sanitizeBuff(value: unknown): GameState['incomeBuff'] {
+  if (!value || typeof value !== 'object') return null;
+  const b = value as { percent?: unknown; untilDay?: unknown };
+  if (typeof b.percent !== 'number' || typeof b.untilDay !== 'number' || b.percent <= 0) return null;
+  return { percent: Math.floor(b.percent), untilDay: Math.floor(b.untilDay) };
 }
 
 function sanitizeRaid(value: unknown): GameState['frontierRaid'] {
@@ -300,6 +320,11 @@ function applyOfflineIncome(state: GameState): GameState {
     const dailyEvent = getDailyEvent(day, dailyIncome);
     if (dailyEvent) {
       eventGold += dailyEvent.goldDelta;
+      eventCount += 1;
+    }
+    const choice = getChoiceEvent(day, dailyIncome);
+    if (choice) {
+      eventGold += choiceGoldValue(choice, dailyIncome);
       eventCount += 1;
     }
   }
