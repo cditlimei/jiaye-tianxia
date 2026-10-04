@@ -36,6 +36,7 @@ interface HomeScreenProps {
   onIncomeSfx: () => void;
   onUpgradeEffect: () => void;
   questStatuses: QuestStatus[];
+  titleStatus: { current: { name: string }; next: { name: string; requirement: string } | null };
 }
 
 interface FloatingIncome {
@@ -68,7 +69,8 @@ export function HomeScreen({
   onOpenSettings,
   onIncomeSfx,
   onUpgradeEffect,
-  questStatuses
+  questStatuses,
+  titleStatus
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
@@ -119,6 +121,7 @@ export function HomeScreen({
           <div>
             <strong>{lord.name}</strong>
             <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
+            <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : '已是最高称号'}>「{titleStatus.current.name}」</em>
           </div>
         </div>
         <div className="home-hud__chips">
@@ -259,6 +262,12 @@ export function HomeScreen({
         <div className="section-title">
           <span>家业目标</span>
           <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
+        </div>
+        <p className="honor-hint">
+          当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : '，已是最高称号'}。
+        </p>
+        <div className="section-title" hidden>
+          <span />
         </div>
         <div className="quest-list">
           {visibleQuests.map((quest) => (

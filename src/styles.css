@@ -4099,3 +4099,18 @@ body {
   font-weight: 600;
   opacity: 0.85;
 }
+
+.home-hud__honor {
+  display: block;
+  margin-top: 2px;
+  color: var(--gold-light);
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 1px;
+}
+
+.honor-hint {
+  margin: 4px 0 8px;
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 12px;
+}

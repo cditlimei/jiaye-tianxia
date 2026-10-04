@@ -108,6 +108,42 @@ export const quests: Quest[] = [
   }
 ];
 
+export interface Title {
+  id: string;
+  name: string;
+  /** 达成条件的人话，用于「下一称号」提示 */
+  requirement: string;
+  isEarned: (state: GameState) => boolean;
+}
+
+// 称号按先后排列，取已达成的最后一个；全部由存档算出，不单独存
+export const titles: Title[] = [
+  { id: 'commoner', name: '白身', requirement: '', isEarned: () => true },
+  { id: 'gentry', name: '乡绅', requirement: '宅邸升至砖瓦宅', isEarned: (s) => s.homeLevel >= 3 },
+  { id: 'warlord', name: '一方豪强', requirement: '累计 10 场胜利', isEarned: (s) => s.battleWins >= 10 },
+  { id: 'magnate', name: '府邸之主', requirement: '宅邸升至府邸', isEarned: (s) => s.homeLevel >= 4 },
+  { id: 'river-tiger', name: '江表虎臣', requirement: '赢得 5 场水战', isEarned: (s) => s.navalWins >= 5 },
+  { id: 'court-star', name: '朝堂新贵', requirement: '赢得 5 场朝议', isEarned: (s) => s.courtWins >= 5 },
+  { id: 'north-general', name: '镇北将军', requirement: '击退 3 次边患', isEarned: (s) => s.frontierWins >= 3 },
+  { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
+  { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
+  { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2 },
+  { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10 }
+];
+
+export function getTitleStatus(state: GameState) {
+  let current = titles[0];
+  let next: Title | null = null;
+  for (const title of titles) {
+    if (title.isEarned(state)) {
+      current = title;
+    } else if (!next) {
+      next = title;
+    }
+  }
+  return { current, next };
+}
+
 export function getQuestStatuses(state: GameState, context: QuestContext): QuestStatus[] {
   return quests.map((quest) => ({
     ...quest,

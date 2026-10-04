@@ -464,6 +464,17 @@ await scenario('府中事件二选一', async () => {
   await cash.context().close();
 });
 
+await scenario('称号', async () => {
+  const fresh = await open(save({ homeLevel: 1, battleWins: 0, ownedPartnerIds: [] }));
+  const hud = await fresh.locator('.home-hud').innerText();
+  check('开局称号为白身并提示下一称号', hud.includes('「白身」') && (await fresh.locator('.honor-hint').innerText()).includes('乡绅'));
+  await fresh.context().close();
+  const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1 }));
+  const hud2 = await vet.locator('.home-hud').innerText();
+  check('按最后达成的称号显示并提示最近未达成的', hud2.includes('「一代枭雄」') && (await vet.locator('.honor-hint').innerText()).includes('朝堂新贵'));
+  await vet.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

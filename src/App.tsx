@@ -292,6 +292,7 @@ export function App() {
           farmIncome={game.currentFarm.dailyIncome}
           recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
+          titleStatus={game.titleStatus}
           onCollectIncome={game.collectIncome}
           onResolveChoice={(optionId) => {
             game.resolveChoice(optionId);

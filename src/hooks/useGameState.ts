@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
-import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
+import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
@@ -402,6 +402,7 @@ export function useGameState() {
   const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners) : 0;
   const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
+  const titleStatus = useMemo(() => getTitleStatus(state), [state]);
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
@@ -474,6 +475,7 @@ export function useGameState() {
     recruitDiscount,
     recruitCostFor,
     questStatuses,
+    titleStatus,
     hasSave: Boolean(state.selectedLordId),
     setScreen: (screen: Screen) => dispatch({ type: 'setScreen', screen }),
     selectLord: (lordId: string) => dispatch({ type: 'selectLord', lordId }),

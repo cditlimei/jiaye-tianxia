@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { GameState } from '../types';
+import { getTitleStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { GameButton } from './common/GameButton';
 
@@ -26,7 +27,7 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
       <p className="title-screen__subtitle">选定主公，经营家业，招募伴侣，配备兵器，于乱世中成就一方门阀霸业。</p>
       {hasSave ? (
         <div className="title-screen__save">
-          <span>{lordName ?? '旧主'}</span>
+          <span>{lordName ?? '旧主'} · 「{getTitleStatus(state).current.name}」</span>
           <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
         </div>
       ) : (
