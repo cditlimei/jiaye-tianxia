@@ -207,7 +207,7 @@ export function HomeScreen({
           处理政务 · +{dailyIncome.toLocaleString()}金
         </GameButton>
         <GameButton onClick={handleUpgrade} disabled={!canUpgrade}>
-          {nextHome ? `升级宅邸 · ${nextHome.upgradeCost.toLocaleString()}金` : '宅邸已满'}
+          {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金</small></>) : '宅邸已满'}
         </GameButton>
         <GameButton variant="secondary" onClick={onOpenPartner}>
           招募伴侣

@@ -4087,6 +4087,15 @@ body {
   line-height: 1.4;
 }
 
-.succession-panel .game-button {
-  color: #241303;
+.settings-panel .game-button span {
+  display: inline;
+  color: inherit;
+}
+
+.game-button__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
 }
