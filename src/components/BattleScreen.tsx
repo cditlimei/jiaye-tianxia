@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
+import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, estimateWinRate, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidRemainingMs } from '../lib/frontier';
@@ -426,7 +427,7 @@ export function BattleScreen({
           <section className="venue-panel" aria-label={`${wording.title}说明`}>
             <div className="section-title">
               <span>{wording.region} · {wording.title} · {mode === 'naval' || mode === 'court' ? `${wording.statLabel}实力 ${attackPower}（${wording.statLabel} ${attackPower - homeLevel * 5} + 宅邸 ${homeLevel * 5}）` : `当前${wording.statLabel} ${attackPower}`}</span>
-              <strong>{modeLocked ? '尚未开放' : enemy.name}</strong>
+              {(modeLocked || mode === 'frontier') && <strong>{modeLocked ? '尚未开放' : enemy.name}</strong>}
             </div>
             {!modeLocked && mode !== 'frontier' && (
               <div className="venue-grid tier-grid" aria-label="选择对手">
@@ -444,6 +445,7 @@ export function BattleScreen({
                       disabled={hopeless}
                       onClick={() => setTierByMode((prev) => ({ ...prev, [mode]: index }))}
                     >
+                      <ImageWithFallback src={imageUrl(enemyImagePath(tier), 160)} alt={tier.name} className="tier-card__avatar" />
                       <strong>{tier.name}{recommended ? ' · 推荐' : ''}</strong>
                       <span>胜率约 {Math.round(odds * 20) * 5}%</span>
                       <em>{unaffordable ? `败损 ${tierLoss.toLocaleString()} 金，金币不足` : hopeless ? '力不能及' : `缴获 ${tier.rewardGold.toLocaleString()} 金`}</em>
@@ -503,7 +505,7 @@ export function BattleScreen({
       <section className="battle-arena">
         <BattleFighter name={lord.name} title={mode === 'land' ? weapon.name : `${wording.statLabel} ${attackPower}`} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
         <div className="battle-vs">VS</div>
-        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(wording.background ?? 'assets/ui/ui_entrance_effect.png', 256)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
+        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(enemyImagePath(enemy), 320)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
       </section>
 
       <section className="battle-info">

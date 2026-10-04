@@ -56,6 +56,11 @@ export interface Enemy {
   description: string;
 }
 
+/** 敌将立绘按 id 约定路径 */
+export function enemyImagePath(enemy: Pick<Enemy, 'id'>) {
+  return `assets/enemies/enemy_${enemy.id}.png`;
+}
+
 export const CAMP_META: Record<Camp, { name: string; color: string; softColor: string }> = {
   wei: { name: '魏', color: '#6EA7D8', softColor: 'rgba(110, 167, 216, 0.16)' },
   shu: { name: '蜀', color: '#4DBB7D', softColor: 'rgba(77, 187, 125, 0.16)' },

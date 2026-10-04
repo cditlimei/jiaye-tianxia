@@ -4356,3 +4356,35 @@ small.stat-legend {
   display: block;
   font-size: 13px;
 }
+
+.tier-card {
+  position: relative;
+  padding-left: 52px;
+}
+
+.tier-card__avatar {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 38px;
+  height: 46px;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 168, 67, 0.4);
+  transform: translateY(-50%);
+}
+
+.tier-card.is-hopeless .tier-card__avatar {
+  filter: grayscale(0.8);
+}
+
+.venue-grid.tier-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tier-card strong,
+.tier-card span,
+.tier-card em {
+  white-space: nowrap;
+}

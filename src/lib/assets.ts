@@ -1,5 +1,5 @@
 export const RAW_BASE = 'https://raw.githubusercontent.com/cditlimei/jiaye-tianxia/main';
-const OPTIMIZED_ASSET_VERSION = '20261004a';
+const OPTIMIZED_ASSET_VERSION = '20261004b';
 
 interface OptimizedImageConfig {
   prefix: string;
@@ -10,6 +10,7 @@ interface OptimizedImageConfig {
 
 const OPTIMIZED_IMAGE_CONFIGS: OptimizedImageConfig[] = [
   { prefix: 'assets/lords/', folder: 'lords', extension: 'jpg', widths: [160, 320, 640] },
+  { prefix: 'assets/enemies/', folder: 'enemies', extension: 'jpg', widths: [160, 320] },
   { prefix: 'assets/partners/', folder: 'partners', extension: 'jpg', widths: [320, 640] },
   { prefix: 'assets/homes/', folder: 'homes', extension: 'jpg', widths: [640, 960] },
   { prefix: 'assets/weapons/', folder: 'weapons', extension: 'png', widths: [256, 512] },

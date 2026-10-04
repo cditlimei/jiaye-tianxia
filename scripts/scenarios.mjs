@@ -187,6 +187,8 @@ await scenario('选择对手', async () => {
   const texts = await cards.allInnerTexts();
   const odds = texts.map((t) => Number(t.match(/胜率约 (\d+)%/)?.[1] ?? -1));
   check('对手列表显示六档与胜率', texts.length === 6 && odds.every((o) => o >= 0), odds.join('/'));
+  const avatars = await page.locator('.tier-card__avatar').evaluateAll((els) => els.map((e) => e.tagName === 'IMG' && e.naturalWidth > 0));
+  check('对手卡片带立绘头像', avatars.length === 6 && avatars.every(Boolean), JSON.stringify(avatars));
   const recommended = texts.findIndex((t) => t.includes('推荐'));
   check('推荐档是不高于战力的最强档且胜率 60%+', recommended === 1 && odds[1] >= 60, `推荐=${texts[recommended]?.split('\n')[0]} 胜率 ${odds[1]}%`);
   check('更弱档胜率更高、更强档胜率更低且有梯度', odds[0] >= odds[1] && odds[2] < odds[1] && odds[2] >= 20 && odds[3] < odds[2], odds.join('/'));
