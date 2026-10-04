@@ -16,7 +16,7 @@ export interface GameState {
   navalWins: number;
   courtWins: number;
   frontierWins: number;
-  frontierRaid: { startDay: number; dueDay: number } | null;
+  frontierRaid: { startDay: number; startedAt: number; dueAt: number } | null;
   nextRaidDay: number;
   soundEnabled: boolean;
   tutorialDone: boolean;

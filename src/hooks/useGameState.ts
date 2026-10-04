@@ -19,7 +19,7 @@ type Action =
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'buyWeapon'; weaponId: string; price: number }
-  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode }
+  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode; retreat?: boolean }
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
@@ -184,9 +184,10 @@ function reducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     case 'recordBattle': {
-      // 北疆：胜则边患解除并排下一次；败则视为失守，立刻扣金
-      const frontierPenalty = action.mode === 'frontier' && !action.win && state.frontierRaid ? raidPenalty(state.gold) : 0;
-      const frontierPatch = action.mode === 'frontier' && state.frontierRaid
+      // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
+      const frontierSettled = action.mode === 'frontier' && !action.retreat;
+      const frontierPenalty = frontierSettled && !action.win && state.frontierRaid ? raidPenalty(state.gold) : 0;
+      const frontierPatch = frontierSettled
         ? { frontierRaid: null, nextRaidDay: state.day + RAID_INTERVAL_DAYS, frontierWins: action.win ? state.frontierWins + 1 : state.frontierWins }
         : {};
       return {
@@ -201,11 +202,11 @@ function reducer(state: GameState, action: Action): GameState {
           {
             id: `battle-${Date.now()}`,
             day: state.day,
-            title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : action.mode === 'frontier' ? '边患失守' : '整军再战',
+            title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '边患失守' : '整军再战',
             detail: action.win
               ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${action.rewardGold.toLocaleString()} 金。`
-              : action.mode === 'frontier' ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : '此战未竟，需回府整顿。',
-            goldDelta: action.win ? action.rewardGold : undefined
+              : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : '此战未竟，需回府整顿。',
+            goldDelta: action.win ? action.rewardGold : frontierPenalty > 0 ? -frontierPenalty : undefined,
           },
           ...state.eventLog
         ].slice(0, 18)
@@ -416,7 +417,7 @@ export function useGameState() {
     buyWeapon,
     upgradeFarm,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
-    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land') => dispatch({ type: 'recordBattle', win, rewardGold, mode }),
+    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),

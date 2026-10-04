@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { weaponBonusForLord } from '../lib/battle';
+import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -83,8 +84,15 @@ export function HomeScreen({
     const ready = questStatuses.filter((quest) => quest.complete && !quest.claimed);
     const active = questStatuses.filter((quest) => !quest.claimed && !ready.includes(quest));
     const claimed = questStatuses.filter((quest) => quest.claimed);
-    return [...ready, ...active, ...claimed].slice(0, 3);
+    return [...ready, ...active, ...claimed].slice(0, 4);
   }, [questStatuses]);
+
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!state.frontierRaid) return undefined;
+    const timer = window.setInterval(() => setClock(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, [state.frontierRaid]);
 
   const handleCollectIncome = () => {
     const amount = onCollectIncome();
@@ -135,7 +143,7 @@ export function HomeScreen({
 
       {state.frontierRaid && (
         <p className="frontier-alert" role="status">
-          北疆边患！第 {state.frontierRaid.dueDay} 日前出征北疆迎战，否则边郡失守、损失 5% 金币。
+          北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金币。
         </p>
       )}
 
@@ -261,7 +269,7 @@ export function HomeScreen({
             state.eventLog.slice(0, 4).map((event) => (
               <article key={event.id}>
                 <span>第{event.day}天 · {event.title}</span>
-                <p>{event.detail}{event.goldDelta ? ` +${event.goldDelta.toLocaleString()}金` : ''}</p>
+                <p>{event.detail}{event.goldDelta ? ` ${event.goldDelta > 0 ? '+' : '−'}${Math.abs(event.goldDelta).toLocaleString()}金` : ''}</p>
               </article>
             ))
           )}

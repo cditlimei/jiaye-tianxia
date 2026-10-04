@@ -368,7 +368,8 @@ export interface FarmLevel {
   description: string;
 }
 
-// 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入；各级约 13 个游玩日回本
+// 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入（dailyIncome 为该级总额）。
+// 按每日 15 次政务算边际回本：1 级约 13 日，2~5 级各约 21~23 日
 export const farmLevels: FarmLevel[] = [
   { level: 0, name: '荒地', cost: 0, dailyIncome: 0, description: '蜀地山间尚是一片荒坡。' },
   { level: 1, name: '开荒', cost: 3000, dailyIncome: 15, description: '垦出第一块田，种下稻谷。' },

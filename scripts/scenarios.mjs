@@ -286,7 +286,8 @@ await scenario('北疆边患', async () => {
   await start.getByRole('button', { name: /处理政务/ }).click();
   await start.waitForTimeout(500);
   let s = await read(start);
-  check('第 10 日起边患并记录到期日', s.frontierRaid?.startDay === 10 && s.frontierRaid?.dueDay === 13, JSON.stringify(s.frontierRaid));
+  const win24 = s.frontierRaid ? s.frontierRaid.dueAt - s.frontierRaid.startedAt : 0;
+  check('第 10 日起边患并给 24 小时窗口', s.frontierRaid?.startDay === 10 && win24 === 24 * 3600 * 1000, JSON.stringify(s.frontierRaid));
   check('主城显示边患提醒', await start.locator('.frontier-alert').isVisible());
   await start.getByRole('button', { name: '出征讨伐' }).click();
   await start.getByText('九州征途').first().waitFor();
@@ -294,12 +295,22 @@ await scenario('北疆边患', async () => {
   await start.context().close();
 
   // 逾期不管：下一次处理政务扣 5%（封顶 5000）
-  const ignore = await open(save({ homeLevel: 4, day: 13, gold: 40000, frontierRaid: { startDay: 10, dueDay: 13 }, nextRaidDay: 10 }));
-  await ignore.getByRole('button', { name: /处理政务/ }).click();
+  const ignore = await open(save({ homeLevel: 4, day: 13, gold: 40000, frontierRaid: { startDay: 10, startedAt: Date.now() - 25 * 3600 * 1000, dueAt: Date.now() - 3600 * 1000 }, nextRaidDay: 10 }));
   await ignore.waitForTimeout(500);
   s = await read(ignore);
-  const incomeGain = s.gold - (40000 - 2000);
-  check('逾期失守扣 5% 并解除边患', s.frontierRaid === null && incomeGain > 0 && incomeGain < 2000 && s.nextRaidDay === 24, `gold=${s.gold} next=${s.nextRaidDay}`);
+  check('读档时逾期边患直接失守扣 5%', s.frontierRaid === null && s.gold === 38000 && s.nextRaidDay === 23 && s.eventLog[0]?.title === '边患失守', `gold=${s.gold} next=${s.nextRaidDay}`);
+
+  // 连点政务烧不掉窗口；离线 20 分钟也不会起新边患
+  const burn = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, gold: 40000 }));
+  for (let i = 0; i < 6; i++) { await burn.getByRole('button', { name: /处理政务/ }).click(); await burn.waitForTimeout(120); }
+  s = await read(burn);
+  check('连续处理政务不会让边患逾期', s.frontierRaid !== null && s.gold > 40000, `day=${s.day} raid=${Boolean(s.frontierRaid)}`);
+  await burn.context().close();
+  const offline = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, lastSavedAt: Date.now() - 20 * 60 * 1000 }));
+  await offline.waitForTimeout(500);
+  s = await read(offline);
+  check('离线期间不起新边患也不扣金', s.frontierRaid === null && s.day === 249 && !s.eventLog.some((e) => e.title === '边患失守'));
+  await offline.context().close();
   await ignore.context().close();
 
   // 无边患时不能出关
@@ -310,8 +321,22 @@ await scenario('北疆边患', async () => {
   check('边境安宁时出关按钮禁用', await calm.getByRole('button', { name: '出关迎战' }).isDisabled());
   await calm.context().close();
 
+  // 退守关内：不扣金、边患保留
+  const retreat = await open(save({ homeLevel: 4, day: 11, gold: 20000, frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10 }));
+  await retreat.getByRole('button', { name: '出征讨伐' }).click();
+  await retreat.getByText('九州征途').first().waitFor();
+  await retreat.getByRole('button', { name: /北疆/ }).click();
+  await retreat.getByRole('button', { name: '出关迎战' }).click();
+  await retreat.getByRole('button', { name: '退守关内' }).waitFor();
+  await retreat.waitForTimeout(4500);
+  await retreat.getByRole('button', { name: '退守关内' }).click();
+  await retreat.waitForTimeout(500);
+  s = await read(retreat);
+  check('退守关内不扣金且边患保留', s.gold === 20000 && s.frontierRaid !== null && s.battleLosses === 1, `gold=${s.gold} raid=${Boolean(s.frontierRaid)}`);
+  await retreat.context().close();
+
   // 迎战：胜则缴获 + 靖边 +1 + 解除；败则扣 5% + 解除
-  const fight = await open(save({ homeLevel: 4, day: 11, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], frontierRaid: { startDay: 10, dueDay: 13 }, nextRaidDay: 10,
+  const fight = await open(save({ homeLevel: 4, day: 11, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10,
     claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third', 'first-win'] }));
   await fight.getByRole('button', { name: '出征讨伐' }).click();
   await fight.getByText('九州征途').first().waitFor();

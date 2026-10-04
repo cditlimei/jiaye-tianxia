@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { COURT_UNLOCK_HOME_LEVEL, matchCourtEnemy, matchEnemy, matchFrontierEnemy, matchNavalEnemy, NAVAL_UNLOCK_HOME_LEVEL, rollDamage } from '../lib/battle';
-import { FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE } from '../lib/frontier';
+import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidRemainingMs } from '../lib/frontier';
 import type { BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
@@ -17,13 +17,13 @@ interface BattleScreenProps {
   courtPower: number;
   homeLevel: number;
   farm: { current: FarmLevel; next: FarmLevel | null; gold: number };
-  frontier: { raid: { startDay: number; dueDay: number } | null; nextRaidDay: number; day: number };
+  frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
   wins: number;
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number, mode: BattleMode) => void;
+  onResolved: (win: boolean, rewardGold: number, mode: BattleMode, retreat?: boolean) => void;
   onReturnHome: () => void;
 }
 
@@ -117,7 +117,7 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
   },
   frontier: {
     region: '北疆', title: '边患', statLabel: '战力', unlockHomeLevel: FRONTIER_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '出关迎战', background: 'assets/ui/ui_frontier_battle.png',
-    summary: '边患每 10 日一起，须在 3 日内出关迎战（比武力），缴获为陆战两倍；不管或战败则边郡失守，损失 5% 金币',
+    summary: '边患每 10 日一起，须在 24 小时内出关迎战（比武力），缴获为陆战两倍；不管或战败则边郡失守，损失 5% 金币',
     eyebrow: '北疆边患', intro: '点兵出关', fighting: '鏖战边塞', attack: '冲阵', crit: '箭雨', counter: '胡骑回冲', counterCrit: '铁骑合围',
     win: '靖边得胜', loss: '边郡失守', enemyBroken: '溃散北遁', exhausted: '力竭退守关内', retreat: '退守关内',
     scoutReport: (enemy) => `烽燧急报：${enemy}已过长城。`, departure: (lord, weapon) => `${lord}提${weapon}点兵出关。`, battleStart: (weapon) => `${weapon}寒光一闪，边塞之战开始。`
@@ -285,7 +285,7 @@ export function BattleScreen({
 
     if (!settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0, mode);
+      onResolved(false, 0, mode, true);
     }
     setRuntime((prev) => ({
       ...prev,
@@ -424,7 +424,7 @@ export function BattleScreen({
                 ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
                 : mode === 'frontier'
                   ? frontier.raid
-                    ? `胡骑犯边！须在第 ${frontier.raid.dueDay} 日前出关迎战，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
+                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
                     : `边境安宁，下次边患约在第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日。${wording.summary}。`
                   : `${wording.summary}，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金。`}
             </p>

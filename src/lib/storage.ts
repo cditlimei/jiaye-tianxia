@@ -2,7 +2,7 @@ import type { GameState, Screen } from '../types';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { getDailyEvent, quests } from '../data/progression';
 import { calculateIntelligence, effectiveDailyIncome } from '../lib/battle';
-import { advanceFrontier, RAID_INTERVAL_DAYS } from '../lib/frontier';
+import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -49,7 +49,7 @@ export function loadGameState(): GameState {
   try {
     const parsed = JSON.parse(raw) as Partial<GameState>;
     const restored = normalizeGameState(parsed);
-    return applyOfflineIncome(restored);
+    return settleExpiredRaid(applyOfflineIncome(restored));
   } catch {
     return defaultGameState;
   }
@@ -192,7 +192,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     frontierRaid: sanitizeRaid(parsed.frontierRaid),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
-      ? Math.floor(parsed.nextRaidDay)
+      ? Math.max(1, Math.floor(parsed.nextRaidDay))
       : sanitizeNumber(parsed.day, 1, 1) + RAID_INTERVAL_DAYS,
     soundEnabled: typeof parsed.soundEnabled === 'boolean' ? parsed.soundEnabled : true,
     tutorialDone: Boolean(parsed.tutorialDone),
@@ -204,9 +204,14 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
 
 function sanitizeRaid(value: unknown): GameState['frontierRaid'] {
   if (!value || typeof value !== 'object') return null;
-  const raid = value as { startDay?: unknown; dueDay?: unknown };
-  if (typeof raid.startDay !== 'number' || typeof raid.dueDay !== 'number' || !Number.isFinite(raid.startDay) || !Number.isFinite(raid.dueDay)) return null;
-  return { startDay: Math.floor(raid.startDay), dueDay: Math.floor(raid.dueDay) };
+  const raid = value as { startDay?: unknown; startedAt?: unknown; dueAt?: unknown };
+  if (typeof raid.startDay !== 'number' || !Number.isFinite(raid.startDay)) return null;
+  const now = Date.now();
+  // 早期版本只记游戏日，没有真实时间：从现在起重新给 24 小时
+  const startedAt = typeof raid.startedAt === 'number' && Number.isFinite(raid.startedAt) ? raid.startedAt : now;
+  const dueAt = typeof raid.dueAt === 'number' && Number.isFinite(raid.dueAt) ? raid.dueAt : now + RAID_WINDOW_MS;
+  if (dueAt < startedAt) return null;
+  return { startDay: Math.max(1, Math.floor(raid.startDay)), startedAt, dueAt };
 }
 
 function sanitizeNumber(value: unknown, fallback: number, min: number) {
@@ -249,6 +254,21 @@ function sanitizeEventLog(value: unknown) {
     .slice(0, MAX_EVENT_LOG);
 }
 
+/** 关着页面时边患到期：读档即失守扣金一次（离线不会起新边患） */
+function settleExpiredRaid(state: GameState): GameState {
+  const step = expireFrontier(state, state.day);
+  if (!step.event) {
+    return state;
+  }
+  return {
+    ...state,
+    gold: state.gold + step.goldDelta,
+    frontierRaid: step.frontierRaid,
+    nextRaidDay: step.nextRaidDay,
+    eventLog: [step.event, ...state.eventLog].slice(0, MAX_EVENT_LOG)
+  };
+}
+
 function applyOfflineIncome(state: GameState): GameState {
   if (!state.selectedLordId) {
     return state;
@@ -272,45 +292,27 @@ function applyOfflineIncome(state: GameState): GameState {
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
   let eventGold = 0;
   let eventCount = 0;
-  let gold = state.gold;
-  let frontierRaid = state.frontierRaid;
-  let nextRaidDay = state.nextRaidDay;
-  let raidsLost = 0;
-  let raidLoss = 0;
   for (let day = state.day + 1; day <= state.day + ticks; day += 1) {
     const dailyEvent = getDailyEvent(day, dailyIncome);
     if (dailyEvent) {
       eventGold += dailyEvent.goldDelta;
       eventCount += 1;
     }
-    gold += dailyIncome + (dailyEvent?.goldDelta ?? 0);
-    // 离线期间同样会起边患；无人迎战即失守
-    const frontier = advanceFrontier({ gold, homeLevel: state.homeLevel, frontierRaid, nextRaidDay }, day);
-    frontierRaid = frontier.frontierRaid;
-    nextRaidDay = frontier.nextRaidDay;
-    if (frontier.goldDelta < 0) {
-      raidsLost += 1;
-      raidLoss += -frontier.goldDelta;
-      gold += frontier.goldDelta;
-    }
   }
   const offlineGold = ticks * dailyIncome + eventGold;
-  const raidNote = raidsLost > 0 ? `北疆边患 ${raidsLost} 次无人迎战，失守损失 ${raidLoss.toLocaleString()} 金。` : '';
   return {
     ...state,
-    gold,
+    gold: state.gold + offlineGold,
     day: state.day + ticks,
-    frontierRaid,
-    nextRaidDay,
     eventLog: [
       {
         id: `offline-${Date.now()}`,
         day: state.day + ticks,
         title: '离线经营',
-        detail: (eventCount > 0
+        detail: eventCount > 0
           ? `离开期间宅邸照常运转，折算 ${ticks} 天收益，另有 ${eventCount} 桩府中喜事。`
-          : `离开期间宅邸照常运转，折算 ${ticks} 天收益。`) + raidNote,
-        goldDelta: offlineGold - raidLoss
+          : `离开期间宅邸照常运转，折算 ${ticks} 天收益。`,
+        goldDelta: offlineGold
       },
       ...state.eventLog
     ].slice(0, MAX_EVENT_LOG),
