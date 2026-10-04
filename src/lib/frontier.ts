@@ -34,6 +34,7 @@ export function formatRemaining(ms: number) {
   const totalMinutes = Math.ceil(ms / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
+  if (hours >= 2) return `约 ${hours} 小时`;
   return hours > 0 ? `${hours} 小时${minutes > 0 ? ` ${minutes} 分` : ''}` : `${Math.max(1, minutes)} 分钟`;
 }
 

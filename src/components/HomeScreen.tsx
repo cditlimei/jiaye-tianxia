@@ -36,7 +36,7 @@ interface HomeScreenProps {
   onOpenSettings: () => void;
   onOpenLord: () => void;
   onIncomeSfx: () => void;
-  onUpgradeEffect: () => void;
+  onUpgradeEffect: (imagePath: string, name: string) => void;
   questStatuses: QuestStatus[];
   titleStatus: { current: { name: string }; next: { name: string; requirement: string } | null };
 }
@@ -113,6 +113,7 @@ export function HomeScreen({
   }, [questStatuses]);
 
   const choiceRef = useRef<HTMLElement | null>(null);
+  const actionRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (state.pendingChoice) choiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [state.pendingChoice]);
@@ -133,8 +134,9 @@ export function HomeScreen({
   };
 
   const handleUpgrade = () => {
-    if (onUpgrade()) {
-      onUpgradeEffect();
+    const target = nextHome;
+    if (onUpgrade() && target) {
+      onUpgradeEffect(target.imagePath, target.name);
     }
   };
 
@@ -213,7 +215,10 @@ export function HomeScreen({
               </span>
             ))}
           </div>
-          <button onClick={onCompleteTutorial}>跳过引导</button>
+          <div className="starter-actions">
+            <button type="button" className="starter-go" onClick={() => actionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>去做这一步 ↓</button>
+            <button type="button" onClick={onCompleteTutorial}>跳过引导</button>
+          </div>
         </section>
       )}
 
@@ -250,7 +255,7 @@ export function HomeScreen({
         </div>
       </section>
 
-      <section className="action-grid">
+      <section className="action-grid" ref={actionRef}>
         <GameButton onClick={handleCollectIncome} className={guided('income')} disabled={Boolean(state.pendingChoice)}>
           {state.pendingChoice ? '先决断上方事件' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
         </GameButton>

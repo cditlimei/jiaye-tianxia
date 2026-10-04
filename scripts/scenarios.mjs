@@ -580,6 +580,44 @@ await scenario('竖屏两行手牌', async () => {
   await page.context().close();
 });
 
+await scenario('战斗加速与押注上限', async () => {
+  // 金 500：败损 800 的档位不可选
+  const poor = await open(save({ gold: 500, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
+  await poor.getByRole('button', { name: '出征讨伐' }).click();
+  await poor.getByText('九州征途').first().waitFor();
+  await poor.getByRole('button', { name: /官道/ }).click();
+  const cap = poor.locator('.tier-card').filter({ hasText: '金币不足' });
+  check('败损超过身家的档位禁用并说明', (await cap.count()) >= 1 && (await cap.first().isDisabled()));
+  await poor.context().close();
+  // 直接结算：几秒内出结果
+  const page = await open(save({ gold: 5000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByText('九州征途').first().waitFor();
+  await page.getByRole('button', { name: /官道/ }).click();
+  await page.getByRole('button', { name: '出征讨伐', exact: true }).click();
+  await page.getByRole('button', { name: '直接结算' }).waitFor({ timeout: 15000 });
+  const t0 = Date.now();
+  await page.getByRole('button', { name: '直接结算' }).click();
+  await page.getByText(/讨伐得胜|败退整军/).first().waitFor({ timeout: 5000 });
+  check('直接结算立刻出结果', Date.now() - t0 < 3000 && (await page.locator('.battle-info').innerText()).includes('本战金币'));
+  await page.context().close();
+});
+
+await scenario('离线保留事件与升阶画面', async () => {
+  // 离线 12 天经过第 10 日：商旅归附保留待决断
+  const page = await open(save({ day: 3, gold: 5000, lastSavedAt: Date.now() - 12.5 * 3600 * 1000 }));
+  await page.waitForTimeout(500);
+  const s = await read(page);
+  check('离线期间最近一桩二选一留给玩家', s.day === 15 && s.pendingChoice?.day === 15 && (await page.locator('.choice-card').isVisible()), `day=${s.day} pending=${JSON.stringify(s.pendingChoice)}`);
+  await page.context().close();
+  // 升级宅邸的特效是宅邸图片，不是视频
+  const up = await open(save({ gold: 5000, homeLevel: 1 }));
+  await up.getByRole('button', { name: /升级宅邸/ }).click();
+  await up.waitForTimeout(400);
+  check('升阶特效展示新宅邸图', (await up.locator('.effect-overlay__image').count()) === 1 && (await up.locator('.effect-overlay video').count()) === 0);
+  await up.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
@@ -590,6 +628,12 @@ await scenario('斗地主', async () => {
   // 对手座位显示性格标签，且两局对手不同
   const names1 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
   const g0 = (await read(page)).gold;
+  let accept = false;
+  page.on('dialog', (d) => (accept ? d.accept() : d.dismiss()));
+  await page.getByRole('button', { name: /^认输/ }).click();
+  await page.waitForTimeout(300);
+  check('认输先弹确认，取消则留在牌局', (await page.getByText('斗地主牌局').first().isVisible()) && (await read(page)).gold === g0);
+  accept = true;
   await page.getByRole('button', { name: /^认输/ }).click();
   await page.getByText('主城经营').first().waitFor();
   check('认输记一负并折损 20% 缴获', (await read(page)).battleLosses === 1 && g0 - (await read(page)).gold === 300, `Δ=${g0 - (await read(page)).gold}`);

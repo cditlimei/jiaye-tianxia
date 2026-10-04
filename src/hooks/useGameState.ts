@@ -88,6 +88,7 @@ function reducer(state: GameState, action: Action): GameState {
         ? Math.round(action.amount * (1 + state.incomeBuff.percent / 100))
         : action.amount;
       const incomeBuff = state.incomeBuff && nextDay <= state.incomeBuff.untilDay ? state.incomeBuff : null;
+      const buffExpired = Boolean(state.incomeBuff) && !incomeBuff;
       const calendarChoice = getChoiceEvent(nextDay, action.amount);
       // 伴侣心事日：轮到一位还没了却心事的伴侣（没有待决事件时才起）
       const partnerDue = !calendarChoice && !state.pendingChoice && isPartnerEventDay(nextDay) ? nextPartnerForEvent(state.ownedPartnerIds, state.resolvedPartnerEvents) : null;
@@ -102,6 +103,7 @@ function reducer(state: GameState, action: Action): GameState {
       const eventLog = [
         ...(frontier.event ? [frontier.event] : []),
         ...(choice ? [{ id: `choice-${nextDay}`, day: nextDay, title: choice.title, detail: `${choice.prompt} 请在主城决断。` }] : []),
+        ...(buffExpired ? [{ id: `buff-end-${nextDay}`, day: nextDay, title: '减税招商到期', detail: '十日之期已满，政务收入恢复常例。' }] : []),
         ...(staleChoice && staleChoice.id.startsWith('partner:') ? [{ id: `choice-skip-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（搁置）`, detail: '心事未及回应，她不再提起。' }] : []),
         ...(staleChoice ? [{ id: `choice-auto-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（自动）`, detail: '未及决断，按现钱入账。', goldDelta: staleGold }] : []),
         ...(dailyEvent
@@ -441,8 +443,8 @@ export function useGameState() {
 
   const collectIncome = useCallback(() => {
     dispatch({ type: 'collectIncome', amount: dailyIncome });
-    return dailyIncome;
-  }, [dailyIncome]);
+    return displayedIncome;
+  }, [dailyIncome, displayedIncome]);
 
   const upgradeHome = useCallback(() => {
     if (!nextHome || state.gold < nextHome.upgradeCost) {

@@ -340,6 +340,7 @@ function applyOfflineIncome(state: GameState): GameState {
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
   let eventGold = 0;
   let eventCount = 0;
+  let lastChoiceDay: number | null = null;
   for (let day = state.day + 1; day <= state.day + ticks; day += 1) {
     const dailyEvent = getDailyEvent(day, dailyIncome);
     if (dailyEvent) {
@@ -348,22 +349,32 @@ function applyOfflineIncome(state: GameState): GameState {
     }
     const choice = getChoiceEvent(day, dailyIncome);
     if (choice) {
+      lastChoiceDay = day;
       eventGold += choiceGoldValue(choice, dailyIncome);
       eventCount += 1;
     }
+  }
+  // 离线期间最近的一桩二选一留给玩家回来决断（已有待决事件时不覆盖），其余按现钱入账
+  let pendingChoice = state.pendingChoice;
+  if (lastChoiceDay !== null && !state.pendingChoice) {
+    const kept = getChoiceEvent(lastChoiceDay, dailyIncome)!;
+    eventGold -= choiceGoldValue(kept, dailyIncome);
+    eventCount -= 1;
+    pendingChoice = { eventId: kept.id, day: lastChoiceDay, dailyIncome };
   }
   const offlineGold = ticks * dailyIncome + eventGold;
   return {
     ...state,
     gold: state.gold + offlineGold,
     day: state.day + ticks,
+    pendingChoice,
     eventLog: [
       {
         id: `offline-${Date.now()}`,
         day: state.day + ticks,
         title: '离线经营',
         detail: eventCount > 0
-          ? `离开期间宅邸照常运转，折算 ${ticks} 天收益，另有 ${eventCount} 桩府中喜事。`
+          ? `离开期间宅邸照常运转，折算 ${ticks} 天收益，另有 ${eventCount} 桩府中喜事${pendingChoice && pendingChoice !== state.pendingChoice ? '；最近一桩尚待主公决断' : ''}。`
           : `离开期间宅邸照常运转，折算 ${ticks} 天收益。`,
         goldDelta: offlineGold
       },

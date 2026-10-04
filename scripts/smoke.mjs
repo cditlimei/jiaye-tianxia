@@ -9,6 +9,7 @@ const context = await browser.newContext({
   colorScheme: 'dark'
 });
 const page = await context.newPage();
+page.on('dialog', (dialog) => dialog.accept());
 const imageRequests = [];
 page.on('request', (request) => {
   if (request.resourceType() === 'image') {

@@ -194,6 +194,9 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
   };
 
   const leaveTable = () => {
+    if (table.winner === null && !window.confirm(`认输将损失 ${lossGold.toLocaleString()} 金，确定回府？`)) {
+      return;
+    }
     if (table.winner === null && !settledRef.current) {
       settledRef.current = true;
       onResolved(false, 0, lossGold);

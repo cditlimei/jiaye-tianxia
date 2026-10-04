@@ -1,14 +1,17 @@
 import { useCallback, useRef, useState } from 'react';
-import { mediaUrl } from '../lib/assets';
+import { imageUrl, mediaUrl } from '../lib/assets';
 
 export interface EffectOverlayState {
   src: string;
+  image?: string;
   poster?: string;
   title: string;
 }
 
 interface PlayEffectOptions {
   videoPath: string;
+  /** 不放视频、只展示一张图时填这个 */
+  imagePath?: string;
   posterPath?: string;
   title: string;
   fallbackMs?: number;
@@ -33,7 +36,7 @@ export function useEffectOverlay() {
 
   const playEffect = useCallback(
     (options: PlayEffectOptions) => {
-      if (!options.videoPath) {
+      if (!options.videoPath && !options.imagePath) {
         return Promise.resolve();
       }
 
@@ -46,7 +49,8 @@ export function useEffectOverlay() {
       return new Promise<void>((resolve) => {
         resolverRef.current = resolve;
         setOverlay({
-          src: mediaUrl(options.videoPath),
+          src: options.videoPath ? mediaUrl(options.videoPath) : '',
+          image: options.imagePath ? imageUrl(options.imagePath, 640) : undefined,
           poster: options.posterPath ? mediaUrl(options.posterPath) : undefined,
           title: options.title
         });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, estimateWinRate, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
@@ -226,55 +226,54 @@ export function BattleScreen({
     };
   }, [doudizhuOpen, lord.name, mapOpen, onPlayEffect, onSfx, weapon, wording]);
 
+  // 一回合的攻防；定时器与「直接结算」共用
+  const stepRound = useCallback((prev: BattleRuntime): BattleRuntime => {
+    if (prev.phase !== 'battle' || prev.result) {
+      return prev;
+    }
+    const playerCrit = Math.random() < PLAYER_CRIT_RATE;
+    const enemyCrit = Math.random() < ENEMY_CRIT_RATE;
+    const playerDamage = rollDamage(attackPower, enemy.power, playerCrit);
+    const nextEnemyHp = Math.max(0, prev.enemyHp - playerDamage);
+    let nextPlayerHp = prev.playerHp;
+    const round = prev.round + 1;
+    const logs = [`第${round}合：${lord.name}${playerCrit ? wording.crit : wording.attack}，造成 ${playerDamage} 伤害。`, ...prev.logs];
+
+    let result: BattleRuntime['result'] = null;
+    if (nextEnemyHp <= 0) {
+      result = 'win';
+      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${enemy.rewardGold} 金。`);
+    } else {
+      const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
+      nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
+      logs.unshift(`${enemy.name}${enemyCrit ? wording.counterCrit : wording.counter}，造成 ${enemyDamage} 伤害。`);
+      if (nextPlayerHp <= 0) {
+        result = 'loss';
+        logs.unshift(`${lord.name}${wording.exhausted}。`);
+      }
+    }
+    return { phase: result ? 'result' : 'battle', playerHp: nextPlayerHp, enemyHp: nextEnemyHp, round, logs: logs.slice(0, 12), result };
+  }, [attackPower, enemy, lord.name, wording]);
+
+  const [speed, setSpeed] = useState<1 | 2 | 4>(1);
   useEffect(() => {
     if (runtime.phase !== 'battle') {
       return;
     }
-
-    const timer = window.setInterval(() => {
-      setRuntime((prev) => {
-        if (prev.phase !== 'battle' || prev.result) {
-          return prev;
-        }
-
-        const playerCrit = Math.random() < PLAYER_CRIT_RATE;
-        const enemyCrit = Math.random() < ENEMY_CRIT_RATE;
-        const playerDamage = rollDamage(attackPower, enemy.power, playerCrit);
-        let nextEnemyHp = Math.max(0, prev.enemyHp - playerDamage);
-        let nextPlayerHp = prev.playerHp;
-        const round = prev.round + 1;
-        const logs = [
-          `第${round}合：${lord.name}${playerCrit ? wording.crit : wording.attack}，造成 ${playerDamage} 伤害。`,
-          ...prev.logs
-        ];
-
-        let result: BattleRuntime['result'] = null;
-        if (nextEnemyHp <= 0) {
-          result = 'win';
-          logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${enemy.rewardGold} 金。`);
-        } else {
-          const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
-          nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
-          logs.unshift(`${enemy.name}${enemyCrit ? wording.counterCrit : wording.counter}，造成 ${enemyDamage} 伤害。`);
-          if (nextPlayerHp <= 0) {
-            result = 'loss';
-            logs.unshift(`${lord.name}${wording.exhausted}。`);
-          }
-        }
-
-        return {
-          phase: result ? 'result' : 'battle',
-          playerHp: nextPlayerHp,
-          enemyHp: nextEnemyHp,
-          round,
-          logs: logs.slice(0, 12),
-          result
-        };
-      });
-    }, 800);
-
+    const timer = window.setInterval(() => setRuntime((prev) => stepRound(prev)), 800 / speed);
     return () => window.clearInterval(timer);
-  }, [attackPower, enemy, lord.name, runtime.phase, wording]);
+  }, [runtime.phase, speed, stepRound]);
+
+  // 直接结算：把剩余回合一口气算完
+  const finishInstantly = () => {
+    setRuntime((prev) => {
+      let next = prev;
+      for (let guard = 0; guard < 600 && next.phase === 'battle' && !next.result; guard += 1) {
+        next = stepRound(next);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!runtime.result || settledRef.current) {
@@ -433,7 +432,9 @@ export function BattleScreen({
               <div className="venue-grid tier-grid" aria-label="选择对手">
                 {roster.map((tier, index) => {
                   const odds = tierOdds[index] ?? 0;
-                  const hopeless = odds < 0.05;
+                  const tierLoss = Math.round(tier.rewardGold * LOSS_PENALTY_RATE);
+                  const unaffordable = tierLoss > farm.gold;
+                  const hopeless = odds < 0.05 || unaffordable;
                   const recommended = index === recommendedTier;
                   return (
                     <button
@@ -445,7 +446,7 @@ export function BattleScreen({
                     >
                       <strong>{tier.name}{recommended ? ' · 推荐' : ''}</strong>
                       <span>胜率约 {Math.round(odds * 20) * 5}%</span>
-                      <em>{hopeless ? '力不能及' : `缴获 ${tier.rewardGold.toLocaleString()} 金`}</em>
+                      <em>{unaffordable ? `败损 ${tierLoss.toLocaleString()} 金，金币不足` : hopeless ? '力不能及' : `缴获 ${tier.rewardGold.toLocaleString()} 金`}</em>
                     </button>
                   );
                 })}
@@ -457,7 +458,7 @@ export function BattleScreen({
                 : mode === 'frontier'
                   ? frontier.raid
                     ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
-                    : `边境安宁，下次边患约在第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日。${wording.summary}。`
+                    : `边境安宁，下次边患不早于第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日（处理政务到那天即起）。${wording.summary}。`
                   : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%：胜缴获 ${enemy.rewardGold.toLocaleString()} 金，败折损 ${lossGold.toLocaleString()} 金。`}
             </p>
           </section>
@@ -523,11 +524,24 @@ export function BattleScreen({
                 : mode === 'frontier'
                   ? runtime.result === 'retreat' ? '±0 金' : '失守扣金'
                   : `−${lossGold.toLocaleString()} 金`
-              : `+${enemy.rewardGold.toLocaleString()} / −${mode === 'frontier' ? '失守' : lossGold.toLocaleString()} 金`}
+              : (
+                  <>
+                    <span className="battle-info__line">胜 +{enemy.rewardGold.toLocaleString()} 金</span>
+                    <span className="battle-info__line">败 −{mode === 'frontier' ? '失守扣金' : `${lossGold.toLocaleString()} 金`}</span>
+                  </>
+                )}
           </strong>
         </div>
       </section>
 
+      {runtime.phase === 'battle' && (
+        <div className="battle-speed">
+          <button type="button" className={speed === 1 ? 'is-active' : ''} onClick={() => setSpeed(1)}>常速</button>
+          <button type="button" className={speed === 2 ? 'is-active' : ''} onClick={() => setSpeed(2)}>×2</button>
+          <button type="button" className={speed === 4 ? 'is-active' : ''} onClick={() => setSpeed(4)}>×4</button>
+          <button type="button" onClick={finishInstantly}>直接结算</button>
+        </div>
+      )}
       <section className="battle-log" aria-live="polite">
         {runtime.logs.map((log, index) => (
           <p key={`${log}-${index}`}>{log}</p>

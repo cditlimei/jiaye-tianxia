@@ -142,12 +142,13 @@ export function App() {
     return true;
   };
 
-  const handleUpgradeEffect = () => {
+  // 升阶展示新宅邸的图（原视频是现代高楼，与三国题材不符）
+  const handleUpgradeEffect = (imagePath: string, name: string) => {
     audio.playSfx('audio/sfx/sfx_home_upgrade.mp3', 0.55);
     void effects.playEffect({
-      videoPath: 'assets/ui/ui_upgrade_effect.mp4',
-      posterPath: 'assets/ui/ui_upgrade_effect.png',
-      title: '宅邸升阶',
+      videoPath: '',
+      imagePath,
+      title: `宅邸升阶 · ${name}`,
       fallbackMs: 1700
     });
   };
