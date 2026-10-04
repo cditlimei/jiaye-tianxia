@@ -49,6 +49,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
             <strong>-{discount}%</strong>
           </div>
         </div>
+        <p className="stat-legend">武力→官道讨伐与北疆边患 · 智谋→政务收入与江东水战 · 声望→招募折扣与许都朝堂</p>
         {notice && (
           <p className="partner-market__notice" role="status">
             {notice}

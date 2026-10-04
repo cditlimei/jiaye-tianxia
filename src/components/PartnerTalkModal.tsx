@@ -30,6 +30,7 @@ export function PartnerTalkModal({ lord, ownedPartners, onClose }: PartnerTalkMo
 
   return (
     <ModalShell title="伴侣互动" onClose={onClose}>
+      <p className="modal-note">闲话家常，不改数值。伴侣的加成在招募时已生效；她们的心事会在主城第 5、25、45 日轮流出现，那时的选择才会改变加成。</p>
       <div className="partner-talk">
         {!selectedPartner ? (
           <section className="partner-talk__empty">

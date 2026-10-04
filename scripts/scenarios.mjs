@@ -547,6 +547,19 @@ await scenario('开局引导', async () => {
   await page.context().close();
 });
 
+await scenario('主公与称号页', async () => {
+  const page = await open(save({ homeLevel: 4, battleWins: 12 }));
+  await page.getByRole('button', { name: '主公' }).click();
+  await page.getByText('主公与称号').first().waitFor();
+  const rows = await page.locator('.title-row').count();
+  const earned = await page.locator('.title-row.is-earned').count();
+  check('主公页列出全部称号并标出已获得', rows >= 11 && earned >= 4 && (await page.locator('.lord-sheet').innerText()).includes('吕布'), `rows=${rows} earned=${earned}`);
+  await page.getByRole('button', { name: '关闭' }).click();
+  await page.getByRole('button', { name: '伴侣', exact: true }).click();
+  check('伴侣互动注明纯剧情', (await page.locator('.modal-note').innerText()).includes('不改数值'));
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

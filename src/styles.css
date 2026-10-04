@@ -3808,7 +3808,7 @@ body {
   }
 
   body.is-doudizhu-table .doudizhu-tabletop {
-    grid-template-rows: 76px minmax(0, 1fr) 72px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     min-height: 0;
     height: auto;
     overflow: hidden;
@@ -4158,4 +4158,111 @@ body {
 
 .partner-card .game-button span {
   white-space: nowrap;
+}
+
+.modal-note,
+.stat-legend {
+  margin: 0 0 10px;
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+small.stat-legend {
+  display: block;
+  margin-top: 6px;
+}
+
+.lord-sheet {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.lord-sheet__portrait {
+  width: 96px;
+  height: 120px;
+  object-fit: cover;
+  object-position: top;
+  border: 1px solid rgba(212, 168, 67, 0.45);
+  border-radius: 12px;
+}
+
+.lord-sheet__copy strong {
+  display: block;
+  color: var(--gold-light);
+  font-size: 20px;
+}
+
+.lord-sheet__copy > span {
+  display: block;
+  color: rgba(245, 230, 200, 0.72);
+  font-size: 12px;
+}
+
+.lord-sheet__copy p {
+  margin: 6px 0;
+  color: #f5e6c8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lord-sheet__copy dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.lord-sheet__copy dl div {
+  padding: 6px;
+  border: 1px solid rgba(212, 168, 67, 0.3);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.lord-sheet__copy dt {
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 11px;
+}
+
+.lord-sheet__copy dd {
+  margin: 0;
+  color: var(--gold-light);
+  font-family: var(--font-number);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.lord-sheet__copy small {
+  display: block;
+  margin-top: 6px;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 11px;
+}
+
+.title-list {
+  display: grid;
+  gap: 6px;
+}
+
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.2);
+  border-radius: 10px;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 13px;
+}
+
+.title-row.is-earned {
+  border-color: rgba(212, 168, 67, 0.55);
+  color: #f5e6c8;
+}
+
+.title-row.is-earned strong {
+  color: var(--gold-light);
 }

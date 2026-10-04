@@ -15,9 +15,10 @@ import { PartnerTalkModal } from './components/PartnerTalkModal';
 import { SettingsModal } from './components/SettingsModal';
 import { TitleScreen } from './components/TitleScreen';
 import { WeaponModal } from './components/WeaponModal';
+import { LordModal } from './components/LordModal';
 import './styles.css';
 
-type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | null;
+type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | 'lord' | null;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -309,6 +310,7 @@ export function App() {
           }}
           onCompleteTutorial={game.completeTutorial}
           onOpenSettings={() => setModal('settings')}
+          onOpenLord={() => setModal('lord')}
           onIncomeSfx={() => audio.playSfx('audio/sfx/sfx_coins.mp3', 0.28)}
           onUpgradeEffect={handleUpgradeEffect}
         />
@@ -317,6 +319,9 @@ export function App() {
         )}
         {modal === 'partnerTalk' && (
           <PartnerTalkModal lord={game.selectedLord} ownedPartners={game.ownedPartners} onClose={() => setModal(null)} />
+        )}
+        {modal === 'lord' && (
+          <LordModal lord={game.selectedLord} state={game.state} totalPower={game.totalPower} intelligence={game.intelligence} charisma={game.charisma} onClose={() => setModal(null)} />
         )}
         {modal === 'weapon' && (
           <WeaponModal lord={game.selectedLord} state={game.state} onClose={() => setModal(null)} onEquip={handleEquip} />

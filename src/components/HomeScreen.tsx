@@ -34,6 +34,7 @@ interface HomeScreenProps {
   onClaimQuest: (questId: string) => void;
   onCompleteTutorial: () => void;
   onOpenSettings: () => void;
+  onOpenLord: () => void;
   onIncomeSfx: () => void;
   onUpgradeEffect: () => void;
   questStatuses: QuestStatus[];
@@ -68,6 +69,7 @@ export function HomeScreen({
   onClaimQuest,
   onCompleteTutorial,
   onOpenSettings,
+  onOpenLord,
   onIncomeSfx,
   onUpgradeEffect,
   questStatuses,
@@ -279,7 +281,7 @@ export function HomeScreen({
         <button type="button" onClick={onOpenWeapon}>
           <span>兵器</span>
         </button>
-        <button type="button" onClick={onOpenSettings}>
+        <button type="button" onClick={onOpenLord}>
           <span>主公</span>
         </button>
       </nav>
