@@ -3,6 +3,7 @@ import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, 
 import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/progression';
 import { calculateIntelligence, effectiveDailyIncome, LEGACY_MAX_POINTS, legacyIncomeMultiplier } from '../lib/battle';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
+import { mergePartnerBoost } from '../data/partnerEvents';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -32,6 +33,8 @@ export const defaultGameState: GameState = {
   generation: 1,
   legacyPoints: 0,
   pendingChoice: null,
+  partnerBoosts: {},
+  resolvedPartnerEvents: {},
   incomeBuff: null,
   nextBattleBonus: null,
   soundEnabled: true,
@@ -198,6 +201,8 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     generation: sanitizeNumber(parsed.generation, 1, 1),
     legacyPoints: Math.min(LEGACY_MAX_POINTS, sanitizeNumber(parsed.legacyPoints, 0, 0)),
     pendingChoice: sanitizeChoice(parsed.pendingChoice),
+    partnerBoosts: sanitizeBoosts(parsed.partnerBoosts),
+    resolvedPartnerEvents: sanitizeResolved(parsed.resolvedPartnerEvents),
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
@@ -215,8 +220,26 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
 function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
   if (!value || typeof value !== 'object') return null;
   const c = value as { eventId?: unknown; day?: unknown; dailyIncome?: unknown };
-  if ((c.eventId !== 'merchants' && c.eventId !== 'advisor') || typeof c.day !== 'number' || typeof c.dailyIncome !== 'number') return null;
+  if (typeof c.eventId !== 'string' || typeof c.day !== 'number' || typeof c.dailyIncome !== 'number') return null;
+  if (c.eventId !== 'merchants' && c.eventId !== 'advisor' && !c.eventId.startsWith('partner:')) return null;
   return { eventId: c.eventId, day: Math.floor(c.day), dailyIncome: Math.max(0, Math.floor(c.dailyIncome)) };
+}
+
+function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {
+  if (!value || typeof value !== 'object') return {};
+  const out: GameState['partnerBoosts'] = {};
+  for (const [id, boost] of Object.entries(value as Record<string, unknown>)) {
+    if (!partners.some((p) => p.id === id) || !boost || typeof boost !== 'object') continue;
+    const b = boost as Record<string, unknown>;
+    const pick = (k: string) => (typeof b[k] === 'number' && Number.isFinite(b[k]) ? Math.max(0, Math.min(30, Math.floor(b[k] as number))) : undefined);
+    out[id] = { strength: pick('strength'), intelligence: pick('intelligence'), charisma: pick('charisma') };
+  }
+  return out;
+}
+
+function sanitizeResolved(value: unknown): GameState['resolvedPartnerEvents'] {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([id, v]) => partners.some((p) => p.id === id) && typeof v === 'string') as [string, string][]);
 }
 
 function sanitizeBuff(value: unknown): GameState['incomeBuff'] {
@@ -309,7 +332,7 @@ function applyOfflineIncome(state: GameState): GameState {
   }
 
   const lord = lords.find((item) => item.id === state.selectedLordId);
-  const ownedPartners = partners.filter((item) => state.ownedPartnerIds.includes(item.id));
+  const ownedPartners = partners.filter((item) => state.ownedPartnerIds.includes(item.id)).map((item) => mergePartnerBoost(item, state.partnerBoosts[item.id]));
   const dailyIncome = lord
     ? effectiveDailyIncome(Math.round((findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome) * legacyIncomeMultiplier(state.legacyPoints)), calculateIntelligence(lord, ownedPartners))
     : Math.round((findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome) * legacyIncomeMultiplier(state.legacyPoints));

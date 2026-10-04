@@ -20,7 +20,9 @@ export interface GameState {
   nextRaidDay: number;
   generation: number;
   legacyPoints: number;
-  pendingChoice: { eventId: 'merchants' | 'advisor'; day: number; dailyIncome: number } | null;
+  pendingChoice: { eventId: string; day: number; dailyIncome: number } | null;
+  partnerBoosts: Record<string, { strength?: number; intelligence?: number; charisma?: number }>;
+  resolvedPartnerEvents: Record<string, string>;
   incomeBuff: { percent: number; untilDay: number } | null;
   nextBattleBonus: number | null;
   soundEnabled: boolean;

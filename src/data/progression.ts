@@ -1,5 +1,6 @@
 import type { HomeLevel, Partner, Weapon } from './gameData';
 import type { GameState } from '../types';
+import { findPartnerEvent } from './partnerEvents';
 
 export interface Quest {
   id: string;
@@ -100,6 +101,13 @@ export const quests: Quest[] = [
     isComplete: (state) => state.generation >= 2
   },
   {
+    id: 'partner-event',
+    title: '良缘佳话',
+    description: '替一位伴侣了却一桩心事。',
+    rewardGold: 1500,
+    isComplete: (state) => Object.keys(state.resolvedPartnerEvents).length >= 1
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',
@@ -126,6 +134,7 @@ export const titles: Title[] = [
   { id: 'court-star', name: '朝堂新贵', requirement: '赢得 5 场朝议', isEarned: (s) => s.courtWins >= 5 },
   { id: 'north-general', name: '镇北将军', requirement: '击退 3 次边患', isEarned: (s) => s.frontierWins >= 3 },
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
+  { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).length >= 5 },
   { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
   { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2 },
   { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10 }
@@ -153,13 +162,13 @@ export function getQuestStatuses(state: GameState, context: QuestContext): Quest
 }
 
 export interface ChoiceOption {
-  id: 'gold' | 'incomeBuff' | 'battleBonus';
+  id: string;
   label: string;
   detail: string;
 }
 
 export interface ChoiceEvent {
-  id: 'merchants' | 'advisor';
+  id: string;
   title: string;
   prompt: string;
   options: [ChoiceOption, ChoiceOption];
@@ -196,9 +205,22 @@ export function getChoiceEvent(day: number, dailyIncome: number): ChoiceEvent | 
   return null;
 }
 
+/** 统一解析待决事件：日历事件或伴侣心事（partner:<id>） */
+export function resolvePendingEvent(pending: { eventId: string; day: number; dailyIncome: number }): ChoiceEvent | null {
+  if (pending.eventId.startsWith('partner:')) {
+    const partnerEvent = findPartnerEvent(pending.eventId.slice('partner:'.length));
+    if (!partnerEvent) return null;
+    return { id: pending.eventId, title: partnerEvent.title, prompt: partnerEvent.prompt, options: [
+      { id: partnerEvent.options[0].id, label: partnerEvent.options[0].label, detail: partnerEvent.options[0].detail },
+      { id: partnerEvent.options[1].id, label: partnerEvent.options[1].label, detail: partnerEvent.options[1].detail }
+    ] };
+  }
+  return getChoiceEvent(pending.day, pending.dailyIncome);
+}
+
 /** 二选一里「拿现钱」那一项的金额，离线无人决断时按此自动结算 */
 export function choiceGoldValue(event: ChoiceEvent, dailyIncome: number) {
-  return event.id === 'advisor' ? dailyIncome * 5 : dailyIncome * 3;
+  return event.id === 'advisor' ? dailyIncome * 5 : event.id === 'merchants' ? dailyIncome * 3 : 0;
 }
 
 export function getDailyEvent(day: number, dailyIncome: number) {

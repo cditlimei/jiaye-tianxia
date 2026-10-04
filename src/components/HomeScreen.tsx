@@ -4,7 +4,8 @@ import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { weaponBonusForLord } from '../lib/battle';
 import { formatRemaining, raidRemainingMs } from '../lib/frontier';
-import { getChoiceEvent } from '../data/progression';
+import { resolvePendingEvent } from '../data/progression';
+import { partners } from '../data/gameData';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -24,7 +25,7 @@ interface HomeScreenProps {
   farmIncome: number;
   recruitDiscount: number;
   onCollectIncome: () => number;
-  onResolveChoice: (optionId: 'gold' | 'incomeBuff' | 'battleBonus') => void;
+  onResolveChoice: (optionId: string) => void;
   onUpgrade: () => boolean;
   onOpenPartner: () => void;
   onOpenPartnerTalk: () => void;
@@ -154,11 +155,13 @@ export function HomeScreen({
       )}
 
       {state.pendingChoice && (() => {
-        const event = getChoiceEvent(state.pendingChoice.day, state.pendingChoice.dailyIncome);
+        const event = resolvePendingEvent(state.pendingChoice);
         if (!event) return null;
+        const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === event.id.slice('partner:'.length)) : null;
         return (
-          <section className="choice-card" aria-label="府中事件">
-            <span>第 {state.pendingChoice.day} 日 · {event.title}</span>
+          <section className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={partner ? '伴侣心事' : '府中事件'}>
+            {partner && <ImageWithFallback src={imageUrl(partner.imagePath, 160)} alt={partner.name} className="choice-card__portrait" />}
+            <span>第 {state.pendingChoice.day} 日 · {partner ? `${partner.name} · ` : ''}{event.title}</span>
             <strong>{event.prompt}</strong>
             <div className="choice-card__options">
               {event.options.map((option) => (

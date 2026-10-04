@@ -4114,3 +4114,22 @@ body {
   color: rgba(245, 230, 200, 0.7);
   font-size: 12px;
 }
+
+.choice-card--partner {
+  grid-template-columns: 64px 1fr;
+  column-gap: 12px;
+}
+
+.choice-card__portrait {
+  grid-row: 1 / span 2;
+  width: 64px;
+  height: 80px;
+  object-fit: cover;
+  object-position: top;
+  border: 1px solid rgba(212, 168, 67, 0.45);
+  border-radius: 10px;
+}
+
+.choice-card--partner .choice-card__options {
+  grid-column: 1 / -1;
+}

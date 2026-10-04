@@ -475,6 +475,31 @@ await scenario('称号', async () => {
   await vet.context().close();
 });
 
+await scenario('伴侣心事', async () => {
+  // 第 4 → 5 日：甄姬心事弹出；选「留鉴内政」智谋 +6，收入因智谋提高
+  const page = await open(save({ day: 4, gold: 5000, homeLevel: 2, ownedPartnerIds: ['zhenji', 'daqiao'] }));
+  const inc0 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
+  await page.getByRole('button', { name: /^处理政务/ }).click();
+  await page.waitForTimeout(400);
+  let s = await read(page);
+  const card = page.locator('[aria-label="伴侣心事"]');
+  check('第 5 日弹出第一位伴侣的心事', s.pendingChoice?.eventId === 'partner:zhenji' && (await card.isVisible()) && (await card.innerText()).includes('洛水之思'));
+  await card.locator('.choice-card__options button').nth(1).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  const inc1 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
+  check('选项落为永久加成并记录', s.resolvedPartnerEvents.zhenji === 'b' && s.partnerBoosts.zhenji?.intelligence === 6 && inc1 >= inc0, `${inc0} → ${inc1}`);
+  check('任务「良缘佳话」可领', await page.locator('.quest-item').filter({ hasText: '良缘佳话' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
+  await page.context().close();
+  // 第 24 → 25 日：轮到下一位（大乔），已解决的不重复
+  const next = await open(save({ day: 24, gold: 5000, homeLevel: 2, ownedPartnerIds: ['zhenji', 'daqiao'], resolvedPartnerEvents: { zhenji: 'a' }, partnerBoosts: { zhenji: { charisma: 6 } } }));
+  await next.getByRole('button', { name: /^处理政务/ }).click();
+  await next.waitForTimeout(400);
+  s = await read(next);
+  check('已了却的不重复，轮到下一位', s.pendingChoice?.eventId === 'partner:daqiao');
+  await next.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

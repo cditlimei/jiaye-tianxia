@@ -294,7 +294,7 @@ export function App() {
           questStatuses={game.questStatuses}
           titleStatus={game.titleStatus}
           onCollectIncome={game.collectIncome}
-          onResolveChoice={(optionId) => {
+          onResolveChoice={(optionId: string) => {
             game.resolveChoice(optionId);
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.3);
           }}

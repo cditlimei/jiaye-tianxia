@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
-import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
+import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
+import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
@@ -25,7 +26,7 @@ type Action =
   | { type: 'completeTutorial' }
   | { type: 'restore'; state: GameState }
   | { type: 'succeed' }
-  | { type: 'resolveChoice'; optionId: 'gold' | 'incomeBuff' | 'battleBonus' }
+  | { type: 'resolveChoice'; optionId: string }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
 
@@ -87,9 +88,13 @@ function reducer(state: GameState, action: Action): GameState {
         ? Math.round(action.amount * (1 + state.incomeBuff.percent / 100))
         : action.amount;
       const incomeBuff = state.incomeBuff && nextDay <= state.incomeBuff.untilDay ? state.incomeBuff : null;
-      const choice = getChoiceEvent(nextDay, action.amount);
-      // 上一个二选一还没决断又来新的：旧的按「拿现钱」自动结算
-      const staleChoice = choice && state.pendingChoice ? getChoiceEvent(state.pendingChoice.day, state.pendingChoice.dailyIncome) : null;
+      const calendarChoice = getChoiceEvent(nextDay, action.amount);
+      // 伴侣心事日：轮到一位还没了却心事的伴侣（没有待决事件时才起）
+      const partnerDue = !calendarChoice && !state.pendingChoice && isPartnerEventDay(nextDay) ? nextPartnerForEvent(state.ownedPartnerIds, state.resolvedPartnerEvents) : null;
+      const partnerChoice = partnerDue ? findPartnerEvent(partnerDue) : null;
+      const choice = calendarChoice ?? (partnerChoice ? { id: `partner:${partnerDue}`, title: partnerChoice.title, prompt: partnerChoice.prompt } : null);
+      // 上一个二选一还没决断又来新的：旧的按「拿现钱」自动结算（伴侣心事无现钱，按第一项处理在 resolve 里不做，此处直接作废）
+      const staleChoice = choice && state.pendingChoice ? resolvePendingEvent(state.pendingChoice) : null;
       const staleGold = staleChoice ? choiceGoldValue(staleChoice, state.pendingChoice!.dailyIncome) : 0;
       const pendingChoice = choice ? { eventId: choice.id, day: nextDay, dailyIncome: action.amount } : state.pendingChoice;
       const goldAfterIncome = state.gold + buffed + (dailyEvent?.goldDelta ?? 0) + staleGold;
@@ -97,6 +102,7 @@ function reducer(state: GameState, action: Action): GameState {
       const eventLog = [
         ...(frontier.event ? [frontier.event] : []),
         ...(choice ? [{ id: `choice-${nextDay}`, day: nextDay, title: choice.title, detail: `${choice.prompt} 请在主城决断。` }] : []),
+        ...(staleChoice && staleChoice.id.startsWith('partner:') ? [{ id: `choice-skip-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（搁置）`, detail: '心事未及回应，她不再提起。' }] : []),
         ...(staleChoice ? [{ id: `choice-auto-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（自动）`, detail: '未及决断，按现钱入账。', goldDelta: staleGold }] : []),
         ...(dailyEvent
           ? [{ id: `daily-${nextDay}`, day: nextDay, title: dailyEvent.title, detail: dailyEvent.detail, goldDelta: dailyEvent.goldDelta }]
@@ -116,8 +122,24 @@ function reducer(state: GameState, action: Action): GameState {
     }
     case 'resolveChoice': {
       if (!state.pendingChoice) return state;
-      const event = getChoiceEvent(state.pendingChoice.day, state.pendingChoice.dailyIncome);
+      const event = resolvePendingEvent(state.pendingChoice);
       if (!event) return { ...state, pendingChoice: null };
+      if (event.id.startsWith('partner:')) {
+        const partnerId = event.id.slice('partner:'.length);
+        const partnerEvent = findPartnerEvent(partnerId);
+        const chosen = partnerEvent?.options.find((item) => item.id === action.optionId) ?? partnerEvent?.options[0];
+        if (!partnerEvent || !chosen) return { ...state, pendingChoice: null };
+        return {
+          ...state,
+          pendingChoice: null,
+          partnerBoosts: { ...state.partnerBoosts, [partnerId]: chosen.boost },
+          resolvedPartnerEvents: { ...state.resolvedPartnerEvents, [partnerId]: chosen.id },
+          eventLog: [
+            { id: `partner-event-${partnerId}`, day: state.day, title: `${partnerEvent.title} · ${chosen.label}`, detail: chosen.detail },
+            ...state.eventLog
+          ].slice(0, 18)
+        };
+      }
       const option = event.options.find((item) => item.id === action.optionId) ?? event.options[0];
       const gold = option.id === 'gold' ? choiceGoldValue(event, state.pendingChoice.dailyIncome) : 0;
       return {
@@ -392,8 +414,8 @@ export function useGameState() {
   const currentHome = useMemo(() => findHomeLevel(state.homeLevel), [state.homeLevel]);
   const nextHome = useMemo(() => homeLevels.find((home) => home.level === state.homeLevel + 1) ?? null, [state.homeLevel]);
   const ownedPartners = useMemo(
-    () => partners.filter((partner) => state.ownedPartnerIds.includes(partner.id)),
-    [state.ownedPartnerIds]
+    () => partners.filter((partner) => state.ownedPartnerIds.includes(partner.id)).map((partner) => mergePartnerBoost(partner, state.partnerBoosts[partner.id])),
+    [state.ownedPartnerIds, state.partnerBoosts]
   );
 
   const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome) : 0;
@@ -492,7 +514,7 @@ export function useGameState() {
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),
     restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
     succeed: () => dispatch({ type: 'succeed' }),
-    resolveChoice: (optionId: 'gold' | 'incomeBuff' | 'battleBonus') => dispatch({ type: 'resolveChoice', optionId }),
+    resolveChoice: (optionId: string) => dispatch({ type: 'resolveChoice', optionId }),
     resetGame: () => dispatch({ type: 'reset' })
   };
 }
