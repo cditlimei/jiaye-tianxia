@@ -76,16 +76,33 @@ export function HomeScreen({
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
   const partnerNames = useMemo(() => ownedPartners.map((partner) => partner.name).join('、') || '尚未招募', [ownedPartners]);
+  // 开局引导：四步，每步指向一个按钮；钱不够时先指向「处理政务」
   const starterOrders = useMemo(
     () => [
-      { label: '宅邸升至木屋', done: state.homeLevel >= 2 },
-      { label: '良缘入府', done: state.ownedPartnerIds.length >= 1 },
-      { label: '更换兵器', done: state.equippedWeaponId !== 'xuanjian' },
-      { label: '初战告捷', done: state.battleWins >= 1 }
+      { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
+      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
+      { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑，战力一下子上去。' },
+      { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点「出征讨伐」，到官道挑一个推荐对手打一场，缴获比处理政务多得多。' }
     ],
-    [state.battleWins, state.equippedWeaponId, state.homeLevel, state.ownedPartnerIds.length]
+    [nextHome, state.battleWins, state.equippedWeaponId, state.gold, state.homeLevel, state.ownedPartnerIds.length]
   );
+  const currentOrder = starterOrders.find((order) => !order.done) ?? null;
+  const guidedTarget: 'income' | 'upgrade' | 'partner' | 'weapon' | 'battle' | null = state.tutorialDone || !currentOrder
+    ? null
+    : currentOrder.target === 'upgrade' && nextHome && state.gold < nextHome.upgradeCost
+      ? 'income'
+      : currentOrder.target === 'weapon' && state.gold < 1500
+        ? 'income'
+        : currentOrder.target === 'partner' && state.gold < 800
+          ? 'income'
+          : currentOrder.target;
+  const guided = (target: typeof guidedTarget) => (guidedTarget === target ? 'is-guided' : '');
   const completedStarterOrders = starterOrders.filter((order) => order.done).length;
+  useEffect(() => {
+    if (!state.tutorialDone && completedStarterOrders === starterOrders.length) {
+      onCompleteTutorial();
+    }
+  }, [completedStarterOrders, onCompleteTutorial, starterOrders.length, state.tutorialDone]);
   const visibleQuests = useMemo(() => {
     const ready = questStatuses.filter((quest) => quest.complete && !quest.claimed);
     const active = questStatuses.filter((quest) => !quest.claimed && !ready.includes(quest));
@@ -175,6 +192,24 @@ export function HomeScreen({
         );
       })()}
 
+      {!state.tutorialDone && currentOrder && (
+        <section className="starter-panel" aria-label="开局引导">
+          <div className="section-title">
+            <span>开局引导 · 第 {completedStarterOrders + 1} 步 / {starterOrders.length}</span>
+            <strong>{currentOrder.label}</strong>
+          </div>
+          <p className="starter-hint">{currentOrder.hint}</p>
+          <div className="starter-list">
+            {starterOrders.map((order) => (
+              <span key={order.label} className={order.done ? 'is-done' : order === currentOrder ? 'is-current' : ''}>
+                {order.done ? '已成' : order === currentOrder ? '进行中' : '待办'} · {order.label}
+              </span>
+            ))}
+          </div>
+          <button onClick={onCompleteTutorial}>跳过引导</button>
+        </section>
+      )}
+
       <section className="home-estate">
         <div className="home-estate__image-wrap">
           <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
@@ -209,19 +244,19 @@ export function HomeScreen({
       </section>
 
       <section className="action-grid">
-        <GameButton onClick={handleCollectIncome}>
+        <GameButton onClick={handleCollectIncome} className={guided('income')}>
           处理政务 · +{dailyIncome.toLocaleString()}金
         </GameButton>
-        <GameButton onClick={handleUpgrade} disabled={!canUpgrade}>
+        <GameButton onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
           {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金</small></>) : '宅邸已满'}
         </GameButton>
-        <GameButton variant="secondary" onClick={onOpenPartner}>
+        <GameButton variant="secondary" onClick={onOpenPartner} className={guided('partner')}>
           招募伴侣
         </GameButton>
-        <GameButton variant="secondary" onClick={onOpenWeapon}>
+        <GameButton variant="secondary" onClick={onOpenWeapon} className={guided('weapon')}>
           兵器库
         </GameButton>
-        <GameButton variant="danger" onClick={onBattle}>
+        <GameButton variant="danger" onClick={onBattle} className={guided('battle')}>
           出征讨伐
         </GameButton>
       </section>
@@ -243,23 +278,6 @@ export function HomeScreen({
           <span>主公</span>
         </button>
       </nav>
-
-      {!state.tutorialDone && (
-        <section className="starter-panel">
-          <div className="section-title">
-            <span>开局军令</span>
-            <strong>{completedStarterOrders}/{starterOrders.length}</strong>
-          </div>
-          <div className="starter-list">
-            {starterOrders.map((order) => (
-              <span key={order.label} className={order.done ? 'is-done' : ''}>
-                {order.done ? '已成' : '待办'} · {order.label}
-              </span>
-            ))}
-          </div>
-          <button onClick={onCompleteTutorial}>{completedStarterOrders === starterOrders.length ? '收令' : '暂收'}</button>
-        </section>
-      )}
 
       <section className="quest-panel">
         <div className="section-title">

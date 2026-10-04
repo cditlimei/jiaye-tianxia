@@ -518,6 +518,32 @@ await scenario('新主公', async () => {
   await page.context().close();
 });
 
+await scenario('开局引导', async () => {
+  const page = await open(null);
+  await page.evaluate((k) => localStorage.removeItem(k), KEY);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: '开始游戏' }).click();
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  const panel = page.locator('[aria-label="开局引导"]');
+  check('开局引导在首屏顶部且指向升级宅邸', (await panel.innerText()).includes('第 1 步') && (await page.getByRole('button', { name: /升级宅邸/ }).getAttribute('class')).includes('is-guided'));
+  await page.getByRole('button', { name: /升级宅邸/ }).click();
+  await page.waitForTimeout(2500);
+  const partnerBtn = page.getByRole('button', { name: '招募伴侣' });
+  const incomeBtn = page.getByRole('button', { name: /^处理政务/ });
+  check('第 2 步：钱不够时高亮处理政务', (await panel.innerText()).includes('第 2 步') && (await incomeBtn.getAttribute('class')).includes('is-guided') && !(await partnerBtn.getAttribute('class')).includes('is-guided'));
+  await page.evaluate(([k]) => { const s = JSON.parse(localStorage.getItem(k)); s.gold = 5000; localStorage.setItem(k, JSON.stringify(s)); }, [KEY]);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await incomeBtn.waitFor();
+  check('钱够了高亮招募伴侣', (await partnerBtn.getAttribute('class')).includes('is-guided'));
+  await page.getByRole('button', { name: '跳过引导' }).click();
+  await page.waitForTimeout(300);
+  check('跳过后引导消失', !(await panel.isVisible().catch(() => false)) && (await read(page)).tutorialDone === true);
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });

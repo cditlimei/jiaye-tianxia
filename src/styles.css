@@ -4133,3 +4133,25 @@ body {
 .choice-card--partner .choice-card__options {
   grid-column: 1 / -1;
 }
+
+.starter-hint {
+  margin: 6px 0 8px;
+  color: #f5e6c8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.starter-list span.is-current {
+  color: var(--gold-light);
+  font-weight: 700;
+}
+
+.game-button.is-guided {
+  position: relative;
+  animation: guided-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes guided-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 229, 144, 0.75); }
+  50% { box-shadow: 0 0 0 7px rgba(255, 229, 144, 0); }
+}
