@@ -334,30 +334,30 @@ export const weapons: Weapon[] = [
 
 // 江东水战：比智谋（主公 + 伴侣智谋 + 宅邸），门槛高于陆战，缴获约为同档陆战的 1.25 倍
 export const navalEnemies: Enemy[] = [
-  { id: 'river-pirates', name: '江上水贼', power: 40, rewardGold: 625, description: '劫掠商船的乌合之众' },
-  { id: 'naval-captain', name: '水军校尉', power: 90, rewardGold: 1500, description: '操练有素的巡江水军' },
-  { id: 'tower-ship-commander', name: '楼船都督', power: 140, rewardGold: 3750, description: '统领楼船的江防主将' },
-  { id: 'grand-admiral', name: '水军大都督', power: 190, rewardGold: 10000, description: '号令三江的水师统帅' },
-  { id: 'legendary-admiral', name: '水师名将', power: 230, rewardGold: 25000, description: '威震长江的一代名将' }
+  { id: 'river-pirates', name: '江上水贼', power: 40, rewardGold: 312, description: '劫掠商船的乌合之众' },
+  { id: 'naval-captain', name: '水军校尉', power: 90, rewardGold: 750, description: '操练有素的巡江水军' },
+  { id: 'tower-ship-commander', name: '楼船都督', power: 140, rewardGold: 1875, description: '统领楼船的江防主将' },
+  { id: 'grand-admiral', name: '水军大都督', power: 190, rewardGold: 5000, description: '号令三江的水师统帅' },
+  { id: 'legendary-admiral', name: '水师名将', power: 230, rewardGold: 12500, description: '威震长江的一代名将' }
 ];
 
 // 许都朝堂：比声望（主公 + 伴侣声望 + 宅邸），门槛最高，缴获约为同档陆战的 1.5 倍
 export const courtEnemies: Enemy[] = [
-  { id: 'county-aide', name: '郡丞', power: 60, rewardGold: 750, description: '地方小吏，惯于推诿' },
-  { id: 'prefect', name: '太守', power: 110, rewardGold: 1800, description: '一郡之守，门生众多' },
-  { id: 'nine-ministers', name: '九卿', power: 160, rewardGold: 4500, description: '朝中重臣，党羽遍布' },
-  { id: 'three-dukes', name: '三公', power: 200, rewardGold: 12000, description: '位极人臣，一言九鼎' },
-  { id: 'regent', name: '权臣', power: 240, rewardGold: 30000, description: '挟天子以令诸侯' }
+  { id: 'county-aide', name: '郡丞', power: 60, rewardGold: 375, description: '地方小吏，惯于推诿' },
+  { id: 'prefect', name: '太守', power: 110, rewardGold: 900, description: '一郡之守，门生众多' },
+  { id: 'nine-ministers', name: '九卿', power: 160, rewardGold: 2250, description: '朝中重臣，党羽遍布' },
+  { id: 'three-dukes', name: '三公', power: 200, rewardGold: 6000, description: '位极人臣，一言九鼎' },
+  { id: 'regent', name: '权臣', power: 240, rewardGold: 15000, description: '挟天子以令诸侯' }
 ];
 
 // 北疆边患：比武力，限时迎战，缴获约为同档陆战的 2 倍
 export const frontierEnemies: Enemy[] = [
-  { id: 'border-raiders', name: '边地流寇', power: 30, rewardGold: 400, description: '趁乱劫掠的流民' },
-  { id: 'nomad-riders', name: '胡骑游勇', power: 60, rewardGold: 1000, description: '来去如风的散骑' },
-  { id: 'nomad-centurion', name: '胡骑百长', power: 100, rewardGold: 2400, description: '统领百骑的悍将' },
-  { id: 'xiongnu-thousand', name: '匈奴千骑', power: 140, rewardGold: 6000, description: '黑压压的千人铁骑' },
-  { id: 'xianbei-chief', name: '鲜卑大人', power: 190, rewardGold: 16000, description: '部族首领亲自南下' },
-  { id: 'northern-khan', name: '北疆单于', power: 230, rewardGold: 40000, description: '草原霸主倾巢而出' }
+  { id: 'border-raiders', name: '边地流寇', power: 30, rewardGold: 200, description: '趁乱劫掠的流民' },
+  { id: 'nomad-riders', name: '胡骑游勇', power: 60, rewardGold: 500, description: '来去如风的散骑' },
+  { id: 'nomad-centurion', name: '胡骑百长', power: 100, rewardGold: 1200, description: '统领百骑的悍将' },
+  { id: 'xiongnu-thousand', name: '匈奴千骑', power: 140, rewardGold: 3000, description: '黑压压的千人铁骑' },
+  { id: 'xianbei-chief', name: '鲜卑大人', power: 190, rewardGold: 8000, description: '部族首领亲自南下' },
+  { id: 'northern-khan', name: '北疆单于', power: 230, rewardGold: 20000, description: '草原霸主倾巢而出' }
 ];
 
 export interface FarmLevel {
@@ -369,14 +369,14 @@ export interface FarmLevel {
 }
 
 // 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入（dailyIncome 为该级总额）。
-// 按每日 15 次政务算边际回本：1 级约 13 日，2~5 级各约 21~23 日
+// 2026-10-04 节奏调整：价格翻倍、各战场缴获减半（目标轻度玩家约 35 日玩到顶）。按每日 15 次政务算边际回本：1 级约 27 日，2~5 级各约 42~46 日
 export const farmLevels: FarmLevel[] = [
   { level: 0, name: '荒地', cost: 0, dailyIncome: 0, description: '蜀地山间尚是一片荒坡。' },
-  { level: 1, name: '开荒', cost: 3000, dailyIncome: 15, description: '垦出第一块田，种下稻谷。' },
-  { level: 2, name: '引水', cost: 8000, dailyIncome: 40, description: '引山泉入田，旱涝无忧。' },
-  { level: 3, name: '修渠', cost: 20000, dailyIncome: 100, description: '沟渠纵横，梯田层层。' },
-  { level: 4, name: '筑仓', cost: 50000, dailyIncome: 250, description: '谷仓满囤，可供一军。' },
-  { level: 5, name: '沃野千里', cost: 120000, dailyIncome: 600, description: '蜀地粮仓，天下闻名。' }
+  { level: 1, name: '开荒', cost: 6000, dailyIncome: 15, description: '垦出第一块田，种下稻谷。' },
+  { level: 2, name: '引水', cost: 16000, dailyIncome: 40, description: '引山泉入田，旱涝无忧。' },
+  { level: 3, name: '修渠', cost: 40000, dailyIncome: 100, description: '沟渠纵横，梯田层层。' },
+  { level: 4, name: '筑仓', cost: 100000, dailyIncome: 250, description: '谷仓满囤，可供一军。' },
+  { level: 5, name: '沃野千里', cost: 240000, dailyIncome: 600, description: '蜀地粮仓，天下闻名。' }
 ];
 
 export function findFarmLevel(level: number) {
@@ -387,20 +387,20 @@ export const FARM_UNLOCK_HOME_LEVEL = 3;
 
 export const homeLevels: HomeLevel[] = [
   { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level1.png' },
-  { level: 2, name: '木屋', upgradeCost: 500, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },
-  { level: 3, name: '砖瓦宅', upgradeCost: 2000, dailyIncome: 80, imagePath: 'assets/homes/home_level3.png' },
-  { level: 4, name: '府邸', upgradeCost: 8000, dailyIncome: 200, imagePath: 'assets/homes/home_level4.png' },
-  { level: 5, name: '侯府', upgradeCost: 30000, dailyIncome: 500, imagePath: 'assets/homes/home_level5.png' },
-  { level: 6, name: '王城', upgradeCost: 100000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
+  { level: 2, name: '木屋', upgradeCost: 1000, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },
+  { level: 3, name: '砖瓦宅', upgradeCost: 4000, dailyIncome: 80, imagePath: 'assets/homes/home_level3.png' },
+  { level: 4, name: '府邸', upgradeCost: 16000, dailyIncome: 200, imagePath: 'assets/homes/home_level4.png' },
+  { level: 5, name: '侯府', upgradeCost: 60000, dailyIncome: 500, imagePath: 'assets/homes/home_level5.png' },
+  { level: 6, name: '王城', upgradeCost: 200000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
 ];
 
 export const enemies: Enemy[] = [
-  { id: 'yellow-turban', name: '黄巾贼兵', power: 30, rewardGold: 200, description: '新手敌军' },
-  { id: 'bandit-chief', name: '山贼头目', power: 60, rewardGold: 500, description: '低阶过渡' },
-  { id: 'rebel-captain', name: '叛军校尉', power: 100, rewardGold: 1200, description: '初期挑战' },
-  { id: 'enemy-vanguard', name: '敌国先锋', power: 140, rewardGold: 3000, description: '中前期门槛' },
-  { id: 'enemy-general', name: '敌国大将', power: 190, rewardGold: 8000, description: '中后期挑战' },
-  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 20000, description: '高阶目标' }
+  { id: 'yellow-turban', name: '黄巾贼兵', power: 30, rewardGold: 100, description: '新手敌军' },
+  { id: 'bandit-chief', name: '山贼头目', power: 60, rewardGold: 250, description: '低阶过渡' },
+  { id: 'rebel-captain', name: '叛军校尉', power: 100, rewardGold: 600, description: '初期挑战' },
+  { id: 'enemy-vanguard', name: '敌国先锋', power: 140, rewardGold: 1500, description: '中前期门槛' },
+  { id: 'enemy-general', name: '敌国大将', power: 190, rewardGold: 4000, description: '中后期挑战' },
+  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 10000, description: '高阶目标' }
 ];
 
 export function findLord(id: string | null) {

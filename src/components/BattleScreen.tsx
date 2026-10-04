@@ -127,9 +127,9 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
 const MATCH_ENEMY: Record<BattleMode, (power: number) => Enemy> = { land: matchEnemy, naval: matchNavalEnemy, court: matchCourtEnemy, frontier: matchFrontierEnemy };
 
 const VENUES: Venue[] = [
-  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 1200 },
-  { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 3000 },
-  { id: 'high', name: '高级场', requiredPower: 190, prize: '名望与重赏', rewardGold: 8000 }
+  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 600 },
+  { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 1500 },
+  { id: 'high', name: '高级场', requiredPower: 190, prize: '名望与重赏', rewardGold: 4000 }
 ];
 
 export function BattleScreen({

@@ -251,17 +251,17 @@ await scenario('西蜀屯田', async () => {
   check('宅邸 2 级时西蜀未开放', await node.isDisabled() && (await node.innerText()).includes('砖瓦宅后开放'));
   await locked.context().close();
 
-  const page = await open(save({ homeLevel: 3, gold: 5000, ownedPartnerIds: [], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
+  const page = await open(save({ homeLevel: 3, gold: 7000, ownedPartnerIds: [], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
   const n0 = income(await page.getByRole('button', { name: /处理政务/ }).innerText());
   await page.getByRole('button', { name: '出征讨伐' }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /西蜀/ }).click();
-  await page.getByRole('button', { name: /投入 3,000 金/ }).click();
+  await page.getByRole('button', { name: /投入 6,000 金/ }).click();
   await page.waitForTimeout(500);
   let s = await read(page);
-  check('开荒扣 3000 金并升到 1 级', s.gold === 2000 && s.farmLevel === 1);
-  check('金不足时显示差额', await page.getByRole('button', { name: /差 6,000 金/ }).isVisible());
-  await page.getByRole('button', { name: /差 6,000 金/ }).click();
+  check('开荒扣 6000 金并升到 1 级', s.gold === 1000 && s.farmLevel === 1);
+  check('金不足时显示差额', await page.getByRole('button', { name: /差 15,000 金/ }).isVisible());
+  await page.getByRole('button', { name: /差 15,000 金/ }).click();
   await page.waitForTimeout(300);
   s = await read(page);
   check('金不足不能升级', s.farmLevel === 1 && (await page.locator('.partner-market__notice').innerText()).includes('金不足'));
@@ -395,7 +395,7 @@ await scenario('斗地主', async () => {
   await page.waitForTimeout(400);
   const after = await read(page);
   const delta = after.gold - before.gold;
-  check('斗地主整局可打完且结算一致', ended && (win ? delta === 3000 && after.battleWins === before.battleWins + 1 : delta === 0 && after.battleLosses === before.battleLosses + 1),
+  check('斗地主整局可打完且结算一致', ended && (win ? delta === 1500 && after.battleWins === before.battleWins + 1 : delta === 0 && after.battleLosses === before.battleLosses + 1),
     `${win ? '胜' : '负'} Δgold=${delta}`);
   await page.context().close();
 });
