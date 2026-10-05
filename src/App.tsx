@@ -62,7 +62,7 @@ export function App() {
   };
 
   const handleNew = () => {
-    if (game.hasSave && !confirmReset('重开会清空当前家业进度。')) {
+    if (game.hasSave && !confirmReset(game.state.legacyPoints > 0 ? `重开会清空当前家业进度，连同 ${game.state.legacyPoints} 点家业点与第 ${game.state.generation} 代传承一并作废。` : '重开会清空当前家业进度。')) {
       return;
     }
     audio.unlock();
@@ -296,6 +296,7 @@ export function App() {
           charisma={game.charisma}
           dailyIncome={game.dailyIncome}
           farmPercent={game.currentFarm.incomePercent}
+          farmFlat={game.currentFarm.flatIncome}
           recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
           titleStatus={game.titleStatus}

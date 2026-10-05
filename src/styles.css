@@ -1555,6 +1555,10 @@ body {
 }
 
 .home-hud__chips strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #d8ad4f;
   font-family: var(--font-number);
   font-size: 13px;
@@ -4334,11 +4338,15 @@ small.stat-legend {
 .battle-speed {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 36px;
+  align-self: start;
+  align-content: start;
   gap: 6px;
 }
 
 .battle-speed button {
-  padding: 8px 4px;
+  height: 36px;
+  padding: 0 4px;
   border: 1px solid rgba(212, 168, 67, 0.4);
   border-radius: 10px;
   background: rgba(10, 10, 18, 0.7);
@@ -4384,9 +4392,17 @@ small.stat-legend {
 }
 
 .tier-card strong,
-.tier-card span,
-.tier-card em {
+.tier-card span {
   white-space: nowrap;
+}
+
+/* 得失一行放不下时换行，不溢出卡片 */
+.tier-card em {
+  min-width: 0;
+  white-space: normal;
+  word-break: keep-all;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .orders-note {
@@ -4428,4 +4444,82 @@ small.stat-legend {
 
 .player-hand.is-empty {
   display: none;
+}
+
+/* 斗地主结局横幅：盖在牌桌中央，不挡按钮 */
+.doudizhu-result-banner {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 40;
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 14px 22px;
+  border: 1px solid rgba(255, 224, 126, 0.7);
+  border-radius: 16px;
+  background: rgba(14, 10, 6, 0.86);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: doudizhu-banner-in 320ms ease-out both;
+}
+
+.doudizhu-result-banner strong {
+  color: #ffe08a;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+}
+
+.doudizhu-result-banner.is-loss strong {
+  color: #e8d9b8;
+}
+
+.doudizhu-result-banner span {
+  color: rgba(245, 230, 200, 0.86);
+  font-size: 14px;
+}
+
+@keyframes doudizhu-banner-in {
+  from { opacity: 0; transform: translate(-50%, -40%) scale(0.92); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* 手机横屏：地图在左、出征详情在右，不用往下滚才看到出征按钮 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .phone-shell:has(.expedition-screen) {
+    width: min(100%, 930px);
+    height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
+    min-height: 0;
+  }
+
+  .app-shell:has(.expedition-screen) {
+    padding: 10px;
+  }
+
+  .expedition-screen {
+    width: 100%;
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto 1fr;
+    align-items: start;
+    column-gap: 16px;
+  }
+
+  .expedition-screen > .screen-header {
+    grid-column: 1 / -1;
+  }
+
+  .expedition-screen > .expedition-map {
+    grid-column: 1;
+    grid-row: 2 / span 4;
+    min-height: 260px;
+    height: calc(100dvh - 120px);
+  }
+
+  .expedition-screen > :not(.screen-header):not(.expedition-map) {
+    grid-column: 2;
+  }
 }

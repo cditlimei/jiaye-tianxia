@@ -62,8 +62,8 @@ export function LordSelectScreen({ onConfirm, onBack, disabled = false }: LordSe
         </div>
         <div className="lord-detail__stats">
           <StatBar label="武力" value={selectedLord.strength} tone="red" />
-          <StatBar label="智力" value={selectedLord.intelligence} tone="blue" />
-          <StatBar label="魅力" value={selectedLord.charisma} tone="green" />
+          <StatBar label="智谋" value={selectedLord.intelligence} tone="blue" />
+          <StatBar label="声望" value={selectedLord.charisma} tone="green" />
         </div>
       </section>
 

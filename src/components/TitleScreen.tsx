@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react';
 import type { GameState } from '../types';
 import { getTitleStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
+import { LEGACY_START_GOLD_PER_POINT } from '../lib/battle';
+import { defaultGameState } from '../lib/storage';
 import { GameButton } from './common/GameButton';
 
 interface TitleScreenProps {
@@ -27,8 +29,18 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
       <p className="title-screen__subtitle">选定主公，经营家业，招募伴侣，配备兵器，于乱世中成就一方门阀霸业。</p>
       {hasSave ? (
         <div className="title-screen__save">
-          <span>{lordName ?? '旧主'} · 「{getTitleStatus(state).current.name}」</span>
-          <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
+          {lordName ? (
+            <>
+              <span>{lordName} · 「{getTitleStatus(state).current.name}」</span>
+              <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
+            </>
+          ) : (
+            // 传位后还没选新主公
+            <>
+              <span>第 {state.generation} 代 · 待择新主</span>
+              <strong>家业点 {state.legacyPoints} · 新主起手 {(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT).toLocaleString()} 金</strong>
+            </>
+          )}
         </div>
       ) : (
         <div className="title-screen__save title-screen__save--empty">

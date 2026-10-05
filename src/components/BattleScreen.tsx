@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
-import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
+import { battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, ORDER_CAP, type BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
@@ -23,12 +23,12 @@ interface BattleScreenProps {
   battleBonus: number | null;
   frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
-  onBattleStart: (mode: BattleMode, lossGold: number) => void;
+  onBattleStart: (mode: BattleMode, lossGold: number, extra?: { rewardGold?: number; odds?: number; doudizhu?: boolean }) => void;
   wins: number;
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number, mode: BattleMode, retreat?: boolean, lossGold?: number) => void;
+  onResolved: (win: boolean, rewardGold: number, mode: BattleMode, retreat?: boolean, lossGold?: number, doudizhu?: boolean) => void;
   onReturnHome: () => void;
 }
 
@@ -131,13 +131,16 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
 };
 
 const VENUES: Venue[] = [
-  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 1500 },
-  { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 4000 },
-  { id: 'high', name: '高级场', requiredPower: 190, prize: '名望与重赏', rewardGold: 10000 }
+  // 斗地主靠真本事，缴获约为同级自动战的两倍
+  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 3000 },
+  { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 8000 },
+  { id: 'high', name: '高级场', requiredPower: 190, prize: '名望与重赏', rewardGold: 20000 }
 ];
 
 // 出征开场动画（旌旗入阵 + 兵器特效）每次打开游戏只在第一场播放
 let introPlayedThisSession = false;
+
+const SPEED_KEY = 'jiaye-tianxia-battle-speed';
 
 export function BattleScreen({
   lord,
@@ -165,7 +168,8 @@ export function BattleScreen({
   const [mapOpen, setMapOpen] = useState(true);
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId>('jingzhou');
-  const [venueId, setVenueId] = useState<VenueId>('beginner');
+  // 默认选能进的最高场
+  const [venueId, setVenueId] = useState<VenueId>(() => [...VENUES].reverse().find((venue) => totalPower >= venue.requiredPower)?.id ?? 'beginner');
   // 每个战场自选的对手档位；null = 推荐档。边患不可选
   const [tierByMode, setTierByMode] = useState<Record<BattleMode, number | null>>({ land: null, naval: null, court: null, frontier: null });
   const [farmNotice, setFarmNotice] = useState('');
@@ -179,15 +183,17 @@ export function BattleScreen({
     regionMode === 'farm' ? homeLevel < FARM_UNLOCK_HOME_LEVEL : regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
   const modeLocked = isModeLocked(selectedRegion.mode);
   const roster = ROSTERS[mode];
-  const recommendedTier = recommendedTierIndex(roster, attackPower);
-  const selectedTier = mode === 'frontier' ? recommendedTier : tierByMode[mode] ?? recommendedTier;
+  const recommendedTier = mode === 'frontier' ? recommendedTierIndex(roster, attackPower) : bestValueTierIndex(roster, attackPower);
+  const pickedTier = tierByMode[mode];
+  // 之前选的档如果现在已经打不过（胜率不到 5%），退回推荐档
+  const selectedTier = mode === 'frontier' || pickedTier == null || tierOddsFor(roster, pickedTier, attackPower) < 0.05 ? recommendedTier : pickedTier;
   const enemy = useMemo(() => enemyForTier(roster, selectedTier, attackPower), [roster, selectedTier, attackPower]);
   // 各档预估胜率（仅地图面板需要）
   const tierOdds = useMemo(
     () => (mapOpen && mode !== 'frontier' ? roster.map((_tier, index) => tierOddsFor(roster, index, attackPower)) : []),
     [attackPower, mapOpen, mode, roster]
   );
-  const lossGold = Math.round(enemy.rewardGold * LOSS_PENALTY_RATE);
+  const lossGold = battleLossGold(enemy.rewardGold, tierOddsFor(roster, selectedTier, attackPower));
   const bonusMultiplier = battleBonus && battleBonus > 1 ? battleBonus : 1;
   // 北疆败则扣当前金币 5%（封顶），出征那一刻定下
   const [frontierLoss, setFrontierLoss] = useState(0);
@@ -266,7 +272,7 @@ export function BattleScreen({
     let result: BattleRuntime['result'] = null;
     if (nextEnemyHp <= 0) {
       result = 'win';
-      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${enemy.rewardGold} 金。`);
+      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}。`);
     } else {
       const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
       nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
@@ -277,9 +283,25 @@ export function BattleScreen({
       }
     }
     return { phase: result ? 'result' : 'battle', playerHp: nextPlayerHp, enemyHp: nextEnemyHp, round, logs: logs.slice(0, 12), result };
-  }, [attackPower, enemy, lord.name, wording]);
+  }, [attackPower, bonusMultiplier, enemy, lord.name, wording]);
 
-  const [speed, setSpeed] = useState<1 | 2 | 4>(1);
+  // 记住上次选的战斗速度（只是本机偏好，读写失败就用常速）
+  const [speed, setSpeedState] = useState<1 | 2 | 4>(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(SPEED_KEY));
+      return saved === 2 || saved === 4 ? saved : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const setSpeed = (value: 1 | 2 | 4) => {
+    setSpeedState(value);
+    try {
+      window.localStorage.setItem(SPEED_KEY, String(value));
+    } catch {
+      // 存不了就只在本场生效
+    }
+  };
   useEffect(() => {
     if (runtime.phase !== 'battle') {
       return;
@@ -338,7 +360,8 @@ export function BattleScreen({
         rewardGold={selectedVenue.rewardGold * bonusMultiplier}
         lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
-        onResolved={(win, rewardGold, lossGold) => onResolved(win, rewardGold, 'land', false, lossGold)}
+        // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次
+        onResolved={(win, _shownReward, lossGold, forfeit) => onResolved(win, win ? selectedVenue.rewardGold : 0, 'land', Boolean(forfeit), lossGold, true)}
         onReturnHome={onReturnHome}
       />
     );
@@ -409,20 +432,20 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${selectedVenue.rewardGold.toLocaleString()} 金，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
+              : `本场胜缴获 ${(selectedVenue.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
           </p>
           </section>
         ) : selectedRegion.mode === 'farm' ? (
           <section className="venue-panel farm-panel" aria-label="屯田" style={{ '--battle-bg': `url(${imageUrl('assets/ui/ui_farm_xishu.png', 512)})` } as CSSProperties}>
             <div className="section-title">
-              <span>西蜀 · 屯田 · 政务收入 +{farm.current.incomePercent}%</span>
+              <span>西蜀 · 屯田 · 每次政务 +{farm.current.flatIncome} 金且 +{farm.current.incomePercent}%</span>
               <strong>{modeLocked ? '尚未开放' : `${farm.current.name}${farm.current.level > 0 ? ` · ${farm.current.level} 级` : ''}`}</strong>
             </div>
             <p className="venue-summary">
               {modeLocked
-                ? `宅邸升至砖瓦宅（${FARM_UNLOCK_HOME_LEVEL} 级）后可开垦。屯田是独立于宅邸的田产，投入一次，每日收入永久提高。`
+                ? `宅邸升至砖瓦宅（${FARM_UNLOCK_HOME_LEVEL} 级）后可开垦。屯田是独立于宅邸的田产，投入一次，每日收入永久提高，传位时随家业传给下一代。`
                 : farm.next
-                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farm.next.cost.toLocaleString()} 金，政务收入加成从 +${farm.current.incomePercent}% 提到 +${farm.next.incomePercent}%（按当前宅邸每次政务多约 ${Math.round(farm.homeIncome * (farm.next.incomePercent - farm.current.incomePercent) / 100)} 金，宅邸越高越值）。`
+                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farm.next.cost.toLocaleString()} 金，每次政务的收成从 +${farm.current.flatIncome} 金、+${farm.current.incomePercent}% 提到 +${farm.next.flatIncome} 金、+${farm.next.incomePercent}%（按当前宅邸每次政务多约 ${Math.round(farm.next.flatIncome - farm.current.flatIncome + farm.homeIncome * (farm.next.incomePercent - farm.current.incomePercent) / 100)} 金，宅邸越高越值；田产传位不丢）。`
                   : `${farm.current.description} 屯田已达顶级。`}
             </p>
             {farmNotice && (
@@ -456,9 +479,9 @@ export function BattleScreen({
               <div className="venue-grid tier-grid" aria-label="选择对手">
                 {roster.map((tier, index) => {
                   const odds = tierOdds[index] ?? 0;
-                  const tierLoss = Math.round(tier.rewardGold * LOSS_PENALTY_RATE);
-                  const unaffordable = tierLoss > farm.gold;
-                  const hopeless = odds < 0.05 || unaffordable;
+                  const tierLoss = battleLossGold(tier.rewardGold, tierOdds[index] ?? tierOddsFor(roster, index, attackPower));
+                  // 败损按余额封顶，身家不够也照样能打，不再锁档
+                  const hopeless = odds < 0.05;
                   const recommended = index === recommendedTier;
                   return (
                     <button
@@ -470,8 +493,8 @@ export function BattleScreen({
                     >
                       <ImageWithFallback src={imageUrl(enemyImagePath(tier), 160)} alt={tier.name} className="tier-card__avatar" />
                       <strong>{tier.name}</strong>
-                      <span>{recommended ? '推荐 · ' : ''}胜率约 {Math.round(odds * 20) * 5}%</span>
-                      <em>{unaffordable ? `败损 ${tierLoss.toLocaleString()} 金，金币不足` : hopeless ? '力不能及' : `缴获 ${tier.rewardGold.toLocaleString()} 金`}</em>
+                      <span>{recommended ? '推荐 · ' : ''}胜率约 {oddsPercentLabel(odds)}%</span>
+                      <em>{hopeless ? '力不能及' : `胜\u00a0+${(tier.rewardGold * bonusMultiplier).toLocaleString()} · 败\u00a0−${Math.min(tierLoss, farm.gold).toLocaleString()}`}</em>
                     </button>
                   );
                 })}
@@ -482,9 +505,9 @@ export function BattleScreen({
                 ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
                 : mode === 'frontier'
                   ? frontier.raid
-                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战（不耗军令），预估胜率约 ${Math.round(tierOddsFor(roster, selectedTier, attackPower) * 20) * 5}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
+                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战（不耗军令），预估胜率约 ${oddsPercentLabel(tierOddsFor(roster, selectedTier, attackPower))}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
                     : `边境安宁，下次边患不早于第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日（处理政务到那天即起）。${wording.summary}。`
-                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%：胜缴获 ${(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${lossGold.toLocaleString()} 金。`}
+                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${oddsPercentLabel((tierOdds[selectedTier] ?? 0))}%：胜缴获 ${(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${Math.min(lossGold, farm.gold).toLocaleString()} 金。`}
             </p>
           </section>
         )}
@@ -508,7 +531,8 @@ export function BattleScreen({
             setResultBonus(bonusMultiplier);
             onBattleStart(
               selectedRegion.mode === 'doudizhu' ? 'land' : mode,
-              selectedRegion.mode === 'doudizhu' ? Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE) : lossGold
+              selectedRegion.mode === 'doudizhu' ? Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE) : lossGold,
+              selectedRegion.mode === 'doudizhu' ? { doudizhu: true } : { rewardGold: enemy.rewardGold, odds: tierOddsFor(roster, selectedTier, attackPower) }
             );
             setDoudizhuOpen(selectedRegion.mode === 'doudizhu');
             setMapOpen(false);
@@ -517,7 +541,7 @@ export function BattleScreen({
           {outOfOrders ? `军令不足 · 回府处理政务，${daysUntilNextOrder(day)} 日后 +1` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
         </GameButton>
         )}
-        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），每 2 日回 1 道，最多存 {ORDER_CAP} 道。出征中途离开页面按认输处理。</p>}
+        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），每 2 日回 1 道，最多存 {ORDER_CAP} 道。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
       </main>
     );
   }

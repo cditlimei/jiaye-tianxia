@@ -3,7 +3,7 @@ import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLev
 import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
-import { LEGACY_MAX_POINTS, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
+import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay, ORDER_CAP } from '../types';
@@ -21,13 +21,13 @@ type Action =
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'buyWeapon'; weaponId: string; price: number }
-  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode; retreat?: boolean; lossGold?: number }
+  | { type: 'recordBattle'; win: boolean; rewardGold: number; mode: BattleMode; retreat?: boolean; lossGold?: number; doudizhu?: boolean }
   | { type: 'claimQuest'; questId: string }
   | { type: 'toggleSound' }
   | { type: 'completeTutorial' }
   | { type: 'restore'; state: GameState }
   | { type: 'succeed' }
-  | { type: 'startBattle'; mode: BattleMode; lossGold: number }
+  | { type: 'startBattle'; mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean }
   | { type: 'resolveChoice'; optionId: string }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
@@ -48,9 +48,10 @@ function reducer(state: GameState, action: Action): GameState {
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
         tutorialDone: state.generation > 1 || state.tutorialDone,
-        gold: defaultGameState.gold + state.legacyPoints * 3000,
+        gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
+        farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
         eventLog: [
           {
             id: `lord-${Date.now()}`,
@@ -175,7 +176,7 @@ function reducer(state: GameState, action: Action): GameState {
             id: `farm-${action.nextLevel}-${Date.now()}`,
             day: state.day,
             title: '西蜀屯田',
-            detail: `投入 ${action.cost.toLocaleString()} 金，屯田升至「${findFarmLevel(action.nextLevel).name}」，政务收入 +${findFarmLevel(action.nextLevel).incomePercent}%。`,
+            detail: `投入 ${action.cost.toLocaleString()} 金，屯田升至「${findFarmLevel(action.nextLevel).name}」，政务收入 +${findFarmLevel(action.nextLevel).flatIncome} 金且 +${findFarmLevel(action.nextLevel).incomePercent}%。`,
             goldDelta: -action.cost
           },
           ...state.eventLog
@@ -218,22 +219,27 @@ function reducer(state: GameState, action: Action): GameState {
       if (state.ownedWeaponIds.includes(action.weaponId) || state.gold < action.price) {
         return state;
       }
+      {
+      // 只有比手上这把强才自动换上，否则收进兵器库
+      const lordId = state.selectedLordId ?? '';
+      const stronger = weaponBonusForLord(findWeapon(action.weaponId), lordId) > weaponBonusForLord(findWeapon(state.equippedWeaponId), lordId);
       return {
         ...state,
         gold: state.gold - action.price,
         ownedWeaponIds: [...state.ownedWeaponIds, action.weaponId],
-        equippedWeaponId: action.weaponId,
+        equippedWeaponId: stronger ? action.weaponId : state.equippedWeaponId,
         eventLog: [
           {
             id: `weapon-buy-${action.weaponId}-${Date.now()}`,
             day: state.day,
             title: '购入兵器',
-            detail: `以 ${action.price.toLocaleString()} 金购入 ${findWeapon(action.weaponId).name} 并装备。`,
+            detail: `以 ${action.price.toLocaleString()} 金购入 ${findWeapon(action.weaponId).name}${stronger ? '并装备' : '，比手上的弱，收入兵器库'}。`,
             goldDelta: -action.price
           },
           ...state.eventLog
         ].slice(0, 18)
       };
+      }
     case 'equipWeapon':
       if (!state.ownedWeaponIds.includes(action.weaponId)) {
         return state;
@@ -254,7 +260,7 @@ function reducer(state: GameState, action: Action): GameState {
     case 'startBattle':
       // 北疆边患是被迫应战，不耗军令
       if (action.mode !== 'frontier' && state.orders < 1) return state;
-      return { ...state, orders: action.mode === 'frontier' ? state.orders : state.orders - 1, activeBattle: { mode: action.mode, lossGold: action.lossGold } };
+      return { ...state, orders: action.mode === 'frontier' ? state.orders : state.orders - 1, activeBattle: { mode: action.mode, lossGold: action.lossGold, rewardGold: action.rewardGold, odds: action.odds, doudizhu: action.doudizhu } };
     case 'recordBattle': {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
@@ -280,10 +286,10 @@ function reducer(state: GameState, action: Action): GameState {
           {
             id: `battle-${Date.now()}`,
             day: state.day,
-            title: action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '边患失守' : '整军再战',
+            title: action.doudizhu ? (action.win ? '牌局得胜' : action.retreat ? '离席认输' : '牌局失手') : action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '边患失守' : '整军再战',
             detail: action.win
-              ? `${({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${rewardGold.toLocaleString()} 金${bonus > 1 ? '（练兵之策翻倍）' : ''}。`
-              : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : action.retreat ? `认输回府，折损军资 ${lossGold.toLocaleString()} 金。` : `此战未竟，折损军资 ${lossGold.toLocaleString()} 金。`,
+              ? `${action.doudizhu ? '牌桌赢得' : ({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${rewardGold.toLocaleString()} 金${bonus > 1 ? '（练兵之策翻倍）' : ''}。`
+              : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : action.doudizhu ? `${action.retreat ? '中途认输' : '对手先走完'}，付出 ${lossGold.toLocaleString()} 金。` : action.retreat ? `认输回府，折损军资 ${lossGold.toLocaleString()} 金。` : `此战未竟，折损军资 ${lossGold.toLocaleString()} 金。`,
             goldDelta: action.win ? rewardGold : frontierPenalty > 0 ? -frontierPenalty : lossGold > 0 ? -lossGold : undefined,
           },
           ...state.eventLog
@@ -360,12 +366,14 @@ function reducer(state: GameState, action: Action): GameState {
         tutorialDone: true,
         generation: state.generation + 1,
         legacyPoints,
+        // 屯田是田产，随家业传给下一代
+        farmLevel: state.farmLevel,
         eventLog: [
           {
             id: `succeed-${Date.now()}`,
             day: 1,
             title: '传位',
-            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${gained}，累计 ${legacyPoints}。`
+            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}。`
           }
         ]
       };
@@ -447,7 +455,7 @@ export function useGameState() {
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
-  const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence);
+  const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome);
   const buffActive = Boolean(state.incomeBuff && state.day + 1 <= state.incomeBuff.untilDay);
   const displayedIncome = buffActive && state.incomeBuff ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
   const recruitDiscount = recruitDiscountPercent(charisma);
@@ -528,13 +536,13 @@ export function useGameState() {
     buyWeapon,
     upgradeFarm,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
-    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold }),
+    recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0, doudizhu = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold, doudizhu }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
     toggleSound: () => dispatch({ type: 'toggleSound' }),
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),
     restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
     succeed: () => dispatch({ type: 'succeed' }),
-    startBattle: (mode: BattleMode, lossGold: number) => dispatch({ type: 'startBattle', mode, lossGold }),
+    startBattle: (mode: BattleMode, lossGold: number, extra: { rewardGold?: number; odds?: number; doudizhu?: boolean } = {}) => dispatch({ type: 'startBattle', mode, lossGold, ...extra }),
     resolveChoice: (optionId: string) => dispatch({ type: 'resolveChoice', optionId }),
     resetGame: () => dispatch({ type: 'reset' })
   };

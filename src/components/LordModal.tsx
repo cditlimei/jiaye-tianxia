@@ -16,7 +16,6 @@ interface LordModalProps {
 }
 
 export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose }: LordModalProps) {
-  const earnedCount = titles.filter((title) => title.isEarned(state)).length;
   return (
     <ModalShell title="主公与称号" onClose={onClose}>
       <div className="lord-sheet">
@@ -33,12 +32,16 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           <small>武力→官道与北疆 · 智谋→政务收入与江东 · 声望→招募折扣与许都{state.legacyPoints > 0 ? ` · 家业点 ${state.legacyPoints}（收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%）` : ''}</small>
         </div>
       </div>
-      <section className="title-list" aria-label="称号">
+      {[
+        { label: '本代称号', list: titles.filter((title) => !title.lineage) },
+        { label: '家声（跨代保留）', list: titles.filter((title) => title.lineage) }
+      ].map((group) => (
+      <section key={group.label} className="title-list" aria-label={group.label}>
         <div className="section-title">
-          <span>称号</span>
-          <strong>{earnedCount}/{titles.length}</strong>
+          <span>{group.label}</span>
+          <strong>{group.list.filter((title) => title.isEarned(state)).length}/{group.list.length}</strong>
         </div>
-        {titles.map((title) => {
+        {group.list.map((title) => {
           const earned = title.isEarned(state);
           return (
             <div key={title.id} className={`title-row ${earned ? 'is-earned' : ''}`}>
@@ -48,6 +51,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           );
         })}
       </section>
+      ))}
     </ModalShell>
   );
 }

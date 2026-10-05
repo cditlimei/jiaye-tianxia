@@ -4,7 +4,7 @@ import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/
 import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
 import { isOrderDay, ORDER_CAP, ORDER_START } from '../types';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
-import { mergePartnerBoost } from '../data/partnerEvents';
+import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -225,15 +225,47 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
 
 function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
   if (!value || typeof value !== 'object') return null;
-  const b = value as { mode?: unknown; lossGold?: unknown };
+  const b = value as { mode?: unknown; lossGold?: unknown; rewardGold?: unknown; odds?: unknown; doudizhu?: unknown };
   if (b.mode !== 'land' && b.mode !== 'naval' && b.mode !== 'court' && b.mode !== 'frontier') return null;
-  return { mode: b.mode, lossGold: typeof b.lossGold === 'number' && Number.isFinite(b.lossGold) ? Math.max(0, Math.floor(b.lossGold)) : 0 };
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const odds = num(b.odds);
+  const rewardGold = num(b.rewardGold);
+  return {
+    mode: b.mode,
+    lossGold: Math.max(0, Math.floor(num(b.lossGold) ?? 0)),
+    ...(rewardGold !== undefined ? { rewardGold: Math.max(0, Math.floor(rewardGold)) } : {}),
+    ...(odds !== undefined ? { odds: Math.min(1, Math.max(0, odds)) } : {}),
+    ...(b.doudizhu === true ? { doudizhu: true } : {})
+  };
 }
 
 /** 战斗中途刷新/关页：按认输结算（北疆只是退守，不扣金） */
 function settleAbandonedBattle(state: GameState): GameState {
   if (!state.activeBattle) return state;
-  const { mode, lossGold } = state.activeBattle;
+  const { mode, lossGold, rewardGold, odds, doudizhu } = state.activeBattle;
+  // 自动战：离开不算认输，按出征时显示的胜率替玩家打完（手机来电、切后台不吃亏，也没法靠刷新躲输局）
+  if (!doudizhu && mode !== 'frontier' && typeof odds === 'number' && typeof rewardGold === 'number') {
+    const win = Math.random() < odds;
+    const bonus = win && state.nextBattleBonus ? state.nextBattleBonus : 1;
+    const gained = Math.round(rewardGold * bonus);
+    const lost = win ? 0 : Math.min(state.gold, lossGold);
+    return {
+      ...state,
+      activeBattle: null,
+      gold: state.gold + (win ? gained : 0) - lost,
+      nextBattleBonus: win ? null : state.nextBattleBonus,
+      battleWins: win ? state.battleWins + 1 : state.battleWins,
+      battleLosses: win ? state.battleLosses : state.battleLosses + 1,
+      navalWins: win && mode === 'naval' ? state.navalWins + 1 : state.navalWins,
+      courtWins: win && mode === 'court' ? state.courtWins + 1 : state.courtWins,
+      eventLog: [
+        win
+          ? { id: `abandon-${Date.now()}`, day: state.day, title: '战事已毕', detail: `主公离开时将士照常作战，得胜归来，缴获 ${gained.toLocaleString()} 金${bonus > 1 ? '（练兵之策翻倍）' : ''}。`, goldDelta: gained }
+          : { id: `abandon-${Date.now()}`, day: state.day, title: '战事已毕', detail: `主公离开时将士照常作战，未能取胜，折损军资 ${lost.toLocaleString()} 金。`, goldDelta: lost > 0 ? -lost : undefined },
+        ...state.eventLog
+      ].slice(0, MAX_EVENT_LOG)
+    };
+  }
   const loss = mode === 'frontier' ? 0 : Math.min(state.gold, lossGold);
   return {
     ...state,
@@ -367,14 +399,21 @@ function applyOfflineIncome(state: GameState): GameState {
     findHomeLevel(state.homeLevel).dailyIncome,
     findFarmLevel(state.farmLevel).incomePercent,
     state.legacyPoints,
-    lord ? calculateIntelligence(lord, ownedPartners) : 0
+    lord ? calculateIntelligence(lord, ownedPartners) : 0,
+    findFarmLevel(state.farmLevel).flatIncome
   );
   let regainedOrders = 0;
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
   let eventGold = 0;
   let eventCount = 0;
   let lastChoiceDay: number | null = null;
+  let partnerDay: number | null = null;
+  const duePartner = nextPartnerForEvent(state.ownedPartnerIds, state.resolvedPartnerEvents);
+  // 减税招商按天生效，与在线处理政务同口径
+  let incomeGold = 0;
   for (let day = state.day + 1; day <= state.day + ticks; day += 1) {
+    incomeGold += state.incomeBuff && day <= state.incomeBuff.untilDay ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
+    if (duePartner && partnerDay === null && isPartnerEventDay(day)) partnerDay = day;
     const dailyEvent = getDailyEvent(day, dailyIncome);
     if (dailyEvent) {
       eventGold += dailyEvent.goldDelta;
@@ -390,27 +429,30 @@ function applyOfflineIncome(state: GameState): GameState {
   }
   // 离线期间最近的一桩二选一留给玩家回来决断（已有待决事件时不覆盖），其余按现钱入账
   let pendingChoice = state.pendingChoice;
-  if (lastChoiceDay !== null && !state.pendingChoice) {
+  if (partnerDay !== null && duePartner && !state.pendingChoice) {
+    // 伴侣心事只此一回，优先留给玩家；同期的二选一按现钱入账
+    pendingChoice = { eventId: `partner:${duePartner}`, day: partnerDay, dailyIncome };
+  } else if (lastChoiceDay !== null && !state.pendingChoice) {
     const kept = getChoiceEvent(lastChoiceDay, dailyIncome)!;
     eventGold -= choiceGoldValue(kept, dailyIncome);
     eventCount -= 1;
     pendingChoice = { eventId: kept.id, day: lastChoiceDay, dailyIncome };
   }
-  const offlineGold = ticks * dailyIncome + eventGold;
+  const offlineGold = incomeGold + eventGold;
+  const incomeBuff = state.incomeBuff && state.day + ticks < state.incomeBuff.untilDay ? state.incomeBuff : null;
   return {
     ...state,
     gold: state.gold + offlineGold,
     day: state.day + ticks,
     pendingChoice,
+    incomeBuff,
     orders: Math.min(ORDER_CAP, state.orders + regainedOrders),
     eventLog: [
       {
         id: `offline-${Date.now()}`,
         day: state.day + ticks,
         title: '离线经营',
-        detail: eventCount > 0
-          ? `离开期间宅邸照常运转，折算 ${ticks} 天收益，另有 ${eventCount} 桩府中喜事${pendingChoice && pendingChoice !== state.pendingChoice ? '；最近一桩尚待主公决断' : ''}。`
-          : `离开期间宅邸照常运转，折算 ${ticks} 天收益。`,
+        detail: `离开期间宅邸照常运转，折算 ${ticks} 天收益${eventCount > 0 ? `，另有 ${eventCount} 桩府中喜事` : ''}${pendingChoice && pendingChoice !== state.pendingChoice ? `；${pendingChoice.eventId.startsWith('partner:') ? '有位伴侣的心事' : '最近一桩'}尚待主公决断` : ''}。`,
         goldDelta: offlineGold
       },
       ...state.eventLog

@@ -16,7 +16,7 @@ interface DouDizhuGameProps {
   rewardGold: number;
   lossGold: number;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number, lossGold: number) => void;
+  onResolved: (win: boolean, rewardGold: number, lossGold: number, forfeit?: boolean) => void;
   onReturnHome: () => void;
 }
 
@@ -199,7 +199,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
     }
     if (table.winner === null && !settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0, lossGold);
+      onResolved(false, 0, lossGold, true);
     }
     onReturnHome();
   };
@@ -257,10 +257,12 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
           <span>地主底牌</span>
           <strong>{formatCards(table.landlordCards)}</strong>
         </div>
-        <div className="doudizhu-selection-status">
-          <span>已选牌</span>
-          <strong>{selectedCopy}</strong>
-        </div>
+        {table.winner === null && (
+          <div className="doudizhu-selection-status">
+            <span>已选牌</span>
+            <strong>{selectedCopy}</strong>
+          </div>
+        )}
       </section>
 
       <section className="doudizhu-tabletop" aria-label="三人斗地主牌桌">
@@ -312,9 +314,16 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
         />
       </section>
 
+      {table.winner !== null && (
+        <div className={`doudizhu-result-banner ${table.winner === 0 ? 'is-win' : 'is-loss'}`} role="status">
+          <strong>{table.winner === 0 ? '牌局得胜' : '下局再战'}</strong>
+          <span>{statusCopy}</span>
+        </div>
+      )}
+
       <section className={`hand-readout ${canPlay ? 'is-playable' : ''}`} aria-live="polite">
         <span>{table.winner !== null ? '牌局结束' : table.currentPlayer === 0 ? '你的回合' : '等待出牌'}</span>
-        <strong>{selectedCopy}</strong>
+        <strong>{table.winner !== null ? statusCopy : selectedCopy}</strong>
       </section>
 
       <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''} ${table.winner !== null && playerHand.length === 0 ? 'is-empty' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
@@ -495,7 +504,8 @@ function handCardStyle(index: number, count: number, selected: boolean, twoRows:
   const rotate = rows === 2 ? 0 : spread * 4.8;
   const edgeDrop = rows === 2 ? 0 : Math.abs(spread) * 5;
   const rowLift = rows === 2 && row === 0 ? 46 : 0;
-  const selectedRise = selected ? 4 : 0;
+  // 选中的牌要一眼看得出来
+  const selectedRise = selected ? (rows === 2 ? 9 : 13) : 0;
 
   return {
     left: `${left}%`,

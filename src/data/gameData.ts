@@ -143,7 +143,7 @@ export const lords: Lord[] = [
     strength: 58,
     intelligence: 100,
     charisma: 92,
-    description: '智计无双，擅长经营规划，伴侣智力加成可放大后期收益。',
+    description: '智计无双，擅长经营规划，伴侣智谋加成可放大后期收益。',
     imagePath: 'assets/lords/lord_zhugeliang.png'
   },
   {
@@ -154,7 +154,7 @@ export const lords: Lord[] = [
     strength: 78,
     intelligence: 96,
     charisma: 94,
-    description: '军略与风仪并重，适合以智谋和魅力推动家业成长。',
+    description: '军略与风仪并重，适合以智谋和声望推动家业成长。',
     imagePath: 'assets/lords/lord_zhouyu.png'
   },
   {
@@ -271,7 +271,7 @@ export const partners: Partner[] = [
   {
     id: 'diaochan',
     name: '貂蝉',
-    description: '倾国之姿，可显著提升魅力与战前气势。',
+    description: '倾国之姿，可显著提升声望与战前气势。',
     bonus: { strength: 8, charisma: 22 },
     bestMatchLordId: 'lvbu',
     recruitCost: 1200,
@@ -412,18 +412,20 @@ export interface FarmLevel {
   cost: number;
   /** 政务收入加成百分比 */
   incomePercent: number;
+  /** 每次政务另加的固定收成，让低级宅邸时开荒也有回报 */
+  flatIncome: number;
   description: string;
 }
 
 // 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入（dailyIncome 为该级总额）。
 // 2026-10-05：屯田改为按比例加政务收入（5/10/20/35/50%），后期随宅邸收入一起增长
 export const farmLevels: FarmLevel[] = [
-  { level: 0, name: '荒地', cost: 0, incomePercent: 0, description: '蜀地山间尚是一片荒坡。' },
-  { level: 1, name: '开荒', cost: 6000, incomePercent: 5, description: '垦出第一块田，种下稻谷。' },
-  { level: 2, name: '引水', cost: 16000, incomePercent: 10, description: '引山泉入田，旱涝无忧。' },
-  { level: 3, name: '修渠', cost: 40000, incomePercent: 20, description: '沟渠纵横，梯田层层。' },
-  { level: 4, name: '筑仓', cost: 100000, incomePercent: 35, description: '谷仓满囤，可供一军。' },
-  { level: 5, name: '沃野千里', cost: 240000, incomePercent: 50, description: '蜀地粮仓，天下闻名。' }
+  { level: 0, name: '荒地', cost: 0, incomePercent: 0, flatIncome: 0, description: '蜀地山间尚是一片荒坡。' },
+  { level: 1, name: '开荒', cost: 6000, incomePercent: 5, flatIncome: 20, description: '垦出第一块田，种下稻谷。' },
+  { level: 2, name: '引水', cost: 16000, incomePercent: 10, flatIncome: 60, description: '引山泉入田，旱涝无忧。' },
+  { level: 3, name: '修渠', cost: 40000, incomePercent: 20, flatIncome: 150, description: '沟渠纵横，梯田层层。' },
+  { level: 4, name: '筑仓', cost: 100000, incomePercent: 35, flatIncome: 400, description: '谷仓满囤，可供一军。' },
+  { level: 5, name: '沃野千里', cost: 240000, incomePercent: 50, flatIncome: 1000, description: '蜀地粮仓，天下闻名。' }
 ];
 
 export function findFarmLevel(level: number) {
@@ -442,12 +444,12 @@ export const homeLevels: HomeLevel[] = [
 ];
 
 export const enemies: Enemy[] = [
-  { id: 'yellow-turban', name: '黄巾贼兵', power: 30, rewardGold: 100, description: '新手敌军' },
-  { id: 'bandit-chief', name: '山贼头目', power: 60, rewardGold: 250, description: '低阶过渡' },
-  { id: 'rebel-captain', name: '叛军校尉', power: 100, rewardGold: 600, description: '初期挑战' },
-  { id: 'enemy-vanguard', name: '敌国先锋', power: 140, rewardGold: 1500, description: '中前期门槛' },
-  { id: 'enemy-general', name: '敌国大将', power: 190, rewardGold: 4000, description: '中后期挑战' },
-  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 10000, description: '高阶目标' }
+  { id: 'yellow-turban', name: '黄巾贼兵', power: 30, rewardGold: 100, description: '黄巾余党，乌合之众' },
+  { id: 'bandit-chief', name: '山贼头目', power: 60, rewardGold: 250, description: '占山为王，劫掠乡里' },
+  { id: 'rebel-captain', name: '叛军校尉', power: 100, rewardGold: 600, description: '据城叛乱，自封将军' },
+  { id: 'enemy-vanguard', name: '敌国先锋', power: 140, rewardGold: 1500, description: '敌国前军，锐气正盛' },
+  { id: 'enemy-general', name: '敌国大将', power: 190, rewardGold: 4000, description: '统兵万人的宿将' },
+  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 10000, description: '逐鹿天下的一方霸主' }
 ];
 
 export function findLord(id: string | null) {

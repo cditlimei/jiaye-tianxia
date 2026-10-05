@@ -190,10 +190,22 @@ await scenario('选择对手', async () => {
   const texts = await cards.allInnerTexts();
   const odds = texts.map((t) => Number(t.match(/胜率约 (\d+)%/)?.[1] ?? -1));
   check('对手列表显示六档与胜率', texts.length === 6 && odds.every((o) => o >= 0), odds.join('/'));
+  // 头像是懒加载，先滚进视口再等它们加载完
+  await page.locator('.tier-card').last().scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => [...document.querySelectorAll('.tier-card__avatar')].every((e) => e.tagName !== 'IMG' || e.complete), null, { timeout: 8000 }).catch(() => {});
   const avatars = await page.locator('.tier-card__avatar').evaluateAll((els) => els.map((e) => e.tagName === 'IMG' && e.naturalWidth > 0));
   check('对手卡片带立绘头像', avatars.length === 6 && avatars.every(Boolean), JSON.stringify(avatars));
   const recommended = texts.findIndex((t) => t.includes('推荐 ·'));
-  check('推荐档是不高于战力的最强档且胜率 60%+', recommended === 1 && odds[1] >= 60, `推荐=${texts[recommended]?.split('\n')[0]} 胜率 ${odds[1]}%`);
+  // 推荐 = 每道军令期望得失最高的一档（胜率按显示的 5% 档位取，允许并列）
+  const ev = texts.map((t, i) => {
+    const m = t.match(/胜\s\+([\d,]+) · 败\s−([\d,]+)/);
+    if (!m) return -Infinity;
+    const win = Number(m[1].replace(/,/g, '')), lose = Number(m[2].replace(/,/g, ''));
+    return (odds[i] / 100) * win - (1 - odds[i] / 100) * lose;
+  });
+  const bestEv = Math.max(...ev);
+  check('推荐档是期望得失最高的一档', recommended >= 0 && ev[recommended] >= bestEv * 0.95, `推荐=${texts[recommended]?.split('\n')[0]} 期望 ${ev.map((x) => Math.round(x)).join('/')}`);
+  check('越往上败损占缴获越重', ev.length === 6 && texts.every((t) => /胜\s\+[\d,]+ · 败\s−[\d,]+|力不能及/.test(t)), texts.map((t) => t.split('\n').pop()).join(' | '));
   check('更弱档胜率更高、更强档胜率更低且有梯度', odds[0] >= odds[1] && odds[2] < odds[1] && odds[2] >= 20 && odds[3] < odds[2], odds.join('/'));
   await cards.nth(2).click();
   const summary = await page.locator('.venue-summary').innerText();
@@ -219,7 +231,9 @@ await scenario('江东水战', async () => {
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /江东/ }).click();
   const panel = await page.locator('[aria-label="水战说明"]').innerText();
-  const reward = Number((await page.locator('[aria-label="水战说明"] .venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const navalSummary = await page.locator('[aria-label="水战说明"] .venue-summary').innerText();
+  const reward = Number(navalSummary.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const loss = Number(navalSummary.match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
   check('水战面板显示智谋与缴获', /智谋实力 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
   const before = await read(page);
   await page.getByRole('button', { name: /^扬帆出战/ }).click();
@@ -229,7 +243,7 @@ await scenario('江东水战', async () => {
   const after = await read(page);
   check('水战结算与存档一致', win
     ? after.gold - before.gold === reward && after.navalWins === before.navalWins + 1 && after.battleWins === before.battleWins + 1
-    : before.gold - after.gold === Math.round(reward * 0.2) && after.navalWins === before.navalWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+    : before.gold - after.gold === loss && after.navalWins === before.navalWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
   await page.getByText('主城经营').first().waitFor();
   if (win) {
@@ -253,7 +267,9 @@ await scenario('许都朝堂', async () => {
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /许都/ }).click();
   const panel = await page.locator('[aria-label="朝堂说明"]').innerText();
-  const reward = Number((await page.locator('[aria-label="朝堂说明"] .venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const courtSummary = await page.locator('[aria-label="朝堂说明"] .venue-summary').innerText();
+  const reward = Number(courtSummary.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const loss = Number(courtSummary.match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
   check('朝堂面板显示声望与缴获', /声望实力 \d+/.test(panel) && reward > 0, `缴获 ${reward}`);
   const before = await read(page);
   await page.getByRole('button', { name: /^入朝议事/ }).click();
@@ -263,10 +279,10 @@ await scenario('许都朝堂', async () => {
   const after = await read(page);
   check('朝议结算与存档一致', win
     ? after.gold - before.gold === reward && after.courtWins === before.courtWins + 1 && after.navalWins === before.navalWins
-    : before.gold - after.gold === Math.round(reward * 0.2) && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
+    : before.gold - after.gold === loss && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
   await page.getByText('主城经营').first().waitFor();
-  check('主城显示分战场战绩', /讨伐 \d+ · 水战 \d+ · 朝议 \d+ · 靖边 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
+  check('主城显示分战场战绩', /官道与牌局 \d+ · 水战 \d+ · 朝议 \d+ · 靖边 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
   await page.context().close();
 });
 
@@ -402,7 +418,7 @@ await scenario('传位', async () => {
   await page.getByRole('button', { name: '传位给下一代' }).click();
   await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
   let s = await read(page);
-  check('传位后进入选主公且重置', s.generation === 2 && s.legacyPoints === 2 && s.gold === 1000 && s.homeLevel === 1 && s.farmLevel === 0 && s.ownedPartnerIds.length === 0 && s.equippedWeaponId === 'xuanjian', JSON.stringify({ g: s.generation, lp: s.legacyPoints, gold: s.gold }));
+  check('传位后进入选主公且重置（屯田随家业传下）', s.generation === 2 && s.legacyPoints === 2 && s.gold === 1000 && s.homeLevel === 1 && s.farmLevel === 2 && s.ownedPartnerIds.length === 0 && s.equippedWeaponId === 'xuanjian', JSON.stringify({ g: s.generation, lp: s.legacyPoints, gold: s.gold }));
   await page.getByRole('button', { name: '确认选择' }).click();
   await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: '携美人，共创家业' }).click();
@@ -453,6 +469,7 @@ await scenario('府中事件二选一', async () => {
   // 面板上显示的已是翻倍后的实得数
   const summaryText = await adv.locator('.venue-summary').innerText();
   const reward = Number(summaryText.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const bonusLoss = Number(summaryText.match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
   check('出征面板标明练兵翻倍', summaryText.includes('练兵之策翻倍'), summaryText.slice(0, 80));
   const before = await read(adv);
   await adv.getByRole('button', { name: /^出征讨伐 ·/ }).click();
@@ -460,7 +477,7 @@ await scenario('府中事件二选一', async () => {
   await adv.waitForTimeout(400);
   const after = await read(adv);
   const won = (await adv.locator('h2').first().innerText()).includes('讨伐得胜');
-  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward && after.nextBattleBonus === null : after.nextBattleBonus === 2 && before.gold - after.gold === Math.round((reward / 2) * 0.2), `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
+  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward && after.nextBattleBonus === null : after.nextBattleBonus === 2 && before.gold - after.gold === bonusLoss, `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
   await adv.context().close();
 
   // 选现钱
@@ -482,8 +499,15 @@ await scenario('称号', async () => {
   await fresh.context().close();
   const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1 }));
   const hud2 = await vet.locator('.home-hud').innerText();
-  check('按最后达成的称号显示并提示最近未达成的', hud2.includes('「一代枭雄」') && (await vet.locator('.honor-hint').innerText()).includes('朝堂新贵'));
+  const hint2 = await vet.locator('.honor-hint').innerText();
+  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hint2.includes('另有 4 个称号待集齐'), hint2);
   await vet.context().close();
+  // 第二代：开国元勋是家声，不盖住本代称号；提示指向更高的本代称号
+  const heir = await open(save({ homeLevel: 3, battleWins: 2, generation: 2, legacyPoints: 2 }));
+  const hud3 = await heir.locator('.home-hud').innerText();
+  const hint3 = await heir.locator('.honor-hint').innerText();
+  check('第二代显示本代称号而非开国元勋', hud3.includes('「乡绅」') && !hud3.includes('「开国元勋」') && hint3.includes('一方豪强'), `${hud3.replace(/\n/g, ' ').slice(0, 60)} | ${hint3}`);
+  await heir.context().close();
 });
 
 await scenario('伴侣心事', async () => {
@@ -602,13 +626,13 @@ await scenario('竖屏两行手牌', async () => {
 });
 
 await scenario('战斗加速与押注上限', async () => {
-  // 金 500：败损 800 的档位不可选
+  // 金 500：败损按余额封顶，付不起全额也照样能打
   const poor = await open(save({ gold: 500, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
   await poor.getByRole('button', { name: '出征讨伐' }).click();
   await poor.getByText('九州征途').first().waitFor();
   await poor.getByRole('button', { name: /官道/ }).click();
-  const cap = poor.locator('.tier-card').filter({ hasText: '金币不足' });
-  check('败损超过身家的档位禁用并说明', (await cap.count()) >= 1 && (await cap.first().isDisabled()));
+  const cap = poor.locator('.tier-card').filter({ hasText: /败\s−500(?!\d)/ });
+  check('身家不够全额败损时按余额封顶且仍可选', (await cap.count()) >= 1 && (await cap.first().isEnabled()), `count=${await cap.count()}`);
   await poor.context().close();
   // 直接结算：几秒内出结果
   const page = await open(save({ gold: 5000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
@@ -626,7 +650,7 @@ await scenario('战斗加速与押注上限', async () => {
 
 await scenario('离线保留事件与升阶画面', async () => {
   // 离线 12 天经过第 10 日：商旅归附保留待决断
-  const page = await open(save({ day: 3, gold: 5000, lastSavedAt: Date.now() - 12.5 * 3600 * 1000 }));
+  const page = await open(save({ day: 3, gold: 5000, ownedPartnerIds: [], lastSavedAt: Date.now() - 12.5 * 3600 * 1000 }));
   await page.waitForTimeout(500);
   const s = await read(page);
   check('离线期间最近一桩二选一留给玩家', s.day === 15 && s.pendingChoice?.day === 15 && (await page.locator('.choice-card').isVisible()), `day=${s.day} pending=${JSON.stringify(s.pendingChoice)}`);
@@ -648,18 +672,21 @@ await scenario('品级定价与中途离阵', async () => {
   const tags = (await page.locator('.partner-card').filter({ hasText: '貂蝉' }).innerText()) + (await page.locator('.partner-card').filter({ hasText: '蔡文姬' }).innerText());
   check('伴侣按品级定价（传说 > 名姬 > 贤助）', d > z && z > c && tags.includes('传说') && tags.includes('贤助'), `${d}/${z}/${c}`);
   await page.context().close();
-  // 出征后刷新：按认输扣折损并记负
+  // 出征后刷新：将士按显示的胜率替玩家打完，胜得缴获、败扣折损
   const fight = await open(save({ gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
   await fight.getByRole('button', { name: '出征讨伐' }).click();
   await fight.getByText('九州征途').first().waitFor();
   await fight.getByRole('button', { name: /官道/ }).click();
-  const loss = Number((await fight.locator('.venue-summary').innerText()).match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const fightSummary = await fight.locator('.venue-summary').innerText();
+  const loss = Number(fightSummary.match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const gain = Number(fightSummary.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
   await fight.getByRole('button', { name: /^出征讨伐 ·/ }).click();
   await fight.waitForTimeout(800);
   await fight.reload({ waitUntil: 'domcontentloaded' });
   await fight.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
   const s2 = await read(fight);
-  check('战斗中刷新按认输结算', s2.gold === 5000 - loss && s2.battleLosses === 1 && s2.activeBattle === null && s2.eventLog[0]?.title === '中途离阵', `gold=${s2.gold} loss=${loss}`);
+  const wonAway = s2.battleWins === 1;
+  check('战斗中刷新按胜率替玩家打完', s2.activeBattle === null && s2.eventLog[0]?.title === '战事已毕' && (wonAway ? s2.gold === 5000 + gain : s2.gold === 5000 - loss && s2.battleLosses === 1), `${wonAway ? '胜' : '负'} gold=${s2.gold} gain=${gain} loss=${loss}`);
   await fight.context().close();
 });
 
@@ -706,6 +733,77 @@ await scenario('流民归附', async () => {
   await page.context().close();
 });
 
+await scenario('第五轮修复', async () => {
+  // 传位点数封顶：已有 18 点、手上 234 万金，只能再换 2 点
+  const rich = await open(save({ homeLevel: 6, gold: 2345678, legacyPoints: 18, generation: 3 }));
+  const hintText = await rich.locator('.succession-hint').innerText();
+  check('主城传位提示按上限封顶', hintText.includes('可换 2 点'), hintText.replace(/\n/g, ' ').slice(0, 80));
+  const gold = await rich.locator('.home-hud__chips strong').first().innerText();
+  check('百万以上金币用「万」显示', gold === '234.6万', gold);
+  const chipsFit = await rich.locator('.home-hud__chips strong').evaluateAll((els) => els.every((e) => e.scrollWidth <= e.clientWidth + 1));
+  check('顶栏数字不溢出', chipsFit);
+  await rich.getByRole('button', { name: '设置与存档' }).click();
+  await rich.getByText('当前存档').first().waitFor();
+  const panel = await rich.locator('.succession-panel').innerText();
+  check('传位面板说明超出上限的点数', panel.includes('可得 2 点') && panel.includes('多出的 21 点换不到'), panel.replace(/\n/g, ' ').slice(0, 120));
+  await rich.context().close();
+
+  // 传位后回标题页：显示待择新主与家业点，重开确认点明家业点会作废
+  const heir = await open(save({ homeLevel: 6, gold: 250000, ownedPartnerIds: ['diaochan'] }));
+  const messages = [];
+  heir.on('dialog', (d) => { messages.push(d.message()); d.accept(); });
+  await heir.getByRole('button', { name: '设置与存档' }).click();
+  await heir.getByRole('button', { name: '传位给下一代' }).click();
+  await heir.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  await heir.reload();
+  await heir.getByText('家业天下').first().waitFor();
+  const saveText = await heir.locator('.title-screen__save').innerText().catch(() => '');
+  check('标题页显示待择新主与起手金', saveText.includes('第 2 代 · 待择新主') && saveText.includes('起手 7,000 金'), saveText.replace(/\n/g, ' '));
+  const newGame = heir.getByRole('button', { name: '重开基业' });
+  if (await newGame.isVisible().catch(() => false)) {
+    heir.removeAllListeners('dialog');
+    heir.on('dialog', (d) => { messages.push(d.message()); d.dismiss(); });
+    await newGame.click();
+    await heir.waitForTimeout(300);
+    check('重开确认点明家业点作废', messages.some((m) => m.includes('2 点家业点')), messages.join(' | '));
+  } else {
+    check('重开确认点明家业点作废', false, '标题页没有重开按钮');
+  }
+  await heir.context().close();
+});
+
+await scenario('第五轮修复（离线与兵器）', async () => {
+  // 离线期间减税招商照样生效：第 12 日起离线 3 天，加成到第 20 日
+  const buff = await open(save({ day: 12, gold: 5000, ownedPartnerIds: [], incomeBuff: { percent: 40, untilDay: 20 }, lastSavedAt: Date.now() - 3.2 * 3600 * 1000 }));
+  await buff.waitForTimeout(500);
+  const b = await read(buff);
+  await buff.context().close();
+  const plain = await open(save({ day: 12, gold: 5000, ownedPartnerIds: [], lastSavedAt: Date.now() - 3.2 * 3600 * 1000 }));
+  await plain.waitForTimeout(500);
+  const p0 = await read(plain);
+  await plain.context().close();
+  // 两边府中事件相同，差额只来自 3 天政务的 40% 加成
+  const daily = p0.pendingChoice?.dailyIncome ?? 0;
+  check('离线收入也吃减税加成', b.day === 15 && daily > 0 && b.gold - p0.gold === (Math.round(daily * 1.4) - daily) * 3 && b.incomeBuff?.untilDay === 20, `有加成 +${b.gold - 5000} / 无加成 +${p0.gold - 5000} 日收 ${daily}`);
+
+  // 离线跨过伴侣心事日：心事留给玩家决断
+  const heart = await open(save({ day: 3, gold: 5000, ownedPartnerIds: ['diaochan'], lastSavedAt: Date.now() - 3.2 * 3600 * 1000 }));
+  await heart.waitForTimeout(500);
+  const h = await read(heart);
+  check('离线错过的伴侣心事留待决断', h.pendingChoice?.eventId === 'partner:diaochan' && (await heart.locator('[aria-label="伴侣心事"]').isVisible()), JSON.stringify(h.pendingChoice));
+  await heart.context().close();
+
+  // 买比手上弱的兵器：收进兵器库，不换装
+  const armory = await open(save({ gold: 5000, selectedLordId: 'zhaoyun', equippedWeaponId: 'qinggang', ownedWeaponIds: ['xuanjian', 'qinggang'] }));
+  await armory.getByRole('button', { name: '兵器库' }).click();
+  await armory.getByText('兵器库').nth(1).waitFor();
+  await armory.locator('.weapon-card').filter({ hasText: '双股剑' }).getByRole('button', { name: /购入/ }).click();
+  await armory.waitForTimeout(300);
+  const w = await read(armory);
+  check('买弱兵器不自动换装', w.ownedWeaponIds.includes('shuanggu') && w.equippedWeaponId === 'qinggang' && (await armory.locator('.partner-market__notice').innerText()).includes('收进兵器库'), `eq=${w.equippedWeaponId}`);
+  await armory.context().close();
+});
+
 await scenario('传位后刷新不丢世代', async () => {
   const page = await open(save({ homeLevel: 6, gold: 250000, ownedPartnerIds: ['diaochan'] }));
   page.on('dialog', (d) => d.accept());
@@ -744,7 +842,7 @@ await scenario('斗地主', async () => {
   accept = true;
   await page.getByRole('button', { name: /^认输/ }).click();
   await page.getByText('主城经营').first().waitFor();
-  check('认输记一负并折损 20% 缴获', (await read(page)).battleLosses === 1 && g0 - (await read(page)).gold === 800, `Δ=${g0 - (await read(page)).gold}`);
+  check('认输记一负并折损 20% 缴获', (await read(page)).battleLosses === 1 && g0 - (await read(page)).gold === 1600, `Δ=${g0 - (await read(page)).gold}`);
 
   // 用提示打完整局：不能卡死，胜负与金币一致
   await page.getByRole('button', { name: '出征讨伐' }).click();
@@ -779,7 +877,7 @@ await scenario('斗地主', async () => {
   await page.waitForTimeout(400);
   const after = await read(page);
   const delta = after.gold - before.gold;
-  check('斗地主整局可打完且结算一致', ended && (win ? delta === 4000 && after.battleWins === before.battleWins + 1 : delta === -800 && after.battleLosses === before.battleLosses + 1),
+  check('斗地主整局可打完且结算一致', ended && (win ? delta === 8000 && after.battleWins === before.battleWins + 1 : delta === -1600 && after.battleLosses === before.battleLosses + 1),
     `${win ? '胜' : '负'} Δgold=${delta}`);
   await page.context().close();
 });

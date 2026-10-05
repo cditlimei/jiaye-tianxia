@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
-import { weaponBonusForLord } from '../lib/battle';
+import { legacyPointsGainable, weaponBonusForLord } from '../lib/battle';
 import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
@@ -24,6 +24,7 @@ interface HomeScreenProps {
   charisma: number;
   dailyIncome: number;
   farmPercent: number;
+  farmFlat: number;
   recruitDiscount: number;
   onCollectIncome: () => number;
   onResolveChoice: (optionId: string) => void;
@@ -39,12 +40,19 @@ interface HomeScreenProps {
   onIncomeSfx: () => void;
   onUpgradeEffect: (imagePath: string, name: string) => void;
   questStatuses: QuestStatus[];
-  titleStatus: { current: { name: string }; next: { name: string; requirement: string } | null };
+  titleStatus: { current: { name: string }; next: { name: string; requirement: string } | null; missing: number; lineage: { name: string } | null };
 }
 
 interface FloatingIncome {
   id: number;
   amount: number;
+}
+
+// 顶栏格子只有 70px 宽，百万以上改用「万」
+function compactGold(gold: number) {
+  if (gold < 1_000_000) return gold.toLocaleString();
+  const wan = gold / 10000;
+  return `${wan >= 10000 ? Math.round(wan).toLocaleString() : wan.toFixed(1).replace(/\.0$/, '')}万`;
 }
 
 export function HomeScreen({
@@ -59,6 +67,7 @@ export function HomeScreen({
   charisma,
   dailyIncome,
   farmPercent,
+  farmFlat,
   recruitDiscount,
   onCollectIncome,
   onResolveChoice,
@@ -83,7 +92,7 @@ export function HomeScreen({
   const starterOrders = useMemo(
     () => [
       { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
-      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
+      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < 800 ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
       { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑。第 5 日伴侣会来说心事，了却后任务「良缘佳话」正好奖 1,500 金。' },
       { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点「出征讨伐」，到官道挑一个推荐对手打一场，缴获比处理政务多得多。' }
     ],
@@ -148,13 +157,13 @@ export function HomeScreen({
           <ImageWithFallback src={imageUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
           <div>
             <strong>{lord.name}</strong>
-            <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
-            <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : '已是最高称号'}>「{titleStatus.current.name}」</em>
+            <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}{titleStatus.lineage && titleStatus.lineage.name !== '开国元勋' ? ` · ${titleStatus.lineage.name}` : ''}</span>
+            <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em>
           </div>
         </div>
         <div className="home-hud__chips">
           <div>
-            <strong>{state.gold.toLocaleString()}</strong>
+            <strong title={`${state.gold.toLocaleString()} 金`}>{compactGold(state.gold)}</strong>
             <span>金币</span>
           </div>
           <div>
@@ -166,8 +175,8 @@ export function HomeScreen({
             <span>军令</span>
           </div>
           <div>
-            <strong>第 {state.day} 日</strong>
-            <span>天数</span>
+            <strong>{state.day}</strong>
+            <span>第几日</span>
           </div>
         </div>
         <button className="sound-toggle sound-toggle--inset" onClick={onOpenSettings} aria-label="打开设置">
@@ -226,7 +235,7 @@ export function HomeScreen({
       {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
         <section className="succession-hint" aria-label="传位提示">
           <strong>家业已至王城，可传位给下一代</strong>
-          <span>现有 {state.gold.toLocaleString()} 金可换 {Math.floor(state.gold / 100000)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。</span>
+          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。</span>
           <button type="button" onClick={onOpenSettings}>去传位 →</button>
         </section>
       )}
@@ -240,9 +249,9 @@ export function HomeScreen({
             ))}
           </div>
           <div className="home-estate__content">
-            <span className="eyebrow">主城经营 · 核心循环</span>
+            <span className="eyebrow">主城经营</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmPercent}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />
@@ -306,7 +315,7 @@ export function HomeScreen({
           <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
         </div>
         <p className="honor-hint">
-          当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : '，已是最高称号'}。
+          当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : titleStatus.missing > 0 ? `，已是本代最高称号，另有 ${titleStatus.missing} 个称号待集齐（点头像查看）` : '，本代称号已集齐'}。
         </p>
         <div className="section-title" hidden>
           <span />
@@ -350,7 +359,7 @@ export function HomeScreen({
       </section>
 
       <footer className="home-footer">
-        <span>讨伐 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins} · 负 {state.battleLosses}</span>
+        <span>官道与牌局 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins} · 负 {state.battleLosses}</span>
         <button onClick={onOpenSettings}>设置与存档</button>
       </footer>
     </main>

@@ -27,8 +27,8 @@ export function incomeMultiplier(intelligence: number) {
 }
 
 /** 宅邸收入 × 屯田比例 × 家业点 × 智谋 */
-export function totalDailyIncome(homeIncome: number, farmPercent: number, legacyPoints: number, intelligence: number) {
-  return effectiveDailyIncome(Math.round(homeIncome * (1 + farmPercent / 100) * legacyIncomeMultiplier(legacyPoints)), intelligence);
+export function totalDailyIncome(homeIncome: number, farmPercent: number, legacyPoints: number, intelligence: number, farmFlat = 0) {
+  return effectiveDailyIncome(Math.round((homeIncome * (1 + farmPercent / 100) + farmFlat) * legacyIncomeMultiplier(legacyPoints)), intelligence);
 }
 
 export function effectiveDailyIncome(baseIncome: number, intelligence: number) {
@@ -114,7 +114,46 @@ function tierPosition(list: Enemy[], power: number) {
   for (let i = 0; i < list.length - 1; i += 1) {
     if (power < list[i + 1].power) return i + (power - list[i].power) / (list[i + 1].power - list[i].power);
   }
-  return list.length - 1;
+  // 超过最高档门槛后继续按最后一段的间距外推，战力再涨胜率也会跟着涨
+  const last = list.length - 1;
+  const gap = list.length > 1 ? list[last].power - list[last - 1].power : list[last].power;
+  return last + (power - list[last].power) / Math.max(1, gap);
+}
+
+/**
+ * 战败折损：胜率越低折损越重（胜率 100% 时 20%，0% 时 70%），
+ * 让期望收益在推荐档（约 75%）附近最高，往上硬冲不再稳赚。
+ */
+/** 胜率显示：按 5% 取整，但永远不写 100% 或 0%（实际最高 99%） */
+export function oddsPercentLabel(odds: number) {
+  return Math.min(99, Math.max(1, Math.round(odds * 20) * 5));
+}
+
+export function battleLossRate(odds: number) {
+  return 0.2 + 0.5 * (1 - Math.min(1, Math.max(0, odds)));
+}
+
+export function battleLossGold(rewardGold: number, odds: number) {
+  return Math.round(rewardGold * battleLossRate(odds));
+}
+
+/** 每道军令的期望得失 */
+export function expectedTierGold(rewardGold: number, odds: number) {
+  return odds * rewardGold - (1 - odds) * battleLossGold(rewardGold, odds);
+}
+
+/** 期望得失最高的档位，作为「推荐」 */
+export function bestValueTierIndex(list: Enemy[], power: number) {
+  let best = 0;
+  let bestValue = -Infinity;
+  list.forEach((tier, index) => {
+    const value = expectedTierGold(tier.rewardGold, tierOddsFor(list, index, power));
+    if (value > bestValue) {
+      bestValue = value;
+      best = index;
+    }
+  });
+  return best;
 }
 
 function targetOdds(offset: number) {
@@ -170,6 +209,12 @@ export const SUCCESSION_HOME_LEVEL = 6;
 export const LEGACY_GOLD_PER_POINT = 100000;
 export const LEGACY_MAX_POINTS = 20;
 export const LEGACY_INCOME_PER_POINT = 0.05;
+export const LEGACY_START_GOLD_PER_POINT = 3000;
+
+/** 这次传位实际能新增的家业点（已扣掉累计上限） */
+export function legacyPointsGainable(gold: number, currentPoints: number) {
+  return Math.max(0, Math.min(legacyPointsFor(gold), LEGACY_MAX_POINTS - currentPoints));
+}
 
 export function legacyPointsFor(gold: number) {
   return Math.floor(Math.max(0, gold) / LEGACY_GOLD_PER_POINT);

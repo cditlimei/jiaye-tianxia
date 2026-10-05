@@ -57,7 +57,9 @@ export function WeaponModal({ lord, state, onClose, onEquip }: WeaponModalProps)
                   disabled={equipped}
                   onClick={() => {
                     if (onEquip(weapon.id)) {
-                      setNotice(owned ? `已装备 ${weapon.name}。` : `购入 ${weapon.name}，已装备。`);
+                      const current = weapons.find((item) => item.id === state.equippedWeaponId);
+                      const stronger = !current || weaponBonusForLord(weapon, lord.id) > weaponBonusForLord(current, lord.id);
+                      setNotice(owned ? `已装备 ${weapon.name}。` : stronger ? `购入 ${weapon.name}，已装备。` : `购入 ${weapon.name}，比手上的 ${current?.name} 弱，已收进兵器库。`);
                       return;
                     }
                     setNotice(`金不足，还差 ${missingGold.toLocaleString()} 金。`);

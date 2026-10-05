@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GameState } from '../types';
-import { LEGACY_GOLD_PER_POINT, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL } from '../lib/battle';
+import { LEGACY_GOLD_PER_POINT, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, legacyPointsGainable, SUCCESSION_HOME_LEVEL } from '../lib/battle';
 import { GameButton } from './common/GameButton';
 import { ModalShell } from './common/ModalShell';
 
@@ -29,7 +29,8 @@ export function SettingsModal({
   onReset,
   onSucceed
 }: SettingsModalProps) {
-  const gainedPoints = legacyPointsFor(state.gold);
+  const gainedPoints = legacyPointsGainable(state.gold, state.legacyPoints);
+  const wastedPoints = legacyPointsFor(state.gold) - gainedPoints;
   const canSucceed = state.homeLevel >= SUCCESSION_HOME_LEVEL && gainedPoints >= 1 && state.legacyPoints < LEGACY_MAX_POINTS;
   const successionHint = state.homeLevel < SUCCESSION_HOME_LEVEL
     ? `宅邸升至王城（${SUCCESSION_HOME_LEVEL} 级）后可传位。`
@@ -37,7 +38,7 @@ export function SettingsModal({
       ? '家业点已达上限，传位不再增加加成。'
       : gainedPoints < 1
         ? `至少需 ${LEGACY_GOLD_PER_POINT.toLocaleString()} 金才能换到 1 点家业点。`
-        : `现在传位可得 ${gainedPoints} 点家业点，累计 ${Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gainedPoints)} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gainedPoints)) - 1) * 100)}%。`;
+        : `现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<{ ok: boolean; message: string } | null>(null);
 

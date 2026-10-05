@@ -122,9 +122,11 @@ export interface Title {
   /** 达成条件的人话，用于「下一称号」提示 */
   requirement: string;
   isEarned: (state: GameState) => boolean;
+  /** 跨代的家声称号，不和本代称号抢显示位 */
+  lineage?: boolean;
 }
 
-// 称号按先后排列，取已达成的最后一个；全部由存档算出，不单独存
+// 本代称号按档位从低到高排列，显示已达成里档位最高的；家声称号单列。全部由存档算出，不单独存
 export const titles: Title[] = [
   { id: 'commoner', name: '白身', requirement: '', isEarned: () => true },
   { id: 'gentry', name: '乡绅', requirement: '宅邸升至砖瓦宅', isEarned: (s) => s.homeLevel >= 3 },
@@ -136,21 +138,21 @@ export const titles: Title[] = [
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
   { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).length >= 5 },
   { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
-  { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2 },
-  { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10 }
+  { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2, lineage: true },
+  { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true }
 ];
 
 export function getTitleStatus(state: GameState) {
-  let current = titles[0];
-  let next: Title | null = null;
-  for (const title of titles) {
-    if (title.isEarned(state)) {
-      current = title;
-    } else if (!next) {
-      next = title;
-    }
-  }
-  return { current, next };
+  const ranked = titles.filter((title) => !title.lineage);
+  let currentIndex = 0;
+  ranked.forEach((title, index) => {
+    if (title.isEarned(state)) currentIndex = index;
+  });
+  // 只提示比当前更高的称号，达成后显示位一定会变
+  const next = ranked.slice(currentIndex + 1).find((title) => !title.isEarned(state)) ?? null;
+  const missing = ranked.filter((title) => !title.isEarned(state)).length;
+  const lineage = [...titles].reverse().find((title) => title.lineage && title.isEarned(state)) ?? null;
+  return { current: ranked[currentIndex], next, missing, lineage };
 }
 
 export function getQuestStatuses(state: GameState, context: QuestContext): QuestStatus[] {
