@@ -9,6 +9,12 @@ const context = await browser.newContext({
   colorScheme: 'dark'
 });
 const page = await context.newPage();
+// 本地模拟 CI 慢机器：JIAYE_CPU_THROTTLE=4 表示 CPU 降到 1/4
+const cpuThrottle = Number(process.env.JIAYE_CPU_THROTTLE || 0);
+if (cpuThrottle > 1) {
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });
+}
 page.on('dialog', (dialog) => dialog.accept());
 const imageRequests = [];
 page.on('request', (request) => {
@@ -138,6 +144,13 @@ try {
   assertOptimizedImages(imageRequests);
 
   console.log('smoke_ok');
+} catch (error) {
+  // CI 里输出成 GitHub 注解，失败原因不登录也能在检查结果里看到；顺手留一张失败截图
+  if (process.env.GITHUB_ACTIONS) {
+    console.log(`::error title=smoke::${String(error?.message ?? error).split('\n').slice(0, 3).join(' | ').slice(0, 900)}`);
+    await page.screenshot({ path: 'smoke-failure.png' }).catch(() => {});
+  }
+  throw error;
 } finally {
   await browser.close();
 }

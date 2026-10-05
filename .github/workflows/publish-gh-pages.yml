@@ -73,7 +73,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: preview-log
-          path: preview.log
+          path: |
+            preview.log
+            smoke-failure.png
           if-no-files-found: ignore
 
   publish:

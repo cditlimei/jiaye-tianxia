@@ -11,6 +11,7 @@ const results = [];
 const check = (name, ok, detail = '') => {
   results.push(ok);
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` ${detail}` : ''}`);
+  if (!ok && process.env.GITHUB_ACTIONS) console.log(`::error title=scenario::${name} ${String(detail ?? '').slice(0, 300)}`);
 };
 const save = (extra = {}) => ({
   screen: 'home', selectedLordId: 'lvbu', gold: 5000, homeLevel: 2, equippedWeaponId: 'xuanjian', ownedPartnerIds: ['diaochan'],
