@@ -102,7 +102,10 @@ export function findPartnerEvent(partnerId: string) {
 }
 
 export function isPartnerEventDay(day: number) {
-  return day % PARTNER_EVENT_CYCLE_DAYS === PARTNER_EVENT_OFFSET_DAY;
+  const onCycle = (d: number) => d % PARTNER_EVENT_CYCLE_DAYS === PARTNER_EVENT_OFFSET_DAY;
+  // 第 15、45… 日是门客献策，心事顺延到次日
+  if (onCycle(day)) return day % 15 !== 0;
+  return onCycle(day - 1) && (day - 1) % 15 === 0;
 }
 
 /** 下一位该出心事的伴侣：按招募顺序，取还没解决过心事的第一位 */

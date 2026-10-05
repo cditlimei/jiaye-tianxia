@@ -438,7 +438,7 @@ export const homeLevels: HomeLevel[] = [
   { level: 3, name: '砖瓦宅', upgradeCost: 4000, dailyIncome: 80, imagePath: 'assets/homes/home_level3.png' },
   { level: 4, name: '府邸', upgradeCost: 12000, dailyIncome: 200, imagePath: 'assets/homes/home_level4.png' },
   { level: 5, name: '侯府', upgradeCost: 50000, dailyIncome: 500, imagePath: 'assets/homes/home_level5.png' },
-  { level: 6, name: '王城', upgradeCost: 200000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
+  { level: 6, name: '王城', upgradeCost: 120000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
 ];
 
 export const enemies: Enemy[] = [

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
-import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, estimateWinRate, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
+import { COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, ORDER_CAP, type BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
@@ -20,6 +20,7 @@ interface BattleScreenProps {
   farm: { current: FarmLevel; next: FarmLevel | null; gold: number; homeIncome: number };
   orders: number;
   day: number;
+  battleBonus: number | null;
   frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
   onBattleStart: (mode: BattleMode, lossGold: number) => void;
@@ -91,6 +92,7 @@ interface ModeConfig {
   enemyBroken: string;
   exhausted: string;
   retreat: string;
+  hpLabel: string;
   scoutReport: (enemy: string) => string;
   departure: (lord: string, weapon: string) => string;
   battleStart: (weapon: string) => string;
@@ -102,28 +104,28 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
     region: '官道', title: '自动回合战', statLabel: '战力', unlockHomeLevel: 1, unlockHomeName: '', enterLabel: '出征讨伐', background: null,
     summary: '普通讨伐将自动结算攻防回合',
     eyebrow: '自动回合战', intro: '整军出征', fighting: '激战正酣', attack: '出手', crit: '暴击', counter: '反击', counterCrit: '反扑暴击',
-    win: '讨伐得胜', loss: '败退整军', enemyBroken: '阵脚崩溃', exhausted: '兵势已尽，只得暂退', retreat: '鸣金收兵',
+    win: '讨伐得胜', loss: '败退整军', enemyBroken: '阵脚崩溃', exhausted: '兵势已尽，只得暂退', retreat: '鸣金收兵', hpLabel: '兵力',
     scoutReport: (enemy) => `斥候回报：${enemy}列阵于前。`, departure: (lord, weapon) => `${lord}提${weapon}出征。`, battleStart: (weapon) => `${weapon}锋芒毕露，战斗开始。`
   },
   naval: {
     region: '江东', title: '水战', statLabel: '智谋', unlockHomeLevel: NAVAL_UNLOCK_HOME_LEVEL, unlockHomeName: '砖瓦宅', enterLabel: '扬帆出战', background: 'assets/ui/ui_naval_battle.png',
     summary: '水战比智谋（主公 + 伴侣 + 宅邸），兵器不计',
     eyebrow: '江东水战', intro: '整船列阵', fighting: '鏖战江上', attack: '放箭', crit: '火攻', counter: '撞船反扑', counterCrit: '火船逼近',
-    win: '水战告捷', loss: '折戟江上', enemyBroken: '船阵溃散', exhausted: '战船受损，只得回港', retreat: '鸣金收兵',
+    win: '水战告捷', loss: '折戟江上', enemyBroken: '船阵溃散', exhausted: '战船受损，只得回港', retreat: '鸣金收兵', hpLabel: '船力',
     scoutReport: (enemy) => `哨船回报：${enemy}列阵江上。`, departure: (lord) => `${lord}登楼船督战。`, battleStart: () => '战鼓擂响，船阵前压。'
   },
   court: {
     region: '许都', title: '朝堂', statLabel: '声望', unlockHomeLevel: COURT_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '入朝议事', background: 'assets/ui/ui_court_battle.png',
     summary: '朝议比声望（主公 + 伴侣 + 宅邸），兵器不计',
     eyebrow: '许都朝堂', intro: '整冠入朝', fighting: '朝议正酣', attack: '进言', crit: '弹劾', counter: '结党反驳', counterCrit: '构陷', 
-    win: '朝议得胜', loss: '失势出京', enemyBroken: '理屈词穷', exhausted: '孤立无援，只得拂袖而去', retreat: '拂袖退朝',
+    win: '朝议得胜', loss: '失势出京', enemyBroken: '理屈词穷', exhausted: '孤立无援，只得拂袖而去', retreat: '拂袖退朝', hpLabel: '声势',
     scoutReport: (enemy) => `朝中传报：${enemy}已联络党羽。`, departure: (lord) => `${lord}持笏入殿。`, battleStart: () => '钟鼓齐鸣，朝议开始。'
   },
   frontier: {
     region: '北疆', title: '边患', statLabel: '战力', unlockHomeLevel: FRONTIER_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '出关迎战', background: 'assets/ui/ui_frontier_battle.png',
-    summary: '边患每 10 日一起，须在 24 小时内出关迎战（比武力），缴获为陆战两倍；不管或战败则边郡失守，损失 5% 金币',
+    summary: '边患每 10 日一起，须在现实 24 小时内出关迎战（比武力，不耗军令），缴获为陆战两倍；不管或战败则边郡失守，损失 5% 金币',
     eyebrow: '北疆边患', intro: '点兵出关', fighting: '鏖战边塞', attack: '冲阵', crit: '箭雨', counter: '胡骑回冲', counterCrit: '铁骑合围',
-    win: '靖边得胜', loss: '边郡失守', enemyBroken: '溃散北遁', exhausted: '力竭退守关内', retreat: '退守关内',
+    win: '靖边得胜', loss: '边郡失守', enemyBroken: '溃散北遁', exhausted: '力竭退守关内', retreat: '退守关内', hpLabel: '兵力',
     scoutReport: (enemy) => `烽燧急报：${enemy}已过长城。`, departure: (lord, weapon) => `${lord}提${weapon}点兵出关。`, battleStart: (weapon) => `${weapon}寒光一闪，边塞之战开始。`
   }
 };
@@ -148,6 +150,7 @@ export function BattleScreen({
   frontier,
   orders,
   day,
+  battleBonus,
   onUpgradeFarm,
   onBattleStart,
   wins,
@@ -181,12 +184,14 @@ export function BattleScreen({
   const enemy = useMemo(() => enemyForTier(roster, selectedTier, attackPower), [roster, selectedTier, attackPower]);
   // 各档预估胜率（仅地图面板需要）
   const tierOdds = useMemo(
-    () => (mapOpen && mode !== 'frontier' ? roster.map((_tier, index) => estimateWinRate(attackPower, enemyForTier(roster, index, attackPower).power)) : []),
+    () => (mapOpen && mode !== 'frontier' ? roster.map((_tier, index) => tierOddsFor(roster, index, attackPower)) : []),
     [attackPower, mapOpen, mode, roster]
   );
   const lossGold = Math.round(enemy.rewardGold * LOSS_PENALTY_RATE);
+  const bonusMultiplier = battleBonus && battleBonus > 1 ? battleBonus : 1;
   // 北疆败则扣当前金币 5%（封顶），出征那一刻定下
   const [frontierLoss, setFrontierLoss] = useState(0);
+  const [resultBonus, setResultBonus] = useState(1);
   const maxPlayerHp = playerMaxHp(attackPower);
   const maxEnemyHp = enemyMaxHp(enemy.power);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
@@ -330,7 +335,7 @@ export function BattleScreen({
         lord={lord}
         wins={wins}
         losses={losses}
-        rewardGold={selectedVenue.rewardGold}
+        rewardGold={selectedVenue.rewardGold * bonusMultiplier}
         lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
         onResolved={(win, rewardGold, lossGold) => onResolved(win, rewardGold, 'land', false, lossGold)}
@@ -477,9 +482,9 @@ export function BattleScreen({
                 ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
                 : mode === 'frontier'
                   ? frontier.raid
-                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战（不耗军令），预估胜率约 ${Math.round(estimateWinRate(attackPower, enemy.power) * 20) * 5}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
+                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战（不耗军令），预估胜率约 ${Math.round(tierOddsFor(roster, selectedTier, attackPower) * 20) * 5}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
                     : `边境安宁，下次边患不早于第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日（处理政务到那天即起）。${wording.summary}。`
-                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%：胜缴获 ${enemy.rewardGold.toLocaleString()} 金，败折损 ${lossGold.toLocaleString()} 金。`}
+                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${Math.round((tierOdds[selectedTier] ?? 0) * 20) * 5}%：胜缴获 ${(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${lossGold.toLocaleString()} 金。`}
             </p>
           </section>
         )}
@@ -500,6 +505,7 @@ export function BattleScreen({
               result: null
             });
             setFrontierLoss(raidPenalty(farm.gold));
+            setResultBonus(bonusMultiplier);
             onBattleStart(
               selectedRegion.mode === 'doudizhu' ? 'land' : mode,
               selectedRegion.mode === 'doudizhu' ? Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE) : lossGold
@@ -508,10 +514,10 @@ export function BattleScreen({
             setMapOpen(false);
           }}
         >
-          {outOfOrders ? `军令不足 · ${daysUntilNextOrder(day)} 日后回复` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
+          {outOfOrders ? `军令不足 · 回府处理政务，${daysUntilNextOrder(day)} 日后 +1` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
         </GameButton>
         )}
-        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），每 3 日回 1 道，最多存 {ORDER_CAP} 道。出征中途离开页面按认输处理。</p>}
+        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），每 2 日回 1 道，最多存 {ORDER_CAP} 道。出征中途离开页面按认输处理。</p>}
       </main>
     );
   }
@@ -527,9 +533,9 @@ export function BattleScreen({
       </header>
 
       <section className="battle-arena">
-        <BattleFighter name={lord.name} title={mode === 'land' ? weapon.name : `${wording.statLabel} ${attackPower}`} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} />
+        <BattleFighter name={lord.name} title={mode === 'land' ? weapon.name : `${wording.statLabel} ${attackPower}`} image={imageUrl(lord.imagePath, 512)} hp={runtime.playerHp} maxHp={maxPlayerHp} hpLabel={wording.hpLabel} />
         <div className="battle-vs">VS</div>
-        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(enemyImagePath(enemy), 320)} hp={runtime.enemyHp} maxHp={maxEnemyHp} enemy />
+        <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(enemyImagePath(enemy), 320)} hp={runtime.enemyHp} maxHp={maxEnemyHp} hpLabel={wording.hpLabel} enemy />
       </section>
 
       <section className="battle-info">
@@ -546,13 +552,13 @@ export function BattleScreen({
           <strong>
             {runtime.phase === 'result'
               ? runtime.result === 'win'
-                ? `+${enemy.rewardGold.toLocaleString()} 金`
+                ? `+${(enemy.rewardGold * resultBonus).toLocaleString()} 金`
                 : mode === 'frontier'
                   ? runtime.result === 'retreat' ? '±0 金' : `−${frontierLoss.toLocaleString()} 金`
                   : `−${lossGold.toLocaleString()} 金`
               : (
                   <>
-                    <span className="battle-info__line">胜 +{enemy.rewardGold.toLocaleString()} 金</span>
+                    <span className="battle-info__line">胜 +{(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金{bonusMultiplier > 1 ? ' ×2' : ''}</span>
                     <span className="battle-info__line">败 −{(mode === 'frontier' ? frontierLoss : lossGold).toLocaleString()} 金</span>
                   </>
                 )}
@@ -582,6 +588,7 @@ export function BattleScreen({
 }
 
 interface BattleFighterProps {
+  hpLabel: string;
   name: string;
   title: string;
   image: string;
@@ -590,7 +597,7 @@ interface BattleFighterProps {
   enemy?: boolean;
 }
 
-function BattleFighter({ name, title, image, hp, maxHp, enemy = false }: BattleFighterProps) {
+function BattleFighter({ name, title, image, hp, maxHp, hpLabel, enemy = false }: BattleFighterProps) {
   const width = Math.max(0, Math.min(100, (hp / maxHp) * 100));
   return (
     <article className={`battle-fighter ${enemy ? 'is-enemy' : ''}`}>
@@ -601,7 +608,7 @@ function BattleFighter({ name, title, image, hp, maxHp, enemy = false }: BattleF
         <div className="hp-bar" aria-label={`${name}血量`}>
           <div style={{ width: `${width}%` }} />
         </div>
-        <small>兵力 {hp} / {maxHp}</small>
+        <small>{hpLabel} {hp} / {maxHp}</small>
       </div>
     </article>
   );

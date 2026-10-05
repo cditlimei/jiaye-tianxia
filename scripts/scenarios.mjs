@@ -425,7 +425,7 @@ await scenario('府中事件二选一', async () => {
   check('待决断时处理政务暂停', await page.getByRole('button', { name: '先决断上方事件' }).isDisabled());
   const box = await page.locator('.choice-card').boundingBox();
   check('事件卡片滚入视口', box !== null && box.y >= 0 && box.y < 844, `y=${box?.y}`);
-  // 选减税招商：无现钱，后 10 日政务 +20%
+  // 选减税招商：无现钱，后 10 日政务 +40%
   await page.locator('.choice-card__options button').nth(1).click();
   await page.waitForTimeout(300);
   s = await read(page);
@@ -434,7 +434,7 @@ await scenario('府中事件二选一', async () => {
   await page.getByRole('button', { name: /^处理政务/ }).click();
   await page.waitForTimeout(300);
   s = await read(page);
-  check('减税招商：收入 +20% 且按钮金额一致', s.pendingChoice === null && s.incomeBuff?.untilDay === 20 && buffedLabel === Math.round(inc * 1.2) && s.gold - g0 === buffedLabel, `${inc} → ${buffedLabel} 实得 ${s.gold - g0}`);
+  check('减税招商：收入 +40% 且按钮金额一致', s.pendingChoice === null && s.incomeBuff?.untilDay === 20 && buffedLabel === Math.round(inc * 1.4) && s.gold - g0 === buffedLabel, `${inc} → ${buffedLabel} 实得 ${s.gold - g0}`);
   await page.context().close();
 
   // 第 14 → 15 日：门客献策，选练兵之策，下一场胜利缴获翻倍
@@ -449,14 +449,17 @@ await scenario('府中事件二选一', async () => {
   await adv.getByText('九州征途').first().waitFor();
   await adv.getByRole('button', { name: /官道/ }).click();
   await adv.locator('.tier-card').first().click();   // 最弱档，几乎必胜
-  const reward = Number((await adv.locator('.venue-summary').innerText()).match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  // 面板上显示的已是翻倍后的实得数
+  const summaryText = await adv.locator('.venue-summary').innerText();
+  const reward = Number(summaryText.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  check('出征面板标明练兵翻倍', summaryText.includes('练兵之策翻倍'), summaryText.slice(0, 80));
   const before = await read(adv);
   await adv.getByRole('button', { name: /^出征讨伐 ·/ }).click();
   await adv.getByText(/讨伐得胜|败退整军/).first().waitFor({ timeout: 90000 });
   await adv.waitForTimeout(400);
   const after = await read(adv);
   const won = (await adv.locator('h2').first().innerText()).includes('讨伐得胜');
-  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward * 2 && after.nextBattleBonus === null : after.nextBattleBonus === 2 && before.gold - after.gold === Math.round(reward * 0.2), `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
+  check('胜利缴获翻倍并清除加成', won ? after.gold - before.gold === reward && after.nextBattleBonus === null : after.nextBattleBonus === 2 && before.gold - after.gold === Math.round((reward / 2) * 0.2), `${won ? '胜' : '负'} Δ=${after.gold - before.gold} reward=${reward}`);
   await adv.context().close();
 
   // 选现钱
@@ -505,6 +508,19 @@ await scenario('伴侣心事', async () => {
   s = await read(next);
   check('已了却的不重复，轮到下一位', s.pendingChoice?.eventId === 'partner:daqiao');
   await next.context().close();
+  // 第 14 → 15 日是门客献策，心事顺延到第 16 日，两张卡不互相挤掉
+  const clash = await open(save({ day: 14, gold: 5000, homeLevel: 2, ownedPartnerIds: ['zhenji'] }));
+  await clash.getByRole('button', { name: /^处理政务/ }).click();
+  await clash.waitForTimeout(400);
+  s = await read(clash);
+  check('第 15 日先出门客献策', s.pendingChoice?.eventId === 'advisor', s.pendingChoice?.eventId);
+  await clash.locator('.choice-card__options button').first().click();
+  await clash.waitForTimeout(300);
+  await clash.getByRole('button', { name: /^处理政务/ }).click();
+  await clash.waitForTimeout(400);
+  s = await read(clash);
+  check('心事顺延到第 16 日', s.day === 16 && s.pendingChoice?.eventId === 'partner:zhenji', `day=${s.day} ${s.pendingChoice?.eventId}`);
+  await clash.context().close();
 });
 
 await scenario('新主公', async () => {
@@ -674,6 +690,21 @@ await scenario('军令', async () => {
   await p2.context().close();
 });
 
+await scenario('流民归附', async () => {
+  // 第 19 → 20 日：流民归附；选「募为乡勇」军令 +1，不给钱
+  const page = await open(save({ day: 19, gold: 5000, homeLevel: 2, ownedPartnerIds: [], orders: 2 }));
+  await page.getByRole('button', { name: /^处理政务/ }).click();
+  await page.waitForTimeout(400);
+  let s = await read(page);
+  const g0 = s.gold, o0 = s.orders;
+  check('第 20 日出流民归附', s.pendingChoice?.eventId === 'refugees' && (await page.locator('.choice-card').innerText()).includes('流民归附'), s.pendingChoice?.eventId);
+  await page.locator('.choice-card__options button').nth(1).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  check('募为乡勇：军令 +1 且不给钱', s.orders === o0 + 1 && s.gold === g0 && s.pendingChoice === null, `orders ${o0} → ${s.orders} gold ${g0} → ${s.gold}`);
+  await page.context().close();
+});
+
 await scenario('传位后刷新不丢世代', async () => {
   const page = await open(save({ homeLevel: 6, gold: 250000, ownedPartnerIds: ['diaochan'] }));
   page.on('dialog', (d) => d.accept());
@@ -743,7 +774,7 @@ await scenario('斗地主', async () => {
     await page.waitForTimeout(250);
   }
   const ended = await page.getByRole('button', { name: '返回家业' }).isVisible().catch(() => false);
-  const win = (await page.locator('main').innerText()).includes('牌局胜利');
+  const win = (await page.locator('main').innerText()).includes('胜 +');
   await page.waitForTimeout(400);
   const after = await read(page);
   const delta = after.gold - before.gold;

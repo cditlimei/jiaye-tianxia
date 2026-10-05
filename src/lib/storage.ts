@@ -251,7 +251,7 @@ function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
   if (!value || typeof value !== 'object') return null;
   const c = value as { eventId?: unknown; day?: unknown; dailyIncome?: unknown };
   if (typeof c.eventId !== 'string' || typeof c.day !== 'number' || typeof c.dailyIncome !== 'number') return null;
-  if (c.eventId !== 'merchants' && c.eventId !== 'advisor' && !c.eventId.startsWith('partner:')) return null;
+  if (c.eventId !== 'merchants' && c.eventId !== 'advisor' && c.eventId !== 'refugees' && !c.eventId.startsWith('partner:')) return null;
   return { eventId: c.eventId, day: Math.floor(c.day), dailyIncome: Math.max(0, Math.floor(c.dailyIncome)) };
 }
 

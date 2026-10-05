@@ -155,6 +155,7 @@ function reducer(state: GameState, action: Action): GameState {
         gold: state.gold + gold,
         incomeBuff: option.id === 'incomeBuff' ? { percent: INCOME_BUFF_PERCENT, untilDay: state.day + INCOME_BUFF_DAYS } : state.incomeBuff,
         nextBattleBonus: option.id === 'battleBonus' ? BATTLE_BONUS_MULTIPLIER : state.nextBattleBonus,
+        orders: option.id === 'order' ? Math.min(ORDER_CAP, state.orders + 1) : state.orders,
         eventLog: [
           { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.detail, goldDelta: gold || undefined },
           ...state.eventLog

@@ -258,6 +258,7 @@ export function App() {
           courtPower={game.courtPower}
           farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold, homeIncome: game.currentHome.dailyIncome }}
           orders={game.state.orders}
+          battleBonus={game.state.nextBattleBonus}
           day={game.state.day}
           frontier={{ raid: game.state.frontierRaid, nextRaidDay: game.state.nextRaidDay, day: game.state.day }}
           onUpgradeFarm={() => {

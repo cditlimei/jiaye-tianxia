@@ -174,7 +174,7 @@ export interface ChoiceEvent {
   options: [ChoiceOption, ChoiceOption];
 }
 
-export const INCOME_BUFF_PERCENT = 20;
+export const INCOME_BUFF_PERCENT = 40;
 export const INCOME_BUFF_DAYS = 10;
 export const BATTLE_BONUS_MULTIPLIER = 2;
 
@@ -188,6 +188,18 @@ export function getChoiceEvent(day: number, dailyIncome: number): ChoiceEvent | 
       options: [
         { id: 'gold', label: '经营之策', detail: `整顿钱粮，立得 ${(dailyIncome * 5).toLocaleString()} 金。` },
         { id: 'battleBonus', label: '练兵之策', detail: `厉兵秣马，下一场胜利缴获翻 ${BATTLE_BONUS_MULTIPLIER} 倍。` }
+      ]
+    };
+  }
+  // 第 10/30/50… 日商旅、第 20/40… 日流民，轮流出现
+  if (day % 20 === 0) {
+    return {
+      id: 'refugees',
+      title: '流民归附',
+      prompt: '一队流民投奔府上，如何安置？',
+      options: [
+        { id: 'gold', label: '编户纳粮', detail: `编入户籍，立得 ${(dailyIncome * 3).toLocaleString()} 金。` },
+        { id: 'order', label: '募为乡勇', detail: '挑出青壮编入军中，军令 +1。' }
       ]
     };
   }
@@ -220,7 +232,7 @@ export function resolvePendingEvent(pending: { eventId: string; day: number; dai
 
 /** 二选一里「拿现钱」那一项的金额，离线无人决断时按此自动结算 */
 export function choiceGoldValue(event: ChoiceEvent, dailyIncome: number) {
-  return event.id === 'advisor' ? dailyIncome * 5 : event.id === 'merchants' ? dailyIncome * 3 : 0;
+  return event.id === 'advisor' ? dailyIncome * 5 : event.id === 'merchants' || event.id === 'refugees' ? dailyIncome * 3 : 0;
 }
 
 export function getDailyEvent(day: number, dailyIncome: number) {

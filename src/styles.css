@@ -4425,3 +4425,7 @@ small.stat-legend {
   background: linear-gradient(180deg, #ffe99d, #d4a843);
   font-weight: 700;
 }
+
+.player-hand.is-empty {
+  display: none;
+}

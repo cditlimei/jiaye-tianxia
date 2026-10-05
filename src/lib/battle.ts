@@ -104,15 +104,64 @@ export function recommendedTierIndex(list: Enemy[], power: number) {
 
 // 对手实力相对推荐档的倍率。伤害公式对实力比很敏感，直接用档位原始实力会让高一档就 0% 胜率，
 // 所以按与推荐档的档位差定倍率：约 -2 档 ~100%、-1 档 ~95%、推荐 ~75%、+1 档 ~45%、+2 档 ~20%、+3 档 ~5%
-const TIER_OFFSET_MULTIPLIER: Record<number, number> = { [-3]: 0.8, [-2]: 0.86, [-1]: 0.93, 0: 1, 1: 1.04, 2: 1.08, 3: 1.16 };
+// 目标胜率：按己方实力与该档的连续距离插值（推荐档 75%，高一档 45%，高两档 20%……），
+// 再反推敌人实力。直接用实力倍率时，低战力段血量里的固定值占比大，会出现战力越高胜率越低
+const TARGET_ODDS: Array<[offset: number, odds: number]> = [[-3, 0.99], [-2, 0.97], [-1, 0.92], [0, 0.75], [1, 0.45], [2, 0.2], [3, 0.06], [4, 0.02]];
 
-/** 推荐档按己方实力浮动（胜率约 75%）；自选其他档位按档位差加减实力：打弱的稳赢拿小钱，打强的赌运气拿大钱 */
+/** 己方实力在档位表里的连续位置：刚到某档门槛 = 该档序号，介于两档之间按比例插值 */
+function tierPosition(list: Enemy[], power: number) {
+  if (power <= list[0].power) return 0;
+  for (let i = 0; i < list.length - 1; i += 1) {
+    if (power < list[i + 1].power) return i + (power - list[i].power) / (list[i + 1].power - list[i].power);
+  }
+  return list.length - 1;
+}
+
+function targetOdds(offset: number) {
+  if (offset <= TARGET_ODDS[0][0]) return TARGET_ODDS[0][1];
+  for (let i = 1; i < TARGET_ODDS.length; i += 1) {
+    const [o1, p1] = TARGET_ODDS[i];
+    if (offset <= o1) {
+      const [o0, p0] = TARGET_ODDS[i - 1];
+      return p0 + ((offset - o0) / (o1 - o0)) * (p1 - p0);
+    }
+  }
+  return TARGET_ODDS[TARGET_ODDS.length - 1][1];
+}
+
+const enemyPowerCache = new Map<string, number>();
+
+/** 二分出让胜率等于目标值的敌人实力（胜率随敌人实力单调下降） */
+function solveEnemyPower(power: number, odds: number) {
+  const key = `${power}:${odds.toFixed(3)}`;
+  const cached = enemyPowerCache.get(key);
+  if (cached !== undefined) return cached;
+  let low = power * 0.5;
+  let high = power * 1.6;
+  for (let step = 0; step < 14; step += 1) {
+    const mid = (low + high) / 2;
+    // 公共随机数：同一己方实力下各候选敌人用同一串随机数，胜率随敌人实力平滑单调
+    if (estimateWinRate(power, mid, 1500, power * 7919) > odds) low = mid;
+    else high = mid;
+  }
+  // 战斗公式对实力比极敏感，敌人实力差 1 点胜率就能跳几个百分点，所以保留两位小数
+  const result = Math.round(((low + high) / 2) * 100) / 100;
+  enemyPowerCache.set(key, result);
+  return result;
+}
+
+/** 界面显示的胜率：就是反推敌人实力时用的目标值，随己方实力单调上升 */
+export function tierOddsFor(list: Enemy[], index: number, power: number) {
+  const safeIndex = Math.min(Math.max(0, index), list.length - 1);
+  return targetOdds(safeIndex - tierPosition(list, power));
+}
+
+/** 推荐档胜率约 75%；其他档位按连续距离给目标胜率，保证战力越高同一档胜率只升不降 */
 export function enemyForTier(list: Enemy[], index: number, power: number): Enemy {
   const safeIndex = Math.min(Math.max(0, index), list.length - 1);
   const tier = list[safeIndex];
-  const offset = safeIndex - recommendedTierIndex(list, power);
-  const multiplier = TIER_OFFSET_MULTIPLIER[offset] ?? (offset > 0 ? 1.24 : 0.8);
-  return { ...tier, power: Math.round(power * enemyScale(power) * multiplier) };
+  const offset = safeIndex - tierPosition(list, power);
+  return { ...tier, power: solveEnemyPower(Math.max(1, Math.round(power)), targetOdds(offset)) };
 }
 
 // 传位：宅邸到王城后可把家业传给下一代。全部金币换成家业点（每 10 万金 1 点，最多累计 20 点），
@@ -142,8 +191,8 @@ export function enemyMaxHp(enemyPower: number) {
 }
 
 /** 与战斗页同一套回合规则的快速模拟，给玩家看预估胜率 */
-export function estimateWinRate(attackPower: number, enemyPower: number, runs = 600) {
-  const rand = seededRandom(attackPower * 7919 + enemyPower * 104729);
+export function estimateWinRate(attackPower: number, enemyPower: number, runs = 600, seed = attackPower * 7919 + enemyPower * 104729) {
+  const rand = seededRandom(seed);
   let wins = 0;
   for (let i = 0; i < runs; i += 1) {
     let playerHp = playerMaxHp(attackPower);

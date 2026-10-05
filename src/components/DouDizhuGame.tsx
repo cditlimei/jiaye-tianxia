@@ -110,8 +110,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
           : '牌型不合法';
   const statusCopy = table.winner !== null
     ? table.winner === 0
-      ? `牌局胜利，缴获 ${rewardGold.toLocaleString()} 金`
-      : `${playerNames[table.winner]}先走完牌，折损 ${lossGold.toLocaleString()} 金`
+      ? `胜 +${rewardGold.toLocaleString()} 金`
+      : `${playerNames[table.winner]}先走完 −${lossGold.toLocaleString()} 金`
     : table.currentPlayer === 0
       ? targetCombo
         ? `请大过 ${playerNames[table.lastPlay!.player]} 的${comboLabel(targetCombo)}`
@@ -317,7 +317,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
         <strong>{selectedCopy}</strong>
       </section>
 
-      <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
+      <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''} ${table.winner !== null && playerHand.length === 0 ? 'is-empty' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
         {displayedHand.map((card, index) => {
           const selected = table.selectedIds.includes(card.id);
           const joker = isJoker(card);

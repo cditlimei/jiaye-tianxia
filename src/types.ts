@@ -40,7 +40,7 @@ export type BattleOutcome = 'win' | 'loss' | 'retreat';
 export const LOSS_PENALTY_RATE = 0.2;
 export const ORDER_CAP = 6;
 export const ORDER_START = 3;
-export const ORDER_REGEN_DAYS = 3;
+export const ORDER_REGEN_DAYS = 2;
 /** 推进到第 day 日是否回一道军令 */
 export const isOrderDay = (day: number) => day % ORDER_REGEN_DAYS === 0;
 export const daysUntilNextOrder = (day: number) => ORDER_REGEN_DAYS - (day % ORDER_REGEN_DAYS);

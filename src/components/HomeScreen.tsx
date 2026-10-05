@@ -7,6 +7,7 @@ import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
 import type { GameState } from '../types';
+import { ORDER_CAP } from '../types';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { StatBar } from './common/StatBar';
@@ -161,8 +162,8 @@ export function HomeScreen({
             <span>武力</span>
           </div>
           <div>
-            <strong>Lv.{currentHome.level}</strong>
-            <span>宅邸</span>
+            <strong>{state.orders}/{ORDER_CAP}</strong>
+            <span>军令</span>
           </div>
           <div>
             <strong>第 {state.day} 日</strong>
@@ -241,7 +242,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营 · 核心循环</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmPercent}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmPercent}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />
