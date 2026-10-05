@@ -26,6 +26,11 @@ export function incomeMultiplier(intelligence: number) {
   return 1 + Math.floor(intelligence / 10) / 100;
 }
 
+/** 宅邸收入 × 屯田比例 × 家业点 × 智谋 */
+export function totalDailyIncome(homeIncome: number, farmPercent: number, legacyPoints: number, intelligence: number) {
+  return effectiveDailyIncome(Math.round(homeIncome * (1 + farmPercent / 100) * legacyIncomeMultiplier(legacyPoints)), intelligence);
+}
+
 export function effectiveDailyIncome(baseIncome: number, intelligence: number) {
   return Math.round(baseIncome * incomeMultiplier(intelligence));
 }
@@ -137,18 +142,19 @@ export function enemyMaxHp(enemyPower: number) {
 }
 
 /** 与战斗页同一套回合规则的快速模拟，给玩家看预估胜率 */
-export function estimateWinRate(attackPower: number, enemyPower: number, runs = 400) {
+export function estimateWinRate(attackPower: number, enemyPower: number, runs = 600) {
+  const rand = seededRandom(attackPower * 7919 + enemyPower * 104729);
   let wins = 0;
   for (let i = 0; i < runs; i += 1) {
     let playerHp = playerMaxHp(attackPower);
     let enemyHp = enemyMaxHp(enemyPower);
     for (let round = 0; round < 500; round += 1) {
-      enemyHp -= rollDamage(attackPower, enemyPower, Math.random() < PLAYER_CRIT_RATE);
+      enemyHp -= rollDamage(attackPower, enemyPower, rand() < PLAYER_CRIT_RATE, rand);
       if (enemyHp <= 0) {
         wins += 1;
         break;
       }
-      playerHp -= rollDamage(enemyPower, attackPower, Math.random() < ENEMY_CRIT_RATE);
+      playerHp -= rollDamage(enemyPower, attackPower, rand() < ENEMY_CRIT_RATE, rand);
       if (playerHp <= 0) break;
     }
   }
@@ -181,14 +187,23 @@ function enemyScale(totalPower: number) {
   return points[points.length - 1][1];
 }
 
-export function rollDamage(attackerPower: number, defenderPower: number, isCritical: boolean) {
-  const base = randomBetween(attackerPower * 0.1, attackerPower * 0.4);
+export function rollDamage(attackerPower: number, defenderPower: number, isCritical: boolean, rand: () => number = Math.random) {
+  const base = attackerPower * 0.1 + rand() * attackerPower * 0.3;
   const scaled = (base / Math.max(1, defenderPower)) * 20;
   const damage = Math.max(1, Math.round(isCritical ? scaled * 2 : scaled));
   return damage;
 }
 
-function randomBetween(min: number, max: number) {
-  return min + Math.random() * (max - min);
-}
 
+
+/** mulberry32：给胜率估算一个可复现的随机序列 */
+function seededRandom(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}

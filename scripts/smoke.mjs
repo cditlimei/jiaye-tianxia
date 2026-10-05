@@ -117,7 +117,7 @@ try {
   await assertExpeditionModes(page);
   await assertVenueGate(page);
   await page.getByRole('button', { name: /中级场/ }).click();
-  await expectText(page, '本场胜缴获 1,500 金');
+  await expectText(page, '本场胜缴获 4,000 金');
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await expectText(page, '斗地主牌局', 9000);
   await expectText(page, '三人同桌');

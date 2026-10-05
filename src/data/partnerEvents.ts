@@ -17,8 +17,8 @@ export interface PartnerEvent {
 }
 
 export const PARTNER_BOOST_AMOUNT = 6;
-/** 伴侣心事每 20 日轮一位（第 5、25、45……日），避开 10/15 日的府中事件 */
-export const PARTNER_EVENT_CYCLE_DAYS = 20;
+/** 伴侣心事每 10 日轮一位（第 5、15、25……日）；与门客献策同日时让位给府中事件 */
+export const PARTNER_EVENT_CYCLE_DAYS = 10;
 export const PARTNER_EVENT_OFFSET_DAY = 5;
 
 const B = PARTNER_BOOST_AMOUNT;

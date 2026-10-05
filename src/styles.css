@@ -4388,3 +4388,40 @@ small.stat-legend {
 .tier-card em {
   white-space: nowrap;
 }
+
+.orders-note {
+  margin: 6px 0 0;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.succession-hint {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(212, 168, 67, 0.6);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(80, 58, 14, 0.75), rgba(25, 18, 8, 0.85));
+}
+
+.succession-hint strong {
+  color: var(--gold-light);
+}
+
+.succession-hint span {
+  color: rgba(245, 230, 200, 0.82);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.succession-hint button {
+  justify-self: end;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  color: #241303;
+  background: linear-gradient(180deg, #ffe99d, #d4a843);
+  font-weight: 700;
+}

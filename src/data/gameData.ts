@@ -410,19 +410,20 @@ export interface FarmLevel {
   level: number;
   name: string;
   cost: number;
-  dailyIncome: number;
+  /** 政务收入加成百分比 */
+  incomePercent: number;
   description: string;
 }
 
 // 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入（dailyIncome 为该级总额）。
-// 2026-10-04 节奏调整：价格翻倍、各战场缴获减半（目标轻度玩家约 35 日玩到顶）；试玩反馈中期只剩点政务，屯田收益再翻倍、府邸/侯府降价。每级约 200 次政务回本
+// 2026-10-05：屯田改为按比例加政务收入（5/10/20/35/50%），后期随宅邸收入一起增长
 export const farmLevels: FarmLevel[] = [
-  { level: 0, name: '荒地', cost: 0, dailyIncome: 0, description: '蜀地山间尚是一片荒坡。' },
-  { level: 1, name: '开荒', cost: 6000, dailyIncome: 30, description: '垦出第一块田，种下稻谷。' },
-  { level: 2, name: '引水', cost: 16000, dailyIncome: 80, description: '引山泉入田，旱涝无忧。' },
-  { level: 3, name: '修渠', cost: 40000, dailyIncome: 200, description: '沟渠纵横，梯田层层。' },
-  { level: 4, name: '筑仓', cost: 100000, dailyIncome: 500, description: '谷仓满囤，可供一军。' },
-  { level: 5, name: '沃野千里', cost: 240000, dailyIncome: 1200, description: '蜀地粮仓，天下闻名。' }
+  { level: 0, name: '荒地', cost: 0, incomePercent: 0, description: '蜀地山间尚是一片荒坡。' },
+  { level: 1, name: '开荒', cost: 6000, incomePercent: 5, description: '垦出第一块田，种下稻谷。' },
+  { level: 2, name: '引水', cost: 16000, incomePercent: 10, description: '引山泉入田，旱涝无忧。' },
+  { level: 3, name: '修渠', cost: 40000, incomePercent: 20, description: '沟渠纵横，梯田层层。' },
+  { level: 4, name: '筑仓', cost: 100000, incomePercent: 35, description: '谷仓满囤，可供一军。' },
+  { level: 5, name: '沃野千里', cost: 240000, incomePercent: 50, description: '蜀地粮仓，天下闻名。' }
 ];
 
 export function findFarmLevel(level: number) {

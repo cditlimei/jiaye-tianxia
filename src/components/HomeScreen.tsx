@@ -22,7 +22,7 @@ interface HomeScreenProps {
   intelligence: number;
   charisma: number;
   dailyIncome: number;
-  farmIncome: number;
+  farmPercent: number;
   recruitDiscount: number;
   onCollectIncome: () => number;
   onResolveChoice: (optionId: string) => void;
@@ -57,7 +57,7 @@ export function HomeScreen({
   intelligence,
   charisma,
   dailyIncome,
-  farmIncome,
+  farmPercent,
   recruitDiscount,
   onCollectIncome,
   onResolveChoice,
@@ -158,7 +158,7 @@ export function HomeScreen({
           </div>
           <div>
             <strong>{totalPower}</strong>
-            <span>战力</span>
+            <span>武力</span>
           </div>
           <div>
             <strong>Lv.{currentHome.level}</strong>
@@ -222,6 +222,14 @@ export function HomeScreen({
         </section>
       )}
 
+      {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
+        <section className="succession-hint" aria-label="传位提示">
+          <strong>家业已至王城，可传位给下一代</strong>
+          <span>现有 {state.gold.toLocaleString()} 金可换 {Math.floor(state.gold / 100000)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。</span>
+          <button type="button" onClick={onOpenSettings}>去传位 →</button>
+        </section>
+      )}
+
       <section className="home-estate">
         <div className="home-estate__image-wrap">
           <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
@@ -233,7 +241,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营 · 核心循环</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmIncome > 0 ? `，西蜀屯田 ${farmIncome} 金` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmPercent}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />

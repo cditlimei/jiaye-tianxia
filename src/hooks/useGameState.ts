@@ -3,9 +3,10 @@ import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLev
 import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
-import { calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, SUCCESSION_HOME_LEVEL, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, recruitDiscountPercent } from '../lib/battle';
+import { LEGACY_MAX_POINTS, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
+import { isOrderDay, ORDER_CAP } from '../types';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
@@ -46,6 +47,8 @@ function reducer(state: GameState, action: Action): GameState {
         screen: 'partnerSelect',
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
+        tutorialDone: state.generation > 1 || state.tutorialDone,
+        gold: defaultGameState.gold + state.legacyPoints * 3000,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
         eventLog: [
@@ -118,6 +121,7 @@ function reducer(state: GameState, action: Action): GameState {
         day: nextDay,
         frontierRaid: frontier.frontierRaid,
         nextRaidDay: frontier.nextRaidDay,
+        orders: isOrderDay(nextDay) ? Math.min(ORDER_CAP, state.orders + 1) : state.orders,
         incomeBuff,
         pendingChoice,
         eventLog
@@ -170,7 +174,7 @@ function reducer(state: GameState, action: Action): GameState {
             id: `farm-${action.nextLevel}-${Date.now()}`,
             day: state.day,
             title: '西蜀屯田',
-            detail: `投入 ${action.cost.toLocaleString()} 金，屯田升至「${findFarmLevel(action.nextLevel).name}」，每日多收 ${findFarmLevel(action.nextLevel).dailyIncome} 金。`,
+            detail: `投入 ${action.cost.toLocaleString()} 金，屯田升至「${findFarmLevel(action.nextLevel).name}」，政务收入 +${findFarmLevel(action.nextLevel).incomePercent}%。`,
             goldDelta: -action.cost
           },
           ...state.eventLog
@@ -247,7 +251,9 @@ function reducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     case 'startBattle':
-      return { ...state, activeBattle: { mode: action.mode, lossGold: action.lossGold } };
+      // 北疆边患是被迫应战，不耗军令
+      if (action.mode !== 'frontier' && state.orders < 1) return state;
+      return { ...state, orders: action.mode === 'frontier' ? state.orders : state.orders - 1, activeBattle: { mode: action.mode, lossGold: action.lossGold } };
     case 'recordBattle': {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
@@ -350,6 +356,7 @@ function reducer(state: GameState, action: Action): GameState {
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,
+        tutorialDone: true,
         generation: state.generation + 1,
         legacyPoints,
         eventLog: [
@@ -439,7 +446,7 @@ export function useGameState() {
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
-  const dailyIncome = effectiveDailyIncome(Math.round((currentHome.dailyIncome + currentFarm.dailyIncome) * legacyIncomeMultiplier(state.legacyPoints)), intelligence);
+  const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence);
   const buffActive = Boolean(state.incomeBuff && state.day + 1 <= state.incomeBuff.untilDay);
   const displayedIncome = buffActive && state.incomeBuff ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
   const recruitDiscount = recruitDiscountPercent(charisma);
@@ -509,7 +516,8 @@ export function useGameState() {
     recruitCostFor,
     questStatuses,
     titleStatus,
-    hasSave: Boolean(state.selectedLordId),
+    // 传位后还没选新主公时也算有存档，避免标题页「开始游戏」把世代清零
+    hasSave: Boolean(state.selectedLordId) || state.generation > 1,
     setScreen: (screen: Screen) => dispatch({ type: 'setScreen', screen }),
     selectLord: (lordId: string) => dispatch({ type: 'selectLord', lordId }),
     selectStarterPartner: (partner: Partner) => dispatch({ type: 'selectStarterPartner', partner }),

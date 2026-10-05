@@ -1,7 +1,8 @@
 import type { GameState, Screen } from '../types';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/progression';
-import { calculateIntelligence, effectiveDailyIncome, LEGACY_MAX_POINTS, legacyIncomeMultiplier } from '../lib/battle';
+import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
+import { isOrderDay, ORDER_CAP, ORDER_START } from '../types';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { mergePartnerBoost } from '../data/partnerEvents';
 
@@ -39,6 +40,7 @@ export const defaultGameState: GameState = {
   incomeBuff: null,
   nextBattleBonus: null,
   activeBattle: null,
+  orders: ORDER_START,
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -208,6 +210,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
+    orders: Math.min(ORDER_CAP, sanitizeNumber(parsed.orders, ORDER_START, 0)),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -360,9 +363,13 @@ function applyOfflineIncome(state: GameState): GameState {
 
   const lord = lords.find((item) => item.id === state.selectedLordId);
   const ownedPartners = partners.filter((item) => state.ownedPartnerIds.includes(item.id)).map((item) => mergePartnerBoost(item, state.partnerBoosts[item.id]));
-  const dailyIncome = lord
-    ? effectiveDailyIncome(Math.round((findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome) * legacyIncomeMultiplier(state.legacyPoints)), calculateIntelligence(lord, ownedPartners))
-    : Math.round((findHomeLevel(state.homeLevel).dailyIncome + findFarmLevel(state.farmLevel).dailyIncome) * legacyIncomeMultiplier(state.legacyPoints));
+  const dailyIncome = totalDailyIncome(
+    findHomeLevel(state.homeLevel).dailyIncome,
+    findFarmLevel(state.farmLevel).incomePercent,
+    state.legacyPoints,
+    lord ? calculateIntelligence(lord, ownedPartners) : 0
+  );
+  let regainedOrders = 0;
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
   let eventGold = 0;
   let eventCount = 0;
@@ -373,6 +380,7 @@ function applyOfflineIncome(state: GameState): GameState {
       eventGold += dailyEvent.goldDelta;
       eventCount += 1;
     }
+    if (isOrderDay(day)) regainedOrders += 1;
     const choice = getChoiceEvent(day, dailyIncome);
     if (choice) {
       lastChoiceDay = day;
@@ -394,6 +402,7 @@ function applyOfflineIncome(state: GameState): GameState {
     gold: state.gold + offlineGold,
     day: state.day + ticks,
     pendingChoice,
+    orders: Math.min(ORDER_CAP, state.orders + regainedOrders),
     eventLog: [
       {
         id: `offline-${Date.now()}`,

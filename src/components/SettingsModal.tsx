@@ -78,7 +78,7 @@ export function SettingsModal({
         <section className="succession-panel">
           <span>传位 · 第 {state.generation} 代</span>
           <strong>家业点 {state.legacyPoints}/{LEGACY_MAX_POINTS} · 收入 +{Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%</strong>
-          <p>把全部金币换成家业点（每 {LEGACY_GOLD_PER_POINT.toLocaleString()} 金 1 点），每点让处理政务与屯田收入永久 +5%。主公、伴侣、兵器、宅邸、屯田与任务从头再来。</p>
+          <p>把全部金币换成家业点（每 {LEGACY_GOLD_PER_POINT.toLocaleString()} 金 1 点），每点让处理政务与屯田收入永久 +5%，并让之后每一代开局多 3,000 金。主公、伴侣、兵器、宅邸、屯田与任务从头再来。</p>
           <p className={canSucceed ? 'is-ok' : ''}>{successionHint}</p>
           <GameButton variant={canSucceed ? 'primary' : 'ghost'} disabled={!canSucceed} onClick={onSucceed}>
             传位给下一代

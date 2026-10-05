@@ -256,7 +256,9 @@ export function App() {
           totalPower={game.totalPower}
           navalPower={game.navalPower}
           courtPower={game.courtPower}
-          farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold }}
+          farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold, homeIncome: game.currentHome.dailyIncome }}
+          orders={game.state.orders}
+          day={game.state.day}
           frontier={{ raid: game.state.frontierRaid, nextRaidDay: game.state.nextRaidDay, day: game.state.day }}
           onUpgradeFarm={() => {
             if (!game.upgradeFarm()) return false;
@@ -292,7 +294,7 @@ export function App() {
           intelligence={game.intelligence}
           charisma={game.charisma}
           dailyIncome={game.dailyIncome}
-          farmIncome={game.currentFarm.dailyIncome}
+          farmPercent={game.currentFarm.incomePercent}
           recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
           titleStatus={game.titleStatus}
