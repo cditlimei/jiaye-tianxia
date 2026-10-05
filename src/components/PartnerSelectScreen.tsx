@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Lord, Partner } from '../data/gameData';
-import { partners } from '../data/gameData';
+import { partners, partnerRank } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -89,8 +89,3 @@ function translateBonus(key: string) {
   return '声望';
 }
 
-function partnerRank(partner: Partner) {
-  if (partner.id === 'diaochan') return '传说';
-  if (['zhenji', 'sunshangxiang', 'daqiao', 'xiaoqiao', 'huangyueying'].includes(partner.id)) return '名姬';
-  return '贤助';
-}

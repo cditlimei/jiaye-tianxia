@@ -25,6 +25,8 @@ export interface GameState {
   resolvedPartnerEvents: Record<string, string>;
   incomeBuff: { percent: number; untilDay: number } | null;
   nextBattleBonus: number | null;
+  /** 进入战斗时记下，结算后清空；读档时仍在说明中途离开，按认输处理 */
+  activeBattle: { mode: BattleMode; lossGold: number } | null;
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;

@@ -215,6 +215,13 @@ export const lords: Lord[] = [
   }
 ];
 
+/** 伴侣品级：传说 1200、名姬 900、贤助 600 */
+export function partnerRank(partner: Pick<Partner, 'id'>): '传说' | '名姬' | '贤助' {
+  if (partner.id === 'diaochan') return '传说';
+  if (['zhenji', 'sunshangxiang', 'daqiao', 'xiaoqiao', 'huangyueying'].includes(partner.id)) return '名姬';
+  return '贤助';
+}
+
 export const partners: Partner[] = [
   {
     id: 'zhenji',
@@ -222,7 +229,7 @@ export const partners: Partner[] = [
     description: '洛水风华，能为家业带来沉稳的智谋与声望。',
     bonus: { intelligence: 18, charisma: 12 },
     bestMatchLordId: 'caocao',
-    recruitCost: 800,
+    recruitCost: 900,
     imagePath: 'assets/partners/partner_zhenji.png'
   },
   {
@@ -231,7 +238,7 @@ export const partners: Partner[] = [
     description: '弓腰姬英姿飒爽，提升武力与人望。',
     bonus: { strength: 16, charisma: 10 },
     bestMatchLordId: 'liubei',
-    recruitCost: 800,
+    recruitCost: 900,
     imagePath: 'assets/partners/partner_sunshangxiang.png'
   },
   {
@@ -240,7 +247,7 @@ export const partners: Partner[] = [
     description: '江东国色，擅长稳固名望与盟友关系。',
     bonus: { intelligence: 10, charisma: 18 },
     bestMatchLordId: 'sunquan',
-    recruitCost: 800,
+    recruitCost: 900,
     imagePath: 'assets/partners/partner_daqiao.png'
   },
   {
@@ -249,7 +256,7 @@ export const partners: Partner[] = [
     description: '灵秀清婉，能强化军心与谋略。',
     bonus: { intelligence: 16, charisma: 14 },
     bestMatchLordId: 'zhouyu',
-    recruitCost: 800,
+    recruitCost: 900,
     imagePath: 'assets/partners/partner_xiaoqiao.png'
   },
   {
@@ -258,7 +265,7 @@ export const partners: Partner[] = [
     description: '机巧通玄，擅长提升智谋与器械效率。',
     bonus: { intelligence: 24 },
     bestMatchLordId: 'zhugeliang',
-    recruitCost: 800,
+    recruitCost: 900,
     imagePath: 'assets/partners/partner_huangyueying.png'
   },
   {
@@ -267,7 +274,7 @@ export const partners: Partner[] = [
     description: '倾国之姿，可显著提升魅力与战前气势。',
     bonus: { strength: 8, charisma: 22 },
     bestMatchLordId: 'lvbu',
-    recruitCost: 800,
+    recruitCost: 1200,
     imagePath: 'assets/partners/partner_diaochan.png'
   },
   {
@@ -276,7 +283,7 @@ export const partners: Partner[] = [
     description: '才情温雅，能补足智谋并安定内政。',
     bonus: { intelligence: 18, charisma: 8 },
     bestMatchLordId: 'simayi',
-    recruitCost: 800,
+    recruitCost: 600,
     imagePath: 'assets/partners/partner_caiwenji.png'
   },
   {
@@ -285,7 +292,7 @@ export const partners: Partner[] = [
     description: '端庄坚韧，增强家业凝聚与忠义声望。',
     bonus: { strength: 8, charisma: 16 },
     bestMatchLordId: 'liubei',
-    recruitCost: 800,
+    recruitCost: 600,
     imagePath: 'assets/partners/partner_mifuren.png'
   },
   {
@@ -294,7 +301,7 @@ export const partners: Partner[] = [
     description: '南中烈火，带来强势武力与战斗胆魄。',
     bonus: { strength: 20, charisma: 6 },
     bestMatchLordId: 'zhangfei',
-    recruitCost: 800,
+    recruitCost: 600,
     imagePath: 'assets/partners/partner_zhurong.png'
   },
   {
@@ -303,7 +310,7 @@ export const partners: Partner[] = [
     description: '温婉而有谋度，适合稳固后宅与江东政务。',
     bonus: { intelligence: 12, charisma: 16 },
     bestMatchLordId: 'sunquan',
-    recruitCost: 800,
+    recruitCost: 600,
     imagePath: 'assets/partners/partner_bulianshi.png'
   }
 ];

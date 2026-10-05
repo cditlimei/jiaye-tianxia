@@ -169,11 +169,13 @@ await scenario('兵器与经济', async () => {
   await market.getByRole('button', { name: '招募伴侣' }).click();
   await market.getByText('伴侣招募').first().waitFor();
   const disc = Number((await market.locator('.partner-market__summary').innerText()).match(/-(\d+)%/)?.[1] ?? -1);
-  const expected = Math.round(800 * (1 - disc / 100));
+  const firstCard = market.locator('.partner-card').filter({ has: market.getByRole('button', { name: /召集/ }) }).first();
+  const shown = Number((await firstCard.getByRole('button', { name: /召集/ }).innerText()).replace(/[^\d]/g, ''));
   const g0 = (await read(market)).gold;
-  await market.getByRole('button', { name: /召集/ }).first().click();
+  await firstCard.getByRole('button', { name: /召集/ }).click();
   await market.waitForTimeout(500);
-  check('声望折扣显示并实扣一致', disc > 0 && g0 - (await read(market)).gold === expected, `-${disc}% → ${expected}`);
+  const bases = [600, 900, 1200].map((b) => Math.round(b * (1 - disc / 100)));
+  check('声望折扣显示并实扣一致', disc > 0 && bases.includes(shown) && g0 - (await read(market)).gold === shown, `-${disc}% → ${shown}`);
   await market.context().close();
 });
 
@@ -618,6 +620,30 @@ await scenario('离线保留事件与升阶画面', async () => {
   await up.waitForTimeout(400);
   check('升阶特效展示新宅邸图', (await up.locator('.effect-overlay__image').count()) === 1 && (await up.locator('.effect-overlay video').count()) === 0);
   await up.context().close();
+});
+
+await scenario('品级定价与中途离阵', async () => {
+  const page = await open(save({ gold: 99999, ownedPartnerIds: [] }));
+  await page.getByRole('button', { name: '招募伴侣' }).click();
+  await page.getByText('伴侣招募').first().waitFor();
+  const priceOf = async (name) => Number((await page.locator('.partner-card').filter({ hasText: name }).getByRole('button').innerText()).replace(/[^\d]/g, ''));
+  const d = await priceOf('貂蝉'), c = await priceOf('蔡文姬'), z = await priceOf('甄姬');
+  const tags = (await page.locator('.partner-card').filter({ hasText: '貂蝉' }).innerText()) + (await page.locator('.partner-card').filter({ hasText: '蔡文姬' }).innerText());
+  check('伴侣按品级定价（传说 > 名姬 > 贤助）', d > z && z > c && tags.includes('传说') && tags.includes('贤助'), `${d}/${z}/${c}`);
+  await page.context().close();
+  // 出征后刷新：按认输扣折损并记负
+  const fight = await open(save({ gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
+  await fight.getByRole('button', { name: '出征讨伐' }).click();
+  await fight.getByText('九州征途').first().waitFor();
+  await fight.getByRole('button', { name: /官道/ }).click();
+  const loss = Number((await fight.locator('.venue-summary').innerText()).match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  await fight.getByRole('button', { name: '出征讨伐', exact: true }).click();
+  await fight.waitForTimeout(800);
+  await fight.reload({ waitUntil: 'domcontentloaded' });
+  await fight.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  const s2 = await read(fight);
+  check('战斗中刷新按认输结算', s2.gold === 5000 - loss && s2.battleLosses === 1 && s2.activeBattle === null && s2.eventLog[0]?.title === '中途离阵', `gold=${s2.gold} loss=${loss}`);
+  await fight.context().close();
 });
 
 await scenario('斗地主', async () => {

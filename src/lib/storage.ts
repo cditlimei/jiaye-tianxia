@@ -38,6 +38,7 @@ export const defaultGameState: GameState = {
   resolvedPartnerEvents: {},
   incomeBuff: null,
   nextBattleBonus: null,
+  activeBattle: null,
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -58,7 +59,7 @@ export function loadGameState(): GameState {
   try {
     const parsed = JSON.parse(raw) as Partial<GameState>;
     const restored = normalizeGameState(parsed);
-    return settleExpiredRaid(applyOfflineIncome(restored));
+    return settleExpiredRaid(applyOfflineIncome(settleAbandonedBattle(restored)));
   } catch {
     return defaultGameState;
   }
@@ -206,6 +207,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     resolvedPartnerEvents: sanitizeResolved(parsed.resolvedPartnerEvents),
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
+    activeBattle: sanitizeActiveBattle(parsed.activeBattle),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -215,6 +217,30 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     lastScreen: safeScreen,
     eventLog: sanitizeEventLog(parsed.eventLog),
     lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now
+  };
+}
+
+function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
+  if (!value || typeof value !== 'object') return null;
+  const b = value as { mode?: unknown; lossGold?: unknown };
+  if (b.mode !== 'land' && b.mode !== 'naval' && b.mode !== 'court' && b.mode !== 'frontier') return null;
+  return { mode: b.mode, lossGold: typeof b.lossGold === 'number' && Number.isFinite(b.lossGold) ? Math.max(0, Math.floor(b.lossGold)) : 0 };
+}
+
+/** 战斗中途刷新/关页：按认输结算（北疆只是退守，不扣金） */
+function settleAbandonedBattle(state: GameState): GameState {
+  if (!state.activeBattle) return state;
+  const { mode, lossGold } = state.activeBattle;
+  const loss = mode === 'frontier' ? 0 : Math.min(state.gold, lossGold);
+  return {
+    ...state,
+    activeBattle: null,
+    gold: state.gold - loss,
+    battleLosses: state.battleLosses + 1,
+    eventLog: [
+      { id: `abandon-${Date.now()}`, day: state.day, title: '中途离阵', detail: mode === 'frontier' ? '战事未了即离开，边患仍在。' : `战事未了即离开，按认输处理，折损军资 ${loss.toLocaleString()} 金。`, goldDelta: loss > 0 ? -loss : undefined },
+      ...state.eventLog
+    ].slice(0, MAX_EVENT_LOG)
   };
 }
 

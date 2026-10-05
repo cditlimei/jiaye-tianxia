@@ -269,6 +269,7 @@ export function App() {
           onPlayEffect={effects.playEffect}
           onSfx={audio.playSfx}
           onResolved={game.recordBattle}
+          onBattleStart={game.startBattle}
           onReturnHome={() => game.setScreen('home')}
         />
       );

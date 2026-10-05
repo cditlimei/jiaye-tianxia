@@ -26,6 +26,7 @@ type Action =
   | { type: 'completeTutorial' }
   | { type: 'restore'; state: GameState }
   | { type: 'succeed' }
+  | { type: 'startBattle'; mode: BattleMode; lossGold: number }
   | { type: 'resolveChoice'; optionId: string }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
@@ -245,6 +246,8 @@ function reducer(state: GameState, action: Action): GameState {
           ...state.eventLog
         ].slice(0, 18)
       };
+    case 'startBattle':
+      return { ...state, activeBattle: { mode: action.mode, lossGold: action.lossGold } };
     case 'recordBattle': {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
@@ -259,6 +262,7 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...state,
         ...frontierPatch,
+        activeBattle: null,
         gold: (action.win ? state.gold + rewardGold : state.gold) - frontierPenalty - lossGold,
         nextBattleBonus: action.win && state.nextBattleBonus ? null : state.nextBattleBonus,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
@@ -521,6 +525,7 @@ export function useGameState() {
     completeTutorial: () => dispatch({ type: 'completeTutorial' }),
     restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
     succeed: () => dispatch({ type: 'succeed' }),
+    startBattle: (mode: BattleMode, lossGold: number) => dispatch({ type: 'startBattle', mode, lossGold }),
     resolveChoice: (optionId: string) => dispatch({ type: 'resolveChoice', optionId }),
     resetGame: () => dispatch({ type: 'reset' })
   };

@@ -20,6 +20,7 @@ interface BattleScreenProps {
   farm: { current: FarmLevel; next: FarmLevel | null; gold: number };
   frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
+  onBattleStart: (mode: BattleMode, lossGold: number) => void;
   wins: number;
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
@@ -141,6 +142,7 @@ export function BattleScreen({
   farm,
   frontier,
   onUpgradeFarm,
+  onBattleStart,
   wins,
   losses,
   onPlayEffect,
@@ -481,6 +483,10 @@ export function BattleScreen({
               logs: [wording.scoutReport(enemy.name), wording.departure(lord.name, weapon.name)],
               result: null
             });
+            onBattleStart(
+              selectedRegion.mode === 'doudizhu' ? 'land' : mode,
+              selectedRegion.mode === 'doudizhu' ? Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE) : lossGold
+            );
             setDoudizhuOpen(selectedRegion.mode === 'doudizhu');
             setMapOpen(false);
           }}

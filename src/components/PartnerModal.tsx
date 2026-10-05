@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Lord, Partner } from '../data/gameData';
-import { partners } from '../data/gameData';
+import { partnerRank, partners } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
@@ -69,7 +69,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
               <article key={partner.id} className={`partner-card ${best ? 'is-best' : ''} ${owned ? 'is-owned' : ''}`}>
                 <div className="partner-card__portrait">
                   <ImageWithFallback src={imageUrl(partner.imagePath, best ? 384 : 256)} alt={partner.name} className="partner-card__image" />
-                  <span>{owned ? '已入府' : best ? '良缘推荐' : '可召集'}</span>
+                  <span>{owned ? '已入府' : best ? `良缘推荐 · ${partnerRank(partner)}` : partnerRank(partner)}</span>
                 </div>
                 <div className="partner-card__body">
                   <div className="partner-card__title">
