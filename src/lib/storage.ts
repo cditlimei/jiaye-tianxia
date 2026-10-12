@@ -6,6 +6,7 @@ import { isOrderDay, ORDER_START } from '../types';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
 import { fiefs as fiefCatalog } from '../data/fiefs';
 import { findAmbition, isAmbitionId, trimChronicle } from '../data/ambitions';
+import { isRealmId, realmIncomePercent, realmStatBonus, type RealmId } from '../data/dynasty';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
 
@@ -47,6 +48,8 @@ export const defaultGameState: GameState = {
   fiefs: {},
   ambition: null,
   chronicle: [],
+  realms: { wei: 0, shu: 0, wu: 0 },
+  pastDynasties: [],
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -216,7 +219,9 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
-    orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))), sanitizeNumber(parsed.orders, ORDER_START, 0)),
+    orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)), sanitizeRealms(parsed.realms)), sanitizeNumber(parsed.orders, ORDER_START, 0)),
+    realms: sanitizeRealms(parsed.realms),
+    pastDynasties: sanitizePastDynasties(parsed.pastDynasties),
     fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
     ambition: sanitizeAmbition(parsed.ambition, sanitizeNumber(parsed.generation, 1, 1), sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))),
     chronicle: sanitizeChronicle(parsed.chronicle),
@@ -309,6 +314,23 @@ function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): F
     out[fief.id] = policy;
   }
   return out;
+}
+
+function sanitizeRealms(value: unknown): GameState['realms'] {
+  const r = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+  const pick = (k: string) => Math.min(20, sanitizeNumber(r[k], 0, 0));
+  return { wei: pick('wei'), shu: pick('shu'), wu: pick('wu') };
+}
+
+function sanitizePastDynasties(value: unknown): GameState['pastDynasties'] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => entry && typeof entry === 'object' && isRealmId((entry as { realm?: unknown }).realm))
+    .map((entry) => {
+      const e = entry as Record<string, unknown>;
+      return { dynasty: sanitizeNumber(e.dynasty, 1, 1), realm: e.realm as RealmId, generations: sanitizeNumber(e.generations, 1, 1), days: sanitizeNumber(e.days, 0, 0), wins: sanitizeNumber(e.wins, 0, 0), ambitions: sanitizeNumber(e.ambitions, 0, 0) };
+    })
+    .slice(-20);
 }
 
 function sanitizeAmbition(value: unknown, generation: number, fiefs: FiefHoldings): GameState['ambition'] {
@@ -452,9 +474,9 @@ function applyOfflineIncome(state: GameState): GameState {
     findHomeLevel(state.homeLevel).dailyIncome,
     findFarmLevel(state.farmLevel).incomePercent,
     state.legacyPoints,
-    lord ? calculateIntelligence(lord, ownedPartners, fiefStatBonus(state.fiefs)) : 0,
+    lord ? calculateIntelligence(lord, ownedPartners, fiefStatBonus(state.fiefs) + realmStatBonus(state.realms)) : 0,
     findFarmLevel(state.farmLevel).flatIncome,
-    fiefIncomePercent(state.fiefs)
+    fiefIncomePercent(state.fiefs) + realmIncomePercent(state.realms)
   );
   let regainedOrders = 0;
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
@@ -500,7 +522,7 @@ function applyOfflineIncome(state: GameState): GameState {
     day: state.day + ticks,
     pendingChoice,
     incomeBuff,
-    orders: Math.min(orderCapFor(state.fiefs), state.orders + regainedOrders),
+    orders: Math.min(orderCapFor(state.fiefs, state.realms), state.orders + regainedOrders),
     eventLog: [
       {
         id: `offline-${Date.now()}`,

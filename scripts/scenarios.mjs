@@ -975,6 +975,43 @@ await scenario('志向审查修复', async () => {
   await undone.context().close();
 });
 
+await scenario('天下归心与新朝', async () => {
+  const six = { nanyang: 'farming', runan: 'farming', yingchuan: 'military', changsha: 'farming', bajun: 'farming', liaodong: 'farming' };
+  // 条件未齐（家业点 19）不出终局卡
+  const almost = await open(save({ homeLevel: 6, legacyPoints: 19, generation: 3, fiefs: six }));
+  check('家业点未满不出终局卡', !(await almost.locator('main').innerText()).includes('展开卷轴'));
+  await almost.context().close();
+
+  const page = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, battleWins: 12, day: 30, fiefs: six, chronicle: [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: null, ambitionDone: false }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: 'wealth', ambitionDone: true }] }));
+  check('条件齐全出终局卡且 HUD 带天下归心', (await page.locator('.ending-hint').innerText()).includes('天下归心') && (await page.locator('.home-hud').innerText()).includes('天下归心'));
+  await page.getByRole('button', { name: '展开卷轴 →' }).click();
+  const scroll = await page.locator('.ending-sheet__scroll').innerText();
+  check('卷轴汇总三代总账', scroll.includes('共 3 代') && scroll.includes('106 日') && scroll.includes('71 场胜利') && scroll.includes('1 代志向达成'), scroll);
+  await page.getByRole('radio', { name: /蜀/ }).click();
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: /开创新朝 · 国号蜀/ }).click();
+  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  let s = await read(page);
+  check('开创新朝后全部重来只留国号', s.realms?.shu === 1 && s.generation === 1 && s.legacyPoints === 0 && Object.keys(s.fiefs ?? {}).length === 0 && s.chronicle?.length === 0 && s.pastDynasties?.length === 1 && s.pastDynasties[0].generations === 3, JSON.stringify({ realms: s.realms, past: s.pastDynasties }));
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  s = await read(page);
+  const shuIncome = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
+  check('新朝开局多得 20,000 金且显示第 2 朝', s.gold === 21000 && (await page.locator('.home-hud').innerText()).includes('第 2 朝'), `gold=${s.gold}`);
+  await page.context().close();
+  const plain = await open(save({ homeLevel: 1, gold: 1000, ownedPartnerIds: ['zhenji'] }));
+  const plainIncome = income(await plain.getByRole('button', { name: /^处理政务/ }).innerText());
+  check('国号蜀收入高于无国号', shuIncome > plainIncome, `${plainIncome} → ${shuIncome}`);
+  await plain.context().close();
+
+  // 国号魏：军令上限 +1
+  const wei = await open(save({ realms: { wei: 1, shu: 0, wu: 0 } }));
+  check('国号魏军令上限 7', (await wei.locator('.home-hud__chips').innerText()).includes('/7'));
+  await wei.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

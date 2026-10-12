@@ -18,9 +18,10 @@ import { TitleScreen } from './components/TitleScreen';
 import { WeaponModal } from './components/WeaponModal';
 import { LordModal } from './components/LordModal';
 import { FiefModal } from './components/FiefModal';
+import { EndingModal } from './components/EndingModal';
 import './styles.css';
 
-type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | 'lord' | 'fief' | null;
+type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | 'lord' | 'fief' | 'ending' | null;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -323,6 +324,7 @@ export function App() {
           onOpenSettings={() => setModal('settings')}
           onOpenLord={() => setModal('lord')}
           onOpenFief={() => setModal('fief')}
+          onOpenEnding={() => setModal('ending')}
           onChooseAmbition={(id) => {
             game.chooseAmbition(id);
             audio.playSfx('audio/sfx/sfx_button.mp3', 0.3);
@@ -338,6 +340,19 @@ export function App() {
         )}
         {modal === 'lord' && (
           <LordModal lord={game.selectedLord} state={game.state} totalPower={game.totalPower} intelligence={game.intelligence} charisma={game.charisma} onClose={() => setModal(null)} />
+        )}
+        {modal === 'ending' && (
+          <EndingModal
+            state={game.state}
+            onClose={() => setModal(null)}
+            onFound={(realm) => {
+              if (!confirmReset('开创新朝会把金币、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来，只保留国号加成。')) return;
+              audio.unlock();
+              audio.playSfx('audio/sfx/sfx_home_upgrade.mp3', 0.5);
+              setModal(null);
+              game.foundDynasty(realm);
+            }}
+          />
         )}
         {modal === 'fief' && (
           <FiefModal

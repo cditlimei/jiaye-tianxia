@@ -1,5 +1,6 @@
 import type { FiefHoldings } from './data/fiefs';
 import type { AmbitionId } from './data/ambitions';
+import type { RealmCounts, RealmId } from './data/dynasty';
 
 export type Screen = 'title' | 'lordSelect' | 'partnerSelect' | 'home' | 'battle';
 
@@ -39,11 +40,24 @@ export interface GameState {
   ambition: { id: AmbitionId; target: number; baseFiefs: number } | null;
   /** 家谱：每代传位时记一笔 */
   chronicle: ChronicleEntry[];
+  /** 历朝国号计数：加成按计数叠加，跨朝永久保留 */
+  realms: RealmCounts;
+  /** 前朝记录 */
+  pastDynasties: DynastyEntry[];
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;
   eventLog: GameEvent[];
   lastSavedAt: number;
+}
+
+export interface DynastyEntry {
+  dynasty: number;
+  realm: RealmId;
+  generations: number;
+  days: number;
+  wins: number;
+  ambitions: number;
 }
 
 export interface ChronicleEntry {

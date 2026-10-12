@@ -4858,3 +4858,28 @@ small.stat-legend {
     font-size: 13px;
   }
 }
+
+.ending-sheet {
+  display: grid;
+  gap: 10px;
+}
+
+.ending-sheet__scroll {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(212, 168, 67, 0.5);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(60, 44, 10, 0.7), rgba(25, 18, 8, 0.85));
+  color: #f5e6c8;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ending-hint {
+  border-color: rgba(255, 233, 157, 0.85);
+}
+
+.lord-sheet__realms {
+  display: block;
+  color: var(--gold-light);
+}

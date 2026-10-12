@@ -9,6 +9,7 @@ import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
+import { dynastyCount, isEndingReached, realmIncomePercent } from '../data/dynasty';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -42,6 +43,7 @@ interface HomeScreenProps {
   onOpenLord: () => void;
   onOpenFief: () => void;
   onChooseAmbition: (id: AmbitionId) => void;
+  onOpenEnding: () => void;
   onIncomeSfx: () => void;
   onUpgradeEffect: (imagePath: string, name: string) => void;
   questStatuses: QuestStatus[];
@@ -88,6 +90,7 @@ export function HomeScreen({
   onOpenLord,
   onOpenFief,
   onChooseAmbition,
+  onOpenEnding,
   onIncomeSfx,
   onUpgradeEffect,
   questStatuses,
@@ -176,7 +179,7 @@ export function HomeScreen({
           <ImageWithFallback src={imageUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
           <div>
             <strong>{lord.name}</strong>
-            <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}{titleStatus.lineage && titleStatus.lineage.name !== '开国元勋' ? ` · ${titleStatus.lineage.name}` : ''}</span>
+            <span>{lord.title}{dynastyCount(state.realms) > 0 ? ` · 第 ${dynastyCount(state.realms) + 1} 朝` : ''}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}{titleStatus.lineage && titleStatus.lineage.name !== '开国元勋' ? ` · ${titleStatus.lineage.name}` : ''}</span>
             {ambition && <em className="home-hud__ambition">{ambition.ambition.name} {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}</em>}
             <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em>
           </div>
@@ -252,6 +255,14 @@ export function HomeScreen({
         </section>
       )}
 
+      {isEndingReached(state) && (
+        <section className="succession-hint ending-hint" aria-label="天下归心">
+          <strong>天下归心</strong>
+          <span>六郡尽归、王城巍峨、家业点已满。可开创新朝：定一国号，加成永久保留，历朝叠加。</span>
+          <button type="button" onClick={onOpenEnding}>展开卷轴 →</button>
+        </section>
+      )}
+
       {state.generation >= 2 && !state.ambition && ambitionDeferred && (
         <section className="fief-hint ambition-chip" aria-label="本代志向待定">
           <strong>本代志向未定</strong>
@@ -313,7 +324,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}{realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />

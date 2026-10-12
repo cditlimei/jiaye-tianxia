@@ -3,6 +3,7 @@ import type { Lord } from '../data/gameData';
 import { titles } from '../data/progression';
 import { ambitionStatus, findAmbition } from '../data/ambitions';
 import { findLord } from '../data/gameData';
+import { dynastyCount, findRealm } from '../data/dynasty';
 import { imageUrl } from '../lib/assets';
 import { legacyIncomeMultiplier } from '../lib/battle';
 import type { GameState } from '../types';
@@ -35,6 +36,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
             <div><dt>智谋</dt><dd>{intelligence}</dd></div>
             <div><dt>声望</dt><dd>{charisma}</dd></div>
           </dl>
+          {dynastyCount(state.realms) > 0 && <small className="lord-sheet__realms">第 {dynastyCount(state.realms) + 1} 朝 · 国号加成：{(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')}</small>}
           <small>武力→官道与北疆 · 智谋→政务收入与江东 · 声望→招募折扣与许都{state.legacyPoints > 0 ? ` · 家业点 ${state.legacyPoints}（收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%）` : ''}</small>
         </div>
       </div>

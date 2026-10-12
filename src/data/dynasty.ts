@@ -1,0 +1,61 @@
+import type { GameState } from '../types';
+import { ownedFiefCount } from './fiefs';
+import { LEGACY_MAX_POINTS } from '../lib/battle';
+
+/**
+ * 终局与新朝：六郡尽归 + 王城 + 家业点满，即「天下归心」。
+ * 可开创新朝：定一国号，全部重来，但国号带来的加成永久保留并可跨朝叠加；旧家谱归入前朝。
+ */
+export type RealmId = 'wei' | 'shu' | 'wu';
+
+export interface Realm {
+  id: RealmId;
+  name: string;
+  motto: string;
+  effect: string;
+}
+
+export const REALM_ORDER_BONUS = 1;
+export const REALM_INCOME_PERCENT = 10;
+export const REALM_STAT_BONUS = 6;
+export const DYNASTY_START_GOLD = 20000;
+
+export const realms: Realm[] = [
+  { id: 'wei', name: '魏', motto: '挟天子以令诸侯', effect: `军令上限 +${REALM_ORDER_BONUS}` },
+  { id: 'shu', name: '蜀', motto: '兴复汉室，还于旧都', effect: `政务收入 +${REALM_INCOME_PERCENT}%` },
+  { id: 'wu', name: '吴', motto: '据长江之险，保江东之地', effect: `武力、智谋、声望各 +${REALM_STAT_BONUS}` }
+];
+
+export type RealmCounts = Record<RealmId, number>;
+
+export const emptyRealms: RealmCounts = { wei: 0, shu: 0, wu: 0 };
+
+export function isRealmId(value: unknown): value is RealmId {
+  return value === 'wei' || value === 'shu' || value === 'wu';
+}
+
+export function findRealm(id: string) {
+  return realms.find((item) => item.id === id) ?? null;
+}
+
+export const realmOrderBonus = (realms: RealmCounts) => realms.wei * REALM_ORDER_BONUS;
+export const realmIncomePercent = (realms: RealmCounts) => realms.shu * REALM_INCOME_PERCENT;
+export const realmStatBonus = (realms: RealmCounts) => realms.wu * REALM_STAT_BONUS;
+export const dynastyCount = (realms: RealmCounts) => realms.wei + realms.shu + realms.wu;
+
+/** 天下归心：六郡 + 王城 + 家业点满 */
+export function isEndingReached(state: GameState) {
+  return ownedFiefCount(state.fiefs) >= 6 && state.homeLevel >= 6 && state.legacyPoints >= LEGACY_MAX_POINTS;
+}
+
+/** 终局卷轴上的本朝总账（含本代） */
+export function dynastySummary(state: GameState) {
+  const past = state.chronicle;
+  return {
+    generations: state.generation,
+    days: past.reduce((sum, entry) => sum + entry.days, 0) + state.day,
+    wins: past.reduce((sum, entry) => sum + entry.wins, 0) + state.battleWins,
+    ambitions: past.filter((entry) => entry.ambitionDone).length,
+    fiefs: ownedFiefCount(state.fiefs)
+  };
+}

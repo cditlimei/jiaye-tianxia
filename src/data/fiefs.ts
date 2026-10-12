@@ -1,4 +1,5 @@
 import { ORDER_CAP } from '../types';
+import { emptyRealms, realmOrderBonus, type RealmCounts } from './dynasty';
 
 /**
  * 封地经略：宅邸升至侯府后，可按顺序开拓六郡。每郡开拓时选一条方略，
@@ -77,8 +78,8 @@ export function fiefStatBonus(holdings: FiefHoldings) {
   return countPolicy(holdings, 'schooling') * FIEF_STAT_BONUS;
 }
 
-export function orderCapFor(holdings: FiefHoldings) {
-  return ORDER_CAP + countPolicy(holdings, 'military') * FIEF_ORDER_BONUS;
+export function orderCapFor(holdings: FiefHoldings, realms: RealmCounts = emptyRealms) {
+  return ORDER_CAP + countPolicy(holdings, 'military') * FIEF_ORDER_BONUS + realmOrderBonus(realms);
 }
 
 export function policyChangeCost(fief: Fief) {

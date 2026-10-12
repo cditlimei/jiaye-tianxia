@@ -8,6 +8,7 @@ import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, pars
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
+import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmIncomePercent, realmStatBonus, type RealmId } from '../data/dynasty';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
@@ -22,6 +23,7 @@ type Action =
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'chooseAmbition'; ambitionId: AmbitionId }
+  | { type: 'foundDynasty'; realm: RealmId }
   | { type: 'setFiefPolicy'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
@@ -63,8 +65,10 @@ function reducer(state: GameState, action: Action): GameState {
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
         tutorialDone: state.generation > 1 || state.tutorialDone,
-        gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation > 1 && state.chronicle[state.chronicle.length - 1]?.ambitionDone ? AMBITION_REWARD_GOLD : 0),
+        gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation > 1 && state.chronicle[state.chronicle.length - 1]?.ambitionDone ? AMBITION_REWARD_GOLD : 0) + (state.generation === 1 ? dynastyCount(state.realms) * DYNASTY_START_GOLD : 0),
         chronicle: state.chronicle,
+        realms: state.realms,
+        pastDynasties: state.pastDynasties,
         ambition: null,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
@@ -141,7 +145,7 @@ function reducer(state: GameState, action: Action): GameState {
         day: nextDay,
         frontierRaid: frontier.frontierRaid,
         nextRaidDay: frontier.nextRaidDay,
-        orders: isOrderDay(nextDay) ? Math.min(orderCapFor(state.fiefs), state.orders + 1) : state.orders,
+        orders: isOrderDay(nextDay) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
         incomeBuff,
         pendingChoice,
         eventLog
@@ -177,7 +181,7 @@ function reducer(state: GameState, action: Action): GameState {
         gold: state.gold + gold,
         incomeBuff: option.id === 'incomeBuff' ? { percent: INCOME_BUFF_PERCENT, untilDay: state.day + INCOME_BUFF_DAYS } : state.incomeBuff,
         nextBattleBonus: option.id === 'battleBonus' ? BATTLE_BONUS_MULTIPLIER : state.nextBattleBonus,
-        orders: option.id === 'order' ? Math.min(orderCapFor(state.fiefs), state.orders + 1) : state.orders,
+        orders: option.id === 'order' ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
         eventLog: [
           { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.detail, goldDelta: gold || undefined },
           ...state.eventLog
@@ -247,19 +251,19 @@ function reducer(state: GameState, action: Action): GameState {
         return state;
       }
       const fiefs = { ...state.fiefs, [fief.id]: policy.id };
-      const reclaimed = Math.max(0, state.orders - orderCapFor(fiefs));
+      const reclaimed = Math.max(0, state.orders - orderCapFor(fiefs, state.realms));
       return {
         ...state,
         gold: state.gold - action.cost,
         fiefs,
         // 撤掉整军方略后军令上限下降，存量超出的部分收回
-        orders: Math.min(orderCapFor(fiefs), state.orders),
+        orders: Math.min(orderCapFor(fiefs, state.realms), state.orders),
         eventLog: [
           {
             id: `fief-policy-${fief.id}-${Date.now()}`,
             day: state.day,
             title: '改弦更张',
-            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}${reclaimed > 0 ? `，军令上限降为 ${orderCapFor(fiefs)}，收回 ${reclaimed} 道` : ''}。`,
+            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}${reclaimed > 0 ? `，军令上限降为 ${orderCapFor(fiefs, state.realms)}，收回 ${reclaimed} 道` : ''}。`,
             goldDelta: -action.cost
           },
           ...state.eventLog
@@ -456,6 +460,8 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...defaultGameState,
         chronicle: trimChronicle([...state.chronicle, entry]),
+        realms: state.realms,
+        pastDynasties: state.pastDynasties,
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,
@@ -473,6 +479,25 @@ function reducer(state: GameState, action: Action): GameState {
             title: '传位',
             detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}${status ? `；志向「${status.ambition.name}」${status.done ? '达成，载入家谱' : '未竟'}` : ''}。`
           }
+        ]
+      };
+    }
+    case 'foundDynasty': {
+      const realm = findRealm(action.realm);
+      if (!realm || !isEndingReached(state)) return state;
+      const summary = dynastySummary(state);
+      const realms = { ...state.realms, [realm.id]: state.realms[realm.id] + 1 };
+      const dynasty = state.pastDynasties.length + 1;
+      return {
+        ...defaultGameState,
+        screen: 'lordSelect',
+        lastScreen: 'lordSelect',
+        soundEnabled: state.soundEnabled,
+        tutorialDone: true,
+        realms,
+        pastDynasties: [...state.pastDynasties, { dynasty, realm: realm.id, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions }].slice(-20),
+        eventLog: [
+          { id: `dynasty-${Date.now()}`, day: 1, title: `开创新朝 · ${realm.name}`, detail: `前朝历 ${summary.generations} 代 ${summary.days} 日，${summary.wins} 胜，六郡归心。新朝国号「${realm.name}」：${realm.effect}，永久保留。` }
         ]
       };
     }
@@ -543,8 +568,8 @@ export function useGameState() {
     [state.ownedPartnerIds, state.partnerBoosts]
   );
 
-  const fiefStat = fiefStatBonus(state.fiefs);
-  const orderCap = orderCapFor(state.fiefs);
+  const fiefStat = fiefStatBonus(state.fiefs) + realmStatBonus(state.realms);
+  const orderCap = orderCapFor(state.fiefs, state.realms);
   const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome, fiefStat) : 0;
   const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome, fiefStat) : 0;
   const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome, fiefStat) : 0;
@@ -555,7 +580,7 @@ export function useGameState() {
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
-  const fiefPercent = fiefIncomePercent(state.fiefs);
+  const fiefPercent = fiefIncomePercent(state.fiefs) + realmIncomePercent(state.realms);
   const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent);
   // 再开一郡行劝农，每次政务多多少金（给封地弹窗算账用）
   const farmingGain = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent + FIEF_INCOME_PERCENT) - dailyIncome;
@@ -669,6 +694,8 @@ export function useGameState() {
     claimFief,
     setFiefPolicy,
     chooseAmbition: (ambitionId: AmbitionId) => dispatch({ type: 'chooseAmbition', ambitionId }),
+    foundDynasty: (realm: RealmId) => dispatch({ type: 'foundDynasty', realm }),
+    endingReached: isEndingReached(state),
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0, doudizhu = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold, doudizhu }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),
