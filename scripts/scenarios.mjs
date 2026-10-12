@@ -1048,6 +1048,43 @@ await scenario('新朝审查修复', async () => {
   await dirty.context().close();
 });
 
+await scenario('家风', async () => {
+  const two = (id) => [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: id, ambitionDone: true }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: id, ambitionDone: true }];
+  // 富国家风：传位 8 万 1 点
+  const wealth = await open(save({ generation: 3, homeLevel: 6, gold: 160000, chronicle: two('wealth') }));
+  check('HUD 显示家风', (await wealth.locator('.home-hud').innerText()).includes('富国家风'));
+  await wealth.getByRole('button', { name: '设置与存档' }).click();
+  await wealth.getByText('当前存档').first().waitFor();
+  check('富国家风传位 8 万 1 点', (await wealth.locator('.succession-panel').innerText()).includes('可得 2 点'));
+  await wealth.context().close();
+  // 开疆家风：封地九折
+  const exp = await open(save({ generation: 3, homeLevel: 5, gold: 135000, chronicle: two('expansion') }));
+  check('开疆家风九折后金够提示封郡', (await exp.locator('.fief-hint').innerText()).includes('135,000 金'));
+  await exp.getByRole('button', { name: '去经略 →' }).click();
+  await exp.getByRole('button', { name: /开拓南阳郡/ }).click();
+  await exp.waitForTimeout(300);
+  check('九折开拓扣 135,000', (await read(exp)).gold === 0 && (await read(exp)).fiefs?.nanyang === 'farming');
+  await exp.context().close();
+  // 强兵家风：传位后新主公开局军令满
+  // 第二代达成强兵后传位：两代连达成立，第三代开局即享家风
+  const might = await open(save({ generation: 2, homeLevel: 6, gold: 250000, battleWins: 31, ambition: { id: 'might', target: 30, baseFiefs: 0 }, chronicle: [two('might')[0]] }));
+  await might.getByRole('button', { name: '设置与存档' }).click();
+  await might.getByText('当前存档').first().waitFor();
+  might.on('dialog', (d) => d.accept());
+  await might.getByRole('button', { name: '传位给下一代' }).click();
+  await might.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  await might.getByRole('button', { name: '确认选择' }).click();
+  await might.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await might.getByRole('button', { name: '携美人，共创家业' }).click();
+  await might.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  check('强兵家风开局军令满', (await read(might)).orders === 6, `orders=${(await read(might)).orders}`);
+  await might.context().close();
+  // 断档：两代志向不同不成家风；志向卡提示再成一次即家风
+  const broken = await open(save({ generation: 3, chronicle: [two('wealth')[0], { ...two('might')[1] }] }));
+  check('两代志向不同不成家风且提示候选', !(await broken.locator('.home-hud').innerText()).includes('家风') && (await broken.locator('.ambition-card').innerText()).includes('再成一次即立家风'));
+  await broken.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

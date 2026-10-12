@@ -213,12 +213,12 @@ export const LEGACY_INCOME_PER_POINT = 0.05;
 export const LEGACY_START_GOLD_PER_POINT = 3000;
 
 /** 这次传位实际能新增的家业点（已扣掉累计上限） */
-export function legacyPointsGainable(gold: number, currentPoints: number) {
-  return Math.max(0, Math.min(legacyPointsFor(gold), LEGACY_MAX_POINTS - currentPoints));
+export function legacyPointsGainable(gold: number, currentPoints: number, goldPerPoint = LEGACY_GOLD_PER_POINT) {
+  return Math.max(0, Math.min(legacyPointsFor(gold, goldPerPoint), LEGACY_MAX_POINTS - currentPoints));
 }
 
-export function legacyPointsFor(gold: number) {
-  return Math.floor(Math.max(0, gold) / LEGACY_GOLD_PER_POINT);
+export function legacyPointsFor(gold: number, goldPerPoint = LEGACY_GOLD_PER_POINT) {
+  return Math.floor(Math.max(0, gold) / goldPerPoint);
 }
 
 export function legacyIncomeMultiplier(points: number) {

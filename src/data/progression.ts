@@ -4,6 +4,7 @@ import { findPartnerEvent, partnersWithResolvedEvent } from './partnerEvents';
 import { ownedFiefCount } from './fiefs';
 import { AMBITION_TITLE_COUNT, ambitionsAchieved } from './ambitions';
 import { isEndingReached } from './dynasty';
+import { traditionOf } from './traditions';
 
 export interface Quest {
   id: string;
@@ -154,6 +155,7 @@ export const titles: Title[] = [
   { id: 'marquis', name: '裂土封侯', requirement: '封地三郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 3, lineage: true },
   { id: 'six-commanderies', name: '六郡之主', requirement: '六郡尽归府下', isEarned: (s) => ownedFiefCount(s.fiefs) >= 6, lineage: true },
   { id: 'unifier', name: '天下归心', requirement: '六郡尽归、王城、家业点满', isEarned: (s) => isEndingReached(s), lineage: true },
+  { id: 'tradition', name: '家风传世', requirement: '连续两代达成同一志向', isEarned: (s) => traditionOf(s.chronicle) !== null, lineage: true },
   { id: 'scholarly', name: '家学渊源', requirement: `三代志向达成`, isEarned: (s) => ambitionsAchieved(s) >= AMBITION_TITLE_COUNT, lineage: true }
 ];
 

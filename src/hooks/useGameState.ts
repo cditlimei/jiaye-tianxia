@@ -9,7 +9,8 @@ import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
 import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmIncomePercent, realmStatBonus, type RealmId } from '../data/dynasty';
-import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
+import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
+import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
@@ -71,6 +72,8 @@ function reducer(state: GameState, action: Action): GameState {
         realms: state.realms,
         pastDynasties: state.pastDynasties,
         ambition: null,
+        // 强兵家风：每代开局军令满额
+        orders: traditionOf(state.chronicle)?.id === 'might' ? orderCapFor({}, state.realms) : defaultGameState.orders,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
@@ -214,7 +217,7 @@ function reducer(state: GameState, action: Action): GameState {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
       // 只能按顺序开拓下一郡，钱要够
-      if (!fief || !policy || nextFief(state.fiefs)?.id !== fief.id || state.gold < action.cost || action.cost !== fief.cost) {
+      if (!fief || !policy || nextFief(state.fiefs)?.id !== fief.id || state.gold < action.cost || action.cost !== fiefCostFor(state, fief)) {
         return state;
       }
       return {
@@ -250,7 +253,7 @@ function reducer(state: GameState, action: Action): GameState {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
       const current = fief ? state.fiefs[fief.id] : undefined;
-      if (!fief || !policy || !current || current === policy.id || state.gold < action.cost || action.cost !== policyChangeCost(fief)) {
+      if (!fief || !policy || !current || current === policy.id || state.gold < action.cost || action.cost !== policyChangeCostFor(state, fief)) {
         return state;
       }
       const fiefs = { ...state.fiefs, [fief.id]: policy.id };
@@ -444,7 +447,7 @@ function reducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     case 'succeed': {
-      const gained = legacyPointsFor(state.gold);
+      const gained = legacyPointsFor(state.gold, legacyGoldPerPointFor(state));
       if (state.homeLevel < SUCCESSION_HOME_LEVEL || gained < 1) {
         return state;
       }
@@ -632,25 +635,27 @@ export function useGameState() {
   const claimFief = useCallback(
     (policyId: FiefPolicyId) => {
       const fief = nextFief(state.fiefs);
-      if (!fief || state.gold < fief.cost) {
+      const cost = fief ? fiefCostFor(state, fief) : 0;
+      if (!fief || state.gold < cost) {
         return false;
       }
-      dispatch({ type: 'claimFief', fiefId: fief.id, policyId, cost: fief.cost });
+      dispatch({ type: 'claimFief', fiefId: fief.id, policyId, cost });
       return true;
     },
-    [state.fiefs, state.gold]
+    [state]
   );
 
   const setFiefPolicy = useCallback(
     (fiefId: string, policyId: FiefPolicyId) => {
       const fief = findFief(fiefId);
-      if (!fief || !state.fiefs[fiefId] || state.fiefs[fiefId] === policyId || state.gold < policyChangeCost(fief)) {
+      const cost = fief ? policyChangeCostFor(state, fief) : 0;
+      if (!fief || !state.fiefs[fiefId] || state.fiefs[fiefId] === policyId || state.gold < cost) {
         return false;
       }
-      dispatch({ type: 'setFiefPolicy', fiefId, policyId, cost: policyChangeCost(fief) });
+      dispatch({ type: 'setFiefPolicy', fiefId, policyId, cost });
       return true;
     },
-    [state.fiefs, state.gold]
+    [state]
   );
 
   const buyWeapon = useCallback(
