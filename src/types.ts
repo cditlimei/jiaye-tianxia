@@ -1,4 +1,5 @@
 import type { FiefHoldings } from './data/fiefs';
+import type { AmbitionId } from './data/ambitions';
 
 export type Screen = 'title' | 'lordSelect' | 'partnerSelect' | 'home' | 'battle';
 
@@ -34,11 +35,26 @@ export interface GameState {
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */
   fiefs: FiefHoldings;
+  /** 本代志向（第二代起开局三选一）；baseFiefs 记开局时已有几郡，开疆按新增算 */
+  ambition: { id: AmbitionId; target: number; baseFiefs: number } | null;
+  /** 家谱：每代传位时记一笔 */
+  chronicle: ChronicleEntry[];
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;
   eventLog: GameEvent[];
   lastSavedAt: number;
+}
+
+export interface ChronicleEntry {
+  generation: number;
+  lordId: string;
+  days: number;
+  gold: number;
+  wins: number;
+  fiefs: number;
+  ambition: AmbitionId | null;
+  ambitionDone: boolean;
 }
 
 export type BattleOutcome = 'win' | 'loss' | 'retreat';

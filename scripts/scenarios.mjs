@@ -891,6 +891,49 @@ await scenario('封地经略', async () => {
   await heir.context().close();
 });
 
+await scenario('本代志向与家谱', async () => {
+  // 第一代不出现志向卡
+  const gen1 = await open(save({ generation: 1 }));
+  check('第一代没有志向卡', !(await gen1.locator('main').innerText()).includes('本代志向'));
+  await gen1.context().close();
+
+  // 第二代：三选一 → 选强兵（目标 30 胜）→ 任务面板显示进度
+  const page = await open(save({ generation: 2, legacyPoints: 2, battleWins: 5 }));
+  check('第二代主城出现志向三选一', (await page.locator('.ambition-card').innerText()).includes('富国') && (await page.locator('.ambition-card').innerText()).includes('开疆'));
+  await page.locator('.ambition-options button').filter({ hasText: '强兵' }).click();
+  await page.waitForTimeout(300);
+  let s = await read(page);
+  check('选强兵后存档记录目标 30 胜', s.ambition?.id === 'might' && s.ambition?.target === 30, JSON.stringify(s.ambition));
+  check('志向卡消失且显示进度', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.ambition-progress').innerText()).includes('现 5 胜'));
+  await page.context().close();
+
+  // 六郡已满时不给选开疆
+  const full = await open(save({ generation: 2, homeLevel: 6, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'farming', changsha: 'farming', bajun: 'farming', liaodong: 'farming' } }));
+  check('六郡已满不出现开疆', !(await full.locator('.ambition-card').innerText()).includes('开疆'));
+  await full.context().close();
+
+  // 达成富国后传位：家谱记一笔达成，下一代开局多 10,000 金；家谱在主公页可见
+  const heir = await open(save({ generation: 2, legacyPoints: 2, homeLevel: 6, gold: 600000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
+  check('达成志向后进度行提示', (await heir.locator('.ambition-progress').innerText()).includes('已达成'));
+  await heir.getByRole('button', { name: '设置与存档' }).click();
+  await heir.getByText('当前存档').first().waitFor();
+  heir.on('dialog', (d) => d.accept());
+  await heir.getByRole('button', { name: '传位给下一代' }).click();
+  await heir.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  s = await read(heir);
+  check('传位后家谱记录志向达成', s.chronicle?.length === 1 && s.chronicle[0].generation === 2 && s.chronicle[0].ambitionDone === true && s.ambition === null, JSON.stringify(s.chronicle));
+  await heir.getByRole('button', { name: '确认选择' }).click();
+  await heir.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await heir.getByRole('button', { name: '携美人，共创家业' }).click();
+  await heir.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  s = await read(heir);
+  check('第三代开局多得 10,000 金', s.generation === 3 && s.legacyPoints === 8 && s.gold === 1000 + 8 * 3000 + 10000, `gold=${s.gold} lp=${s.legacyPoints}`);
+  check('第三代志向目标递增', (await heir.locator('.ambition-card').innerText()).includes('750,000'));
+  await heir.getByRole('button', { name: '主公' }).click();
+  check('主公页显示家谱', (await heir.locator('.chronicle').last().innerText()).includes('第 2 代') && (await heir.locator('.chronicle').last().innerText()).includes('达成'));
+  await heir.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

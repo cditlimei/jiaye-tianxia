@@ -321,6 +321,10 @@ export function App() {
           onOpenSettings={() => setModal('settings')}
           onOpenLord={() => setModal('lord')}
           onOpenFief={() => setModal('fief')}
+          onChooseAmbition={(id) => {
+            game.chooseAmbition(id);
+            audio.playSfx('audio/sfx/sfx_button.mp3', 0.3);
+          }}
           onIncomeSfx={() => audio.playSfx('audio/sfx/sfx_coins.mp3', 0.28)}
           onUpgradeEffect={handleUpgradeEffect}
         />

@@ -7,6 +7,7 @@ import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
 import type { GameState } from '../types';
+import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -39,6 +40,7 @@ interface HomeScreenProps {
   onOpenSettings: () => void;
   onOpenLord: () => void;
   onOpenFief: () => void;
+  onChooseAmbition: (id: AmbitionId) => void;
   onIncomeSfx: () => void;
   onUpgradeEffect: (imagePath: string, name: string) => void;
   questStatuses: QuestStatus[];
@@ -84,12 +86,14 @@ export function HomeScreen({
   onOpenSettings,
   onOpenLord,
   onOpenFief,
+  onChooseAmbition,
   onIncomeSfx,
   onUpgradeEffect,
   questStatuses,
   titleStatus
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
+  const ambition = ambitionStatus(state);
   const nextFiefToClaim = nextFief(state.fiefs);
   const fiefAffordable = state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim !== null && state.gold >= nextFiefToClaim.cost;
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
@@ -238,6 +242,25 @@ export function HomeScreen({
         </section>
       )}
 
+      {state.generation >= 2 && !state.ambition && (
+        <section className="ambition-card" aria-label="本代志向">
+          <div className="section-title">
+            <span>第 {state.generation} 代 · 本代志向</span>
+            <strong>三选一，传位时结算</strong>
+          </div>
+          <p className="starter-hint">先祖已留下家业，这一代要做成什么？达成者载入家谱，下一代开局多得 10,000 金；三代达成得家声「家学渊源」。</p>
+          <div className="ambition-options">
+            {availableAmbitions(state).map((item) => (
+              <button key={item.id} type="button" onClick={() => onChooseAmbition(item.id)}>
+                <strong>{item.name}</strong>
+                <span>{item.describe(item.target(state.generation))}</span>
+                <small>{item.motto}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {fiefAffordable && nextFiefToClaim && (() => {
         const next = nextFiefToClaim;
         const owned = ownedFiefCount(state.fiefs);
@@ -338,6 +361,9 @@ export function HomeScreen({
           <span>家业目标</span>
           <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
         </div>
+        {ambition && (
+          <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.ambition.describe(ambition.target)}，现 {ambition.progress.toLocaleString()} {ambition.ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
+        )}
         <p className="honor-hint">
           当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : titleStatus.missing > 0 ? `，已是本代最高称号，另有 ${titleStatus.missing} 个称号待集齐（点头像查看）` : '，本代称号已集齐'}。
         </p>

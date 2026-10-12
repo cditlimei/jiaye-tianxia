@@ -7,6 +7,7 @@ import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUC
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
+import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, type AmbitionId } from '../data/ambitions';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
@@ -20,6 +21,7 @@ type Action =
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
+  | { type: 'chooseAmbition'; ambitionId: AmbitionId }
   | { type: 'setFiefPolicy'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
@@ -56,7 +58,9 @@ function reducer(state: GameState, action: Action): GameState {
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
         tutorialDone: state.generation > 1 || state.tutorialDone,
-        gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT,
+        gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation > 1 && state.chronicle[state.chronicle.length - 1]?.ambitionDone ? AMBITION_REWARD_GOLD : 0),
+        chronicle: state.chronicle,
+        ambition: null,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
@@ -68,7 +72,7 @@ function reducer(state: GameState, action: Action): GameState {
             day: 1,
             title: state.generation > 1 ? `第 ${state.generation} 代择主` : '择主立业',
             detail: state.generation > 1
-              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%。`
+              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%${state.chronicle[state.chronicle.length - 1]?.ambitionDone ? `；上一代志向达成，开局多得 ${AMBITION_REWARD_GOLD.toLocaleString()} 金` : ''}。请在主城定下本代志向。`
               : '乱世基业已定，待择良缘共理家业。'
           }
         ]
@@ -211,6 +215,19 @@ function reducer(state: GameState, action: Action): GameState {
             detail: `以 ${action.cost.toLocaleString()} 金开拓${fief.name}，行「${policy.name}」之策：${policy.effect}。`,
             goldDelta: -action.cost
           },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
+    case 'chooseAmbition': {
+      const ambition = findAmbition(action.ambitionId);
+      if (!ambition || state.ambition || state.generation < 2) return state;
+      const target = ambition.target(state.generation);
+      return {
+        ...state,
+        ambition: { id: ambition.id, target, baseFiefs: ownedFiefCountOf(state.fiefs) },
+        eventLog: [
+          { id: `ambition-${Date.now()}`, day: state.day, title: `本代志向 · ${ambition.name}`, detail: `${ambition.motto}。${ambition.describe(target)}，传位时结算。` },
           ...state.eventLog
         ].slice(0, 18)
       };
@@ -418,8 +435,20 @@ function reducer(state: GameState, action: Action): GameState {
         return state;
       }
       const legacyPoints = Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gained);
+      const status = ambitionStatus(state);
+      const entry = {
+        generation: state.generation,
+        lordId: state.selectedLordId ?? '',
+        days: state.day,
+        gold: state.gold,
+        wins: state.battleWins,
+        fiefs: ownedFiefCountOf(state.fiefs),
+        ambition: state.ambition?.id ?? null,
+        ambitionDone: Boolean(status?.done)
+      };
       return {
         ...defaultGameState,
+        chronicle: [...state.chronicle, entry].slice(-40),
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,
@@ -435,7 +464,7 @@ function reducer(state: GameState, action: Action): GameState {
             id: `succeed-${Date.now()}`,
             day: 1,
             title: '传位',
-            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。`
+            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}${status ? `；志向「${status.ambition.name}」${status.done ? '达成，载入家谱' : '未竟'}` : ''}。`
           }
         ]
       };
@@ -632,6 +661,7 @@ export function useGameState() {
     upgradeFarm,
     claimFief,
     setFiefPolicy,
+    chooseAmbition: (ambitionId: AmbitionId) => dispatch({ type: 'chooseAmbition', ambitionId }),
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0, doudizhu = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold, doudizhu }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),

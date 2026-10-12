@@ -5,6 +5,7 @@ import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../l
 import { isOrderDay, ORDER_START } from '../types';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
 import { fiefs as fiefCatalog } from '../data/fiefs';
+import { isAmbitionId } from '../data/ambitions';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 
@@ -44,6 +45,8 @@ export const defaultGameState: GameState = {
   activeBattle: null,
   orders: ORDER_START,
   fiefs: {},
+  ambition: null,
+  chronicle: [],
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -215,6 +218,8 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
     orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))), sanitizeNumber(parsed.orders, ORDER_START, 0)),
     fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
+    ambition: sanitizeAmbition(parsed.ambition),
+    chronicle: sanitizeChronicle(parsed.chronicle),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -304,6 +309,33 @@ function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): F
     out[fief.id] = policy;
   }
   return out;
+}
+
+function sanitizeAmbition(value: unknown): GameState['ambition'] {
+  if (!value || typeof value !== 'object') return null;
+  const a = value as { id?: unknown; target?: unknown; baseFiefs?: unknown };
+  if (!isAmbitionId(a.id) || typeof a.target !== 'number' || !Number.isFinite(a.target)) return null;
+  return { id: a.id, target: Math.max(1, Math.floor(a.target)), baseFiefs: sanitizeNumber(a.baseFiefs, 0, 0) };
+}
+
+function sanitizeChronicle(value: unknown): GameState['chronicle'] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => {
+      const e = entry as Record<string, unknown>;
+      return {
+        generation: sanitizeNumber(e.generation, 1, 1),
+        lordId: isKnownId(e.lordId, lords) ? e.lordId : '',
+        days: sanitizeNumber(e.days, 1, 1),
+        gold: sanitizeNumber(e.gold, 0, 0),
+        wins: sanitizeNumber(e.wins, 0, 0),
+        fiefs: sanitizeNumber(e.fiefs, 0, 0),
+        ambition: isAmbitionId(e.ambition) ? e.ambition : null,
+        ambitionDone: e.ambitionDone === true
+      };
+    })
+    .slice(-40);
 }
 
 function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {

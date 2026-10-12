@@ -1,5 +1,7 @@
 import type { Lord } from '../data/gameData';
 import { titles } from '../data/progression';
+import { ambitionStatus, findAmbition } from '../data/ambitions';
+import { findLord } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import { legacyIncomeMultiplier } from '../lib/battle';
 import type { GameState } from '../types';
@@ -16,6 +18,7 @@ interface LordModalProps {
 }
 
 export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose }: LordModalProps) {
+  const ambition = ambitionStatus(state);
   return (
     <ModalShell title="主公与称号" onClose={onClose}>
       <div className="lord-sheet">
@@ -32,6 +35,33 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           <small>武力→官道与北疆 · 智谋→政务收入与江东 · 声望→招募折扣与许都{state.legacyPoints > 0 ? ` · 家业点 ${state.legacyPoints}（收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%）` : ''}</small>
         </div>
       </div>
+      {ambition && (
+        <section className="chronicle" aria-label="本代志向">
+          <div className="section-title">
+            <span>本代志向</span>
+            <strong>{ambition.ambition.name} · {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()} / ${ambition.target.toLocaleString()} ${ambition.ambition.unit}`}</strong>
+          </div>
+          <p>{ambition.ambition.describe(ambition.target)}。{ambition.ambition.motto}。</p>
+        </section>
+      )}
+      {state.chronicle.length > 0 && (
+        <section className="chronicle" aria-label="家谱">
+          <div className="section-title">
+            <span>家谱</span>
+            <strong>{state.chronicle.length} 代</strong>
+          </div>
+          {state.chronicle.map((entry) => {
+            const name = findLord(entry.lordId)?.name ?? '无名氏';
+            const ambitionName = entry.ambition ? findAmbition(entry.ambition)?.name : null;
+            return (
+              <div key={entry.generation} className={`chronicle-row ${entry.ambitionDone ? 'is-done' : ''}`}>
+                <strong>第 {entry.generation} 代 · {name}</strong>
+                <span>{entry.days} 日 · {entry.wins} 胜 · 传下 {entry.gold.toLocaleString()} 金{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? ` · 志向「${ambitionName}」${entry.ambitionDone ? '达成' : '未竟'}` : ''}</span>
+              </div>
+            );
+          })}
+        </section>
+      )}
       {[
         { label: '本代称号', list: titles.filter((title) => !title.lineage) },
         { label: '家声（跨代保留）', list: titles.filter((title) => title.lineage) }
