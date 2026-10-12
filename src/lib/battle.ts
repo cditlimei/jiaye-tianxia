@@ -134,6 +134,14 @@ export function battleLossRate(odds: number) {
   return 0.2 + 0.5 * (1 - Math.min(1, Math.max(0, odds)));
 }
 
+/** 府邸以前的新手期：一场败仗最多折损现有金币三成；任何时候都不超过现有金币 */
+export const EARLY_LOSS_HOME_LEVEL = 4;
+export const EARLY_LOSS_CAP_RATE = 0.3;
+export function effectiveLoss(loss: number, gold: number, homeLevel: number) {
+  const cap = homeLevel < EARLY_LOSS_HOME_LEVEL ? Math.round(Math.max(0, gold) * EARLY_LOSS_CAP_RATE) : Math.max(0, gold);
+  return Math.max(0, Math.min(loss, cap));
+}
+
 export function battleLossGold(rewardGold: number, odds: number) {
   return Math.round(rewardGold * battleLossRate(odds));
 }

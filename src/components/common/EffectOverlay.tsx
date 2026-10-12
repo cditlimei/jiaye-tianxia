@@ -23,6 +23,7 @@ export function EffectOverlay({ overlay, onFinish }: EffectOverlayProps) {
           />
         )}
         <div className="effect-overlay__title">{overlay.title}</div>
+        {overlay.subtitle && <div className="effect-overlay__subtitle">{overlay.subtitle}</div>}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ export interface EffectOverlayState {
   image?: string;
   poster?: string;
   title: string;
+  subtitle?: string;
 }
 
 interface PlayEffectOptions {
@@ -14,6 +15,8 @@ interface PlayEffectOptions {
   imagePath?: string;
   posterPath?: string;
   title: string;
+  /** 标题下一行，如「新开放：…」 */
+  subtitle?: string;
   fallbackMs?: number;
 }
 
@@ -52,7 +55,8 @@ export function useEffectOverlay() {
           src: options.videoPath ? mediaUrl(options.videoPath) : '',
           image: options.imagePath ? imageUrl(options.imagePath, 640) : undefined,
           poster: options.posterPath ? mediaUrl(options.posterPath) : undefined,
-          title: options.title
+          title: options.title,
+          subtitle: options.subtitle
         });
         timerRef.current = window.setTimeout(finishEffect, options.fallbackMs ?? 2600);
       });

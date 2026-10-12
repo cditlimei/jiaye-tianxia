@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
-import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
+import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
@@ -12,7 +12,7 @@ import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingRe
 import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type FiefPolicyId } from '../data/fiefs';
-import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
+import { advanceFrontier, FRONTIER_UNLOCK_HOME_LEVEL, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
 
@@ -308,12 +308,14 @@ function reducer(state: GameState, action: Action): GameState {
         ...state,
         gold: state.gold - action.cost,
         homeLevel: action.nextLevel,
+        // 北疆刚开放时不立刻来边患，给三日缓冲
+        nextRaidDay: action.nextLevel === FRONTIER_UNLOCK_HOME_LEVEL ? Math.max(state.nextRaidDay, state.day + 3) : state.nextRaidDay,
         eventLog: [
           {
             id: `home-${action.nextLevel}-${Date.now()}`,
             day: state.day,
             title: '宅邸升阶',
-            detail: `宅邸已提升至 ${findHomeLevel(action.nextLevel).name}。`
+            detail: `宅邸已提升至 ${findHomeLevel(action.nextLevel).name}。${HOME_UNLOCKS[action.nextLevel] ? `新开放：${HOME_UNLOCKS[action.nextLevel]}。` : ''}`
           },
           ...state.eventLog
         ].slice(0, 18)

@@ -27,7 +27,8 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
           (left.bestMatchLordId === lord.id ? -3 : 0) + (leftOwned ? 10 : 0) + (state.gold >= costFor(left) ? -1 : 0);
         const rightScore =
           (right.bestMatchLordId === lord.id ? -3 : 0) + (rightOwned ? 10 : 0) + (state.gold >= costFor(right) ? -1 : 0);
-        return leftScore - rightScore;
+        // 都买不起时便宜的排前面，先看到差得最少的
+        return leftScore - rightScore || costFor(left) - costFor(right);
       }),
     [costFor, lord.id, state.gold, state.ownedPartnerIds]
   );
@@ -79,7 +80,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
                   <p>{partner.description}</p>
                   <strong>{bonusCopy}</strong>
                   <GameButton
-                    variant={owned ? 'ghost' : missingGold > 0 ? 'secondary' : 'primary'}
+                    variant={owned || missingGold > 0 ? 'ghost' : 'primary'}
                     disabled={owned}
                     onClick={() => {
                       if (onRecruit(partner.id)) {

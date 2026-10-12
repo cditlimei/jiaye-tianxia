@@ -10,6 +10,9 @@ import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
 import { dynastyCount, endingHint, findRealm, isEndingReached, realmIncomePercent } from '../data/dynasty';
+import { daysUntilNextOrder } from '../types';
+import { farmLevels, weapons } from '../data/gameData';
+import { realmFarmCost } from '../data/dynasty';
 import { fiefCostFor, legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
@@ -121,15 +124,17 @@ export function HomeScreen({
   const candidate = traditionCandidate(state.chronicle);
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
   const partnerNames = useMemo(() => ownedPartners.map((partner) => partner.name).join('、') || '尚未招募', [ownedPartners]);
+  // 招人门槛按最便宜的未招伴侣算（含声望折扣），不写死
+  const cheapestPartner = Math.min(...partners.filter((item) => !state.ownedPartnerIds.includes(item.id)).map((item) => Math.round(item.recruitCost * (1 - recruitDiscount / 100))), Infinity);
   // 开局引导：四步，每步指向一个按钮；钱不够时先指向「处理政务」
   const starterOrders = useMemo(
     () => [
       { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
-      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < 800 ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
+      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < cheapestPartner ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
       { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑。第 5 日伴侣会来说心事，了却后任务「良缘佳话」正好奖 1,500 金。' },
       { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点「出征讨伐」，到官道挑一个推荐对手打一场，缴获比处理政务多得多。' }
     ],
-    [nextHome, state.battleWins, state.equippedWeaponId, state.gold, state.homeLevel, state.ownedPartnerIds.length]
+    [cheapestPartner, nextHome, state.battleWins, state.equippedWeaponId, state.gold, state.homeLevel, state.ownedPartnerIds.length]
   );
   const currentOrder = starterOrders.find((order) => !order.done) ?? null;
   const guidedTarget: 'income' | 'upgrade' | 'partner' | 'weapon' | 'battle' | null = state.tutorialDone || !currentOrder
@@ -138,7 +143,7 @@ export function HomeScreen({
       ? 'income'
       : currentOrder.target === 'weapon' && state.gold < 1500
         ? 'income'
-        : currentOrder.target === 'partner' && state.gold < 800
+        : currentOrder.target === 'partner' && state.gold < cheapestPartner
           ? 'income'
           : currentOrder.target;
   const guided = (target: typeof guidedTarget) => (guidedTarget === target ? 'is-guided' : '');
@@ -186,7 +191,16 @@ export function HomeScreen({
 
   // 机会栏：封郡 / 传位 / 志向未定 / 天下归心 等非阻塞选择合成一行，首屏只留真正要决断的事
   const claimable = questStatuses.filter((quest) => quest.complete && !quest.claimed).length;
+  // 钱够就亮：比手上更强、买得起的兵器里最强的一把；屯田下一级
+  const betterWeapon = weapons
+    .filter((item) => !state.ownedWeaponIds.includes(item.id) && state.gold >= item.price && weaponBonusForLord(item, lord.id) > weaponBonusForLord(weapon, lord.id))
+    .sort((a, b) => weaponBonusForLord(b, lord.id) - weaponBonusForLord(a, lord.id))[0] ?? null;
+  const nextFarmLevel = farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null;
+  const nextFarmCost = state.homeLevel >= 3 && nextFarmLevel ? realmFarmCost(state.realms, nextFarmLevel.cost) : null;
   const chances = [
+    ...(state.tutorialDone && betterWeapon ? [{ key: 'weapon', label: `可购入${betterWeapon.name}`, detail: `${betterWeapon.price.toLocaleString()} 金，武力 +${weaponBonusForLord(betterWeapon, lord.id) - weaponBonusForLord(weapon, lord.id)}`, onClick: onOpenWeapon }] : []),
+    ...(state.tutorialDone && nextFarmCost !== null && state.gold >= nextFarmCost ? [{ key: 'farm', label: '可升西蜀屯田', detail: `${nextFarmCost.toLocaleString()} 金`, onClick: onBattle }] : []),
+    ...(state.tutorialDone && Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10 ? [{ key: 'partner', label: '可再招一位伴侣', detail: `最便宜 ${cheapestPartner.toLocaleString()} 金`, onClick: onOpenPartner }] : []),
     ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => questRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }] : []),
     ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可开拓${nextFiefToClaim.name}`, detail: `${nextFiefCost.toLocaleString()} 金，余 ${(state.gold - nextFiefCost).toLocaleString()}`, onClick: onOpenFief }] : []),
     ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
@@ -224,7 +238,7 @@ export function HomeScreen({
           </div>
           <div>
             <strong>{state.day}</strong>
-            <span>第几日</span>
+            <span>日</span>
           </div>
         </div>
         <button className="sound-toggle sound-toggle--inset" onClick={onOpenSettings} aria-label="打开设置">
@@ -244,7 +258,7 @@ export function HomeScreen({
           {!state.tutorialDone && currentOrder && (
             <section className="starter-panel" aria-label="开局引导">
               <div className="section-title">
-                <span>开局引导 · 第 {completedStarterOrders + 1} 步 / {starterOrders.length}</span>
+                <span>开局引导 · 第 {starterOrders.indexOf(currentOrder) + 1} 步 / {starterOrders.length}</span>
                 <strong>{currentOrder.label}</strong>
               </div>
               <p className="starter-hint">{currentOrder.hint}</p>
@@ -337,7 +351,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}{realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}{realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}% 至第 ${state.incomeBuff.untilDay} 日` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />
@@ -379,7 +393,7 @@ export function HomeScreen({
           兵器库
         </GameButton>
         <GameButton variant="danger" onClick={onBattle} className={guided('battle')}>
-          出征讨伐
+          出征讨伐{state.orders < 1 && !state.frontierRaid && <small className="game-button__sub">军令 0 · {daysUntilNextOrder(state.day)} 日后 +1</small>}
         </GameButton>
       </section>
 
@@ -427,7 +441,7 @@ export function HomeScreen({
               ) : quest.complete ? (
                 <button onClick={() => onClaimQuest(quest.id)}>领赏</button>
               ) : (
-                <em>{quest.rewardGold.toLocaleString()}金</em>
+                <em>{quest.id === 'power-200' ? `${totalPower}/180 · ` : ''}{quest.rewardGold.toLocaleString()}金</em>
               )}
             </article>
           ))}

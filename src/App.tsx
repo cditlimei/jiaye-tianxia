@@ -6,6 +6,7 @@ import { useGameState } from './hooks/useGameState';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
 import { ambitionSummary } from './data/ambitions';
+import { HOME_UNLOCKS } from './data/progression';
 import { DYNASTY_START_GOLD, dynastyCount, findRealm, realmFarmCost, realmRewardScale } from './data/dynasty';
 import { defaultGameState } from './lib/storage';
 import { LEGACY_START_GOLD_PER_POINT } from './lib/battle';
@@ -157,7 +158,8 @@ export function App() {
       videoPath: '',
       imagePath,
       title: `宅邸升阶 · ${name}`,
-      fallbackMs: 1700
+      subtitle: HOME_UNLOCKS[homeLevels.find((home) => home.name === name)?.level ?? 0] ? `新开放：${HOME_UNLOCKS[homeLevels.find((home) => home.name === name)!.level]}` : undefined,
+      fallbackMs: 2400
     });
   };
 

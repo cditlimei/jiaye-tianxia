@@ -112,7 +112,7 @@ await scenario('任务与门槛', async () => {
   const page = await open(save({ equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4,
     claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third'] }));
   const text = await page.locator('main').innerText();
-  check('威震一郡门槛 180 且可领赏', text.includes('总战力达到 180') && (await page.getByRole('button', { name: '领赏' }).first().isEnabled()));
+  check('威震一郡门槛 180 且可领赏', text.includes('武力达到 180') && (await page.getByRole('button', { name: '领赏' }).first().isEnabled()));
   await page.getByRole('button', { name: '出征讨伐' }).click();
   await page.getByText('九州征途').first().waitFor();
   check('高级场在战力 238 时开放', await page.getByRole('button', { name: /高级场/ }).isEnabled());
@@ -1137,6 +1137,35 @@ await scenario('国号专属与小事离线结算', async () => {
   const o = await read(off);
   check('离线小事按现钱结算', o.day === 9 && /1 桩/.test(o.eventLog[0]?.detail ?? '') && o.pendingChoice === null, o.eventLog[0]?.detail);
   await off.context().close();
+});
+
+await scenario('四十日试玩修复', async () => {
+  // 新手期败损封顶三成：砖瓦宅、1,000 金
+  const poor = await open(save({ homeLevel: 3, gold: 1000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
+  await poor.getByRole('button', { name: '出征讨伐' }).click();
+  await poor.getByText('九州征途').first().waitFor();
+  await poor.getByRole('button', { name: /官道/ }).click();
+  const losses = ((await poor.locator('main').innerText()).match(/败\s−([\d,]+)/g) ?? []).map((t) => Number(t.replace(/[^\d]/g, '')));
+  check('新手期败损不超过现有金币三成', losses.length > 0 && losses.every((n) => n <= 300), losses.join(','));
+  await poor.context().close();
+  // 军令 0：主城出征按钮写明几日后回复；威震一郡显示进度
+  // 前置任务都领过，「威震一郡」才排进面板前四条
+  const zero = await open(save({ orders: 0, day: 11, claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third'] }));
+  check('军令为 0 时出征按钮写明回复', (await zero.getByRole('button', { name: /出征讨伐/ }).innerText()).includes('1 日后 +1'));
+  check('武力任务显示进度', /\d+\/180/.test(await zero.locator('.quest-item').filter({ hasText: '威震一郡' }).innerText()));
+  check('顶栏日期标签为「日」', (await zero.locator('.home-hud__chips').innerText()).includes('\n日'));
+  await zero.context().close();
+  // 升府邸：纪事写明新开放，边患推迟三日
+  const up = await open(save({ homeLevel: 3, gold: 20000, day: 18, nextRaidDay: 10 }));
+  await up.getByRole('button', { name: /升级宅邸/ }).click();
+  await up.waitForTimeout(3000);
+  const u = await read(up);
+  check('升府邸纪事写明新开放且边患推迟', u.homeLevel === 4 && (u.eventLog[0]?.detail ?? '').includes('新开放：许都朝堂') && u.nextRaidDay === 21, JSON.stringify({ d: u.eventLog[0]?.detail, n: u.nextRaidDay }));
+  await up.context().close();
+  // 钱够时机会栏提示兵器
+  const rich = await open(save({ gold: 6000 }));
+  check('钱够时机会栏提示更强兵器', (await rich.locator('.chance-bar').innerText()).includes('可购入'));
+  await rich.context().close();
 });
 
 await scenario('斗地主难度随场次', async () => {

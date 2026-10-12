@@ -7,6 +7,13 @@ import { isEndingReached } from './dynasty';
 import { traditionOf } from './traditions';
 import { minorGoldValue, parseMinorKey } from './minorEvents';
 
+/** 宅邸升到某级时新开放的内容（升阶画面与纪事用） */
+export const HOME_UNLOCKS: Record<number, string> = {
+  3: '江东水战 · 西蜀屯田',
+  4: '许都朝堂 · 北疆边患（三日后起）',
+  5: '封地经略'
+};
+
 export interface Quest {
   id: string;
   title: string;
@@ -66,7 +73,7 @@ export const quests: Quest[] = [
   {
     id: 'power-200',
     title: '威震一郡',
-    description: '总战力达到 180。',
+    description: '武力达到 180。',
     rewardGold: 3000,
     isComplete: (_state, context) => context.totalPower >= 180
   },
@@ -211,7 +218,7 @@ export function getChoiceEvent(day: number, dailyIncome: number): ChoiceEvent | 
       ]
     };
   }
-  // 第 10/30/50… 日商旅、第 20/40… 日流民，轮流出现
+  // 第 10/50/70… 日商旅（30/90… 让位给门客献策）、第 20/40… 日流民（60/120… 让位给献策）
   if (day % 20 === 0) {
     return {
       id: 'refugees',

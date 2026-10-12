@@ -3,7 +3,7 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import type { AiSkill } from '../lib/doudizhu';
-import { battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
+import { effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, type BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
@@ -129,7 +129,7 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
   },
   frontier: {
     region: '北疆', title: '边患', statLabel: '战力', unlockHomeLevel: FRONTIER_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '出关迎战', background: 'assets/ui/ui_frontier_battle.png',
-    summary: '边患每 10 日一起，须在现实 24 小时内出关迎战（比武力，不耗军令），缴获为陆战两倍；不管或战败则边郡失守，损失 5% 金币',
+    summary: '边患每 10 日一起，须在现实 24 小时内出关迎战（比武力，不耗军令），缴获约为同战力官道的两倍；不管或战败则边郡失守，损失 5% 金币',
     eyebrow: '北疆边患', intro: '点兵出关', fighting: '鏖战边塞', attack: '冲阵', crit: '箭雨', counter: '胡骑回冲', counterCrit: '铁骑合围',
     win: '靖边得胜', loss: '边郡失守', enemyBroken: '溃散北遁', exhausted: '力竭退守关内', retreat: '退守关内', hpLabel: '兵力',
     scoutReport: (enemy) => `烽燧急报：${enemy}已过长城。`, departure: (lord, weapon) => `${lord}提${weapon}点兵出关。`, battleStart: (weapon) => `${weapon}寒光一闪，边塞之战开始。`
@@ -203,7 +203,10 @@ export function BattleScreen({
     () => (mapOpen && mode !== 'frontier' ? roster.map((_tier, index) => tierOddsFor(roster, index, attackPower)) : []),
     [attackPower, mapOpen, mode, roster]
   );
-  const lossGold = battleLossGold(enemy.rewardGold, tierOddsFor(roster, selectedTier, attackPower));
+  // 显示与结算都用实际会扣的数：不超过现有金币，新手期再封顶三成
+  const rawLossGold = battleLossGold(enemy.rewardGold, tierOddsFor(roster, selectedTier, attackPower));
+  const [paidLoss, setPaidLoss] = useState<number | null>(null);
+  const lossGold = paidLoss ?? effectiveLoss(rawLossGold, farm.gold, homeLevel);
   const bonusMultiplier = (battleBonus && battleBonus > 1 ? battleBonus : 1) * realmScale(mode);
   // 北疆败则扣当前金币 5%（封顶），出征那一刻定下
   const [frontierLoss, setFrontierLoss] = useState(0);
@@ -505,7 +508,7 @@ export function BattleScreen({
                       <ImageWithFallback src={imageUrl(enemyImagePath(tier), 160)} alt={tier.name} className="tier-card__avatar" />
                       <strong>{tier.name}</strong>
                       <span>{recommended ? '推荐 · ' : ''}胜率约 {oddsPercentLabel(odds)}%</span>
-                      <em>{hopeless ? '力不能及' : `胜\u00a0+${Math.round(tier.rewardGold * bonusMultiplier).toLocaleString()} · 败\u00a0−${Math.min(tierLoss, farm.gold).toLocaleString()}`}</em>
+                      <em>{hopeless ? '力不能及' : `胜\u00a0+${Math.round(tier.rewardGold * bonusMultiplier).toLocaleString()} · 败\u00a0−${effectiveLoss(tierLoss, farm.gold, homeLevel).toLocaleString()}`}</em>
                     </button>
                   );
                 })}
@@ -539,6 +542,7 @@ export function BattleScreen({
               result: null
             });
             setFrontierLoss(raidPenalty(farm.gold));
+            setPaidLoss(effectiveLoss(rawLossGold, farm.gold, homeLevel));
             setResultBonus(bonusMultiplier);
             onBattleStart(
               selectedRegion.mode === 'doudizhu' ? 'land' : mode,
@@ -593,7 +597,7 @@ export function BattleScreen({
                   : `−${lossGold.toLocaleString()} 金`
               : (
                   <>
-                    <span className="battle-info__line">胜 +{(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金{bonusMultiplier > 1 ? ' ×2' : ''}</span>
+                    <span className="battle-info__line">胜 +{Math.round(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金{battleBonus && battleBonus > 1 ? ' ×2' : ''}</span>
                     <span className="battle-info__line">败 −{(mode === 'frontier' ? frontierLoss : lossGold).toLocaleString()} 金</span>
                   </>
                 )}

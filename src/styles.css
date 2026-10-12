@@ -4992,3 +4992,28 @@ small.stat-legend {
     padding: 4px 4px;
   }
 }
+
+.effect-overlay__subtitle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  color: #f5e6c8;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.95);
+}
+
+.effect-overlay__title:has(+ .effect-overlay__subtitle) {
+  bottom: 42px;
+}
+
+.home-footer {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.home-footer span {
+  white-space: normal;
+}
