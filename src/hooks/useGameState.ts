@@ -8,7 +8,7 @@ import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, pars
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
-import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmIncomePercent, realmStatBonus, type RealmId } from '../data/dynasty';
+import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type FiefPolicyId } from '../data/fiefs';
@@ -222,7 +222,7 @@ function reducer(state: GameState, action: Action): GameState {
       };
     }
     case 'upgradeFarm':
-      if (state.gold < action.cost || action.nextLevel !== state.farmLevel + 1) {
+      if (state.gold < action.cost || action.nextLevel !== state.farmLevel + 1 || action.cost !== realmFarmCost(state.realms, findFarmLevel(action.nextLevel).cost)) {
         return state;
       }
       return {
@@ -385,7 +385,8 @@ function reducer(state: GameState, action: Action): GameState {
     case 'recordBattle': {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
-      const rewardGold = Math.round(action.rewardGold * bonus);
+      // 国号专属：魏加朝议、吴加水战
+      const rewardGold = Math.round(action.rewardGold * bonus * (action.doudizhu ? 1 : realmRewardScale(state.realms, action.mode)));
       const frontierSettled = action.mode === 'frontier' && !action.retreat;
       // 非北疆战场：战败/认输损失约定的军资（北疆走失守扣金）
       const lossGold = !action.win && action.mode !== 'frontier' ? Math.min(state.gold, Math.max(0, Math.round(action.lossGold ?? 0))) : 0;
@@ -654,12 +655,13 @@ export function useGameState() {
   );
 
   const upgradeFarm = useCallback(() => {
-    if (!nextFarm || state.gold < nextFarm.cost) {
+    const cost = nextFarm ? realmFarmCost(state.realms, nextFarm.cost) : 0;
+    if (!nextFarm || state.gold < cost) {
       return false;
     }
-    dispatch({ type: 'upgradeFarm', nextLevel: nextFarm.level, cost: nextFarm.cost });
+    dispatch({ type: 'upgradeFarm', nextLevel: nextFarm.level, cost });
     return true;
-  }, [nextFarm, state.gold]);
+  }, [nextFarm, state.gold, state.realms]);
 
   const claimFief = useCallback(
     (policyId: FiefPolicyId) => {

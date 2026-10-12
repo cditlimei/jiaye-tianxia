@@ -6,7 +6,7 @@ import { useGameState } from './hooks/useGameState';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
 import { ambitionSummary } from './data/ambitions';
-import { DYNASTY_START_GOLD, dynastyCount, findRealm } from './data/dynasty';
+import { DYNASTY_START_GOLD, dynastyCount, findRealm, realmFarmCost, realmRewardScale } from './data/dynasty';
 import { defaultGameState } from './lib/storage';
 import { LEGACY_START_GOLD_PER_POINT } from './lib/battle';
 import type { GameState } from './types';
@@ -268,6 +268,8 @@ export function App() {
           farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold, homeIncome: game.currentHome.dailyIncome }}
           orders={game.state.orders}
           orderCap={game.orderCap}
+          realmScale={(mode) => realmRewardScale(game.state.realms, mode)}
+          farmCost={game.nextFarm ? realmFarmCost(game.state.realms, game.nextFarm.cost) : 0}
           battleBonus={game.state.nextBattleBonus}
           day={game.state.day}
           frontier={{ raid: game.state.frontierRaid, nextRaidDay: game.state.nextRaidDay, day: game.state.day }}

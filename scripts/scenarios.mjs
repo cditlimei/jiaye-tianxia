@@ -1111,6 +1111,34 @@ await scenario('府中小事与领赏角标', async () => {
   await p2.context().close();
 });
 
+await scenario('国号专属与小事离线结算', async () => {
+  // 吴：江东档位显示缴获 ×1.2（无国号时同档对照）
+  const tierText = async (page, region) => { await page.getByRole('button', { name: '出征讨伐' }).click(); await page.getByText('九州征途').first().waitFor(); await page.getByRole('button', { name: region }).click(); return (await page.locator('main').innerText()).match(/胜\s\+([\d,]+)/g) ?? []; };
+  const plain = await open(save({ homeLevel: 4 }));
+  const base = await tierText(plain, /江东/);
+  await plain.context().close();
+  const wu = await open(save({ homeLevel: 4, realms: { wei: 0, shu: 0, wu: 1 }, realm: 'wu' }));
+  const boosted = await tierText(wu, /江东/);
+  const num = (t) => Number(t.replace(/[^\d]/g, ''));
+  check('国号吴江东缴获 ×1.2', base.length > 0 && num(boosted[0]) === Math.round(num(base[0]) * 1.2), `${base[0]} → ${boosted[0]}`);
+  await wu.context().close();
+  // 蜀：屯田九折
+  const shu = await open(save({ homeLevel: 3, gold: 7000, realms: { wei: 0, shu: 1, wu: 0 }, realm: 'shu' }));
+  await shu.getByRole('button', { name: '出征讨伐' }).click();
+  await shu.getByText('九州征途').first().waitFor();
+  await shu.getByRole('button', { name: /西蜀/ }).click();
+  await shu.getByRole('button', { name: /投入 5,400 金/ }).click();
+  await shu.waitForTimeout(300);
+  check('国号蜀屯田九折扣款', (await read(shu)).gold === 1600 && (await read(shu)).farmLevel === 1, `gold=${(await read(shu)).gold}`);
+  await shu.context().close();
+  // 离线跨过第 8 日：小事按现钱入账，计入府中喜事
+  const off = await open(save({ day: 7, ownedPartnerIds: ['diaochan'], lastSavedAt: Date.now() - 2 * 3600 * 1000 }));
+  await off.waitForTimeout(500);
+  const o = await read(off);
+  check('离线小事按现钱结算', o.day === 9 && /1 桩/.test(o.eventLog[0]?.detail ?? '') && o.pendingChoice === null, o.eventLog[0]?.detail);
+  await off.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

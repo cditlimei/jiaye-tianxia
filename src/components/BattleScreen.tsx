@@ -21,6 +21,9 @@ interface BattleScreenProps {
   farm: { current: FarmLevel; next: FarmLevel | null; gold: number; homeIncome: number };
   orders: number;
   orderCap: number;
+  /** 国号专属缴获倍率与屯田折扣 */
+  realmScale: (mode: string) => number;
+  farmCost: number;
   day: number;
   battleBonus: number | null;
   frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
@@ -157,6 +160,8 @@ export function BattleScreen({
   frontier,
   orders,
   orderCap,
+  realmScale,
+  farmCost,
   day,
   battleBonus,
   onUpgradeFarm,
@@ -199,7 +204,7 @@ export function BattleScreen({
     [attackPower, mapOpen, mode, roster]
   );
   const lossGold = battleLossGold(enemy.rewardGold, tierOddsFor(roster, selectedTier, attackPower));
-  const bonusMultiplier = battleBonus && battleBonus > 1 ? battleBonus : 1;
+  const bonusMultiplier = (battleBonus && battleBonus > 1 ? battleBonus : 1) * realmScale(mode);
   // 北疆败则扣当前金币 5%（封顶），出征那一刻定下
   const [frontierLoss, setFrontierLoss] = useState(0);
   const [resultBonus, setResultBonus] = useState(1);
@@ -277,7 +282,7 @@ export function BattleScreen({
     let result: BattleRuntime['result'] = null;
     if (nextEnemyHp <= 0) {
       result = 'win';
-      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}。`);
+      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${Math.round(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${battleBonus && battleBonus > 1 ? '（练兵之策翻倍）' : realmScale(mode) > 1 ? '（国号加成）' : ''}。`);
     } else {
       const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
       nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
@@ -362,7 +367,7 @@ export function BattleScreen({
         lord={lord}
         wins={wins}
         losses={losses}
-        rewardGold={selectedVenue.rewardGold * bonusMultiplier}
+        rewardGold={selectedVenue.rewardGold * (battleBonus && battleBonus > 1 ? battleBonus : 1)}
         aiSkill={selectedVenue.aiSkill}
         lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
@@ -438,7 +443,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(selectedVenue.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
+              : `本场胜缴获 ${(selectedVenue.rewardGold * (battleBonus && battleBonus > 1 ? battleBonus : 1)).toLocaleString()} 金${battleBonus && battleBonus > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
           </p>
           </section>
         ) : selectedRegion.mode === 'farm' ? (
@@ -451,7 +456,7 @@ export function BattleScreen({
               {modeLocked
                 ? `宅邸升至砖瓦宅（${FARM_UNLOCK_HOME_LEVEL} 级）后可开垦。屯田是独立于宅邸的田产，投入一次，每日收入永久提高，传位时随家业传给下一代。`
                 : farm.next
-                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farm.next.cost.toLocaleString()} 金，每次政务的收成从 +${farm.current.flatIncome} 金、+${farm.current.incomePercent}% 提到 +${farm.next.flatIncome} 金、+${farm.next.incomePercent}%（按当前宅邸每次政务多约 ${Math.round(farm.next.flatIncome - farm.current.flatIncome + farm.homeIncome * (farm.next.incomePercent - farm.current.incomePercent) / 100)} 金，宅邸越高越值；田产传位不丢）。`
+                  ? `${farm.current.description} 下一级「${farm.next.name}」需投入 ${farmCost.toLocaleString()} 金${farmCost < farm.next.cost ? '（国号蜀折后）' : ''}，每次政务的收成从 +${farm.current.flatIncome} 金、+${farm.current.incomePercent}% 提到 +${farm.next.flatIncome} 金、+${farm.next.incomePercent}%（按当前宅邸每次政务多约 ${Math.round(farm.next.flatIncome - farm.current.flatIncome + farm.homeIncome * (farm.next.incomePercent - farm.current.incomePercent) / 100)} 金，宅邸越高越值；田产传位不丢）。`
                   : `${farm.current.description} 屯田已达顶级。`}
             </p>
             {farmNotice && (
@@ -462,16 +467,16 @@ export function BattleScreen({
             {!modeLocked && farm.next && (
               <GameButton
                 block
-                variant={farm.gold >= farm.next.cost ? 'primary' : 'secondary'}
+                variant={farm.gold >= farmCost ? 'primary' : 'secondary'}
                 onClick={() => {
                   if (onUpgradeFarm()) {
                     setFarmNotice(`屯田升至「${farm.next?.name}」。`);
                     return;
                   }
-                  setFarmNotice(`金不足，还差 ${Math.max(0, (farm.next?.cost ?? 0) - farm.gold).toLocaleString()} 金。`);
+                  setFarmNotice(`金不足，还差 ${Math.max(0, farmCost - farm.gold).toLocaleString()} 金。`);
                 }}
               >
-                {farm.gold >= farm.next.cost ? `投入 ${farm.next.cost.toLocaleString()} 金 · ${farm.next.name}` : `差 ${(farm.next.cost - farm.gold).toLocaleString()} 金 · ${farm.next.name}`}
+                {farm.gold >= farmCost ? `投入 ${farmCost.toLocaleString()} 金 · ${farm.next.name}` : `差 ${(farmCost - farm.gold).toLocaleString()} 金 · ${farm.next.name}`}
               </GameButton>
             )}
           </section>
@@ -500,7 +505,7 @@ export function BattleScreen({
                       <ImageWithFallback src={imageUrl(enemyImagePath(tier), 160)} alt={tier.name} className="tier-card__avatar" />
                       <strong>{tier.name}</strong>
                       <span>{recommended ? '推荐 · ' : ''}胜率约 {oddsPercentLabel(odds)}%</span>
-                      <em>{hopeless ? '力不能及' : `胜\u00a0+${(tier.rewardGold * bonusMultiplier).toLocaleString()} · 败\u00a0−${Math.min(tierLoss, farm.gold).toLocaleString()}`}</em>
+                      <em>{hopeless ? '力不能及' : `胜\u00a0+${Math.round(tier.rewardGold * bonusMultiplier).toLocaleString()} · 败\u00a0−${Math.min(tierLoss, farm.gold).toLocaleString()}`}</em>
                     </button>
                   );
                 })}
@@ -582,7 +587,7 @@ export function BattleScreen({
           <strong>
             {runtime.phase === 'result'
               ? runtime.result === 'win'
-                ? `+${(enemy.rewardGold * resultBonus).toLocaleString()} 金`
+                ? `+${Math.round(enemy.rewardGold * resultBonus).toLocaleString()} 金`
                 : mode === 'frontier'
                   ? runtime.result === 'retreat' ? '±0 金' : `−${frontierLoss.toLocaleString()} 金`
                   : `−${lossGold.toLocaleString()} 金`
