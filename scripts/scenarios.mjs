@@ -500,7 +500,7 @@ await scenario('称号', async () => {
   const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military' } }));
   const hud2 = await vet.locator('.home-hud').innerText();
   const hint2 = await vet.locator('.honor-hint').innerText();
-  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「裂土封侯」') && hint2.includes('另有 4 个称号待集齐'), hint2);
+  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hud2.includes('裂土封侯') && hint2.includes('另有 4 个称号待集齐'), hint2);
   await vet.context().close();
   // 第二代：开国元勋是家声，不盖住本代称号；提示指向更高的本代称号
   const heir = await open(save({ homeLevel: 3, battleWins: 2, generation: 2, legacyPoints: 2 }));
@@ -891,6 +891,19 @@ await scenario('封地经略', async () => {
   await heir.context().close();
 });
 
+await scenario('斗地主难度随场次', async () => {
+  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  const venues = await page.locator('.venue-list, main').first().innerText();
+  check('场次列表写明对手牌艺', venues.includes('对手生手') && venues.includes('对手老手') && venues.includes('对手高手'), venues.replace(/\n/g, ' ').slice(0, 120));
+  await page.getByRole('button', { name: /初级场/ }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  const badges = await page.locator('.table-seat--opponent-left .seat-turn-badge, .table-seat--opponent-right .seat-turn-badge').allInnerTexts();
+  check('初级场对手标注生手', badges.some((b) => b.includes('生手')), badges.join('/'));
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
@@ -919,6 +932,7 @@ await scenario('斗地主', async () => {
   await page.getByText('斗地主牌局').first().waitFor();
   const badges = await page.locator('.table-seat--opponent-left .seat-turn-badge, .table-seat--opponent-right .seat-turn-badge').allInnerTexts();
   check('对手座位标注性格', badges.some((b) => /激进|稳健|均衡/.test(b)), badges.join('/'));
+  check('中级场对手标注老手', badges.some((b) => b.includes('老手')), badges.join('/'));
   const names2 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
   check('下一局换对手', names1.join() !== names2.join(), `${names1.join('+')} → ${names2.join('+')}`);
   const t0 = Date.now();

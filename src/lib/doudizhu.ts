@@ -178,11 +178,19 @@ export const LORD_AI_STYLE: Record<string, AiStyle> = {
   machao: 'aggressive', sunce: 'aggressive'
 };
 
+/** 农民 AI 的牌艺：初级场生手会放水，中级场老手是原有打法，高级场高手会配合、卡单牌与压死地主 */
+export type AiSkill = 'novice' | 'veteran' | 'master';
+
+export const AI_SKILL_LABEL: Record<AiSkill, string> = { novice: '生手', veteran: '老手', master: '高手' };
+
 export interface AiContext {
   /** 地主剩余手牌数 */
   landlordCards: number;
   /** 当前要压的牌是否是队友打出的 */
   teammateLeads: boolean;
+  skill?: AiSkill;
+  /** 测试用随机源 */
+  rand?: () => number;
 }
 
 const isBig = (combo: Combo) => combo.type === 'bomb' || combo.type === 'rocket';
@@ -194,6 +202,14 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
 
   const playable = findPlayableCombos(hand, target);
   if (playable.length === 0) return null;
+  const skill = ctx.skill ?? 'veteran';
+  const rand = ctx.rand ?? Math.random;
+
+  if (skill === 'novice') return chooseNovicePlay(hand, target, playable, ctx, rand);
+  if (skill === 'master') {
+    const masterPlay = chooseMasterPlay(hand, target, playable, ctx);
+    if (masterPlay !== undefined) return masterPlay;
+  }
 
   if (ctx.teammateLeads) {
     // 队友出的牌：只用普通小牌跟，不炸队友；激进派在地主快走完时也会用 2 顶上
@@ -234,6 +250,55 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
   if (smallest) return smallest;
   if (bombs.length > 0 && ctx.landlordCards <= 8) return bombs[0];
   return null;
+}
+
+/** 生手：该压不压、大牌舍不得出、领出只会甩最小的单牌 */
+function chooseNovicePlay(hand: Card[], target: Combo | null, playable: Card[][], ctx: AiContext, rand: () => number): Card[] | null {
+  const normal = playable.filter((cards) => !isBig(evaluateCards(cards)!));
+  if (ctx.teammateLeads) {
+    // 队友的牌也会去压，帮倒忙
+    const follow = normal.find((cards) => evaluateCards(cards)!.value <= 12);
+    return follow && rand() < 0.5 ? follow : null;
+  }
+  if (!target) return playable[0];
+  const smallest = normal[0] ?? null;
+  if (!smallest) return ctx.landlordCards <= 2 && playable.length > 0 ? playable[0] : null;
+  const value = evaluateCards(smallest)!.value;
+  // 要用 A/2/王去压时，大半时候舍不得；地主快走完才肯拼
+  if (value >= 14 && ctx.landlordCards > 2 && rand() < 0.7) return null;
+  // 普通牌也有三成概率看漏
+  if (value >= 10 && ctx.landlordCards > 3 && rand() < 0.3) return null;
+  return smallest;
+}
+
+/** 高手：地主剩单张就不领单张、剩对子就不领对子；地主快走完时用最大的牌封死；炸弹该出就出。返回 undefined 交回给性格打法 */
+function chooseMasterPlay(hand: Card[], target: Combo | null, playable: Card[][], ctx: AiContext): Card[] | null | undefined {
+  const normal = playable.filter((cards) => !isBig(evaluateCards(cards)!));
+  const bombs = playable.filter((cards) => isBig(evaluateCards(cards)!));
+  if (ctx.teammateLeads) {
+    // 队友的牌按性格打法跟（实测「队友压住就不接」反而让出牌变慢，地主胜率升 5~10pp）
+    return undefined;
+  }
+  if (!target) {
+    if (ctx.landlordCards === 1) {
+      const nonSingle = normal.find((cards) => evaluateCards(cards)!.type !== 'single');
+      if (nonSingle) return nonSingle;
+      // 只剩单张可领：领最大的单张
+      const singles = normal.filter((cards) => evaluateCards(cards)!.type === 'single');
+      return singles[singles.length - 1] ?? playable[0];
+    }
+    if (ctx.landlordCards === 2) {
+      const nonPair = normal.find((cards) => evaluateCards(cards)!.type !== 'pair' && evaluateCards(cards)!.type !== 'single');
+      if (nonPair) return nonPair;
+      const pairs = normal.filter((cards) => evaluateCards(cards)!.type === 'pair');
+      if (pairs.length > 0) return pairs[pairs.length - 1];
+    }
+    return undefined;
+  }
+  // 地主只剩一两张：用能压住的最大的牌封死，不给它接的机会
+  if (ctx.landlordCards <= 2 && normal.length > 0) return normal[normal.length - 1];
+  if (normal.length === 0 && bombs.length > 0 && (ctx.landlordCards <= 6 || target.value >= 13 || hand.length <= 6)) return bombs[0];
+  return undefined;
 }
 
 export function findFirstPlayable(hand: Card[], target: Combo | null) {

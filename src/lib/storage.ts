@@ -3,7 +3,7 @@ import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, 
 import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/progression';
 import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
 import { isOrderDay, ORDER_START } from '../types';
-import { fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
+import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
 import { fiefs as fiefCatalog } from '../data/fiefs';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
@@ -213,8 +213,8 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
-    orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs)), sanitizeNumber(parsed.orders, ORDER_START, 0)),
-    fiefs: sanitizeFiefs(parsed.fiefs),
+    orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))), sanitizeNumber(parsed.orders, ORDER_START, 0)),
+    fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -292,8 +292,10 @@ function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
 }
 
 /** 只认目录里的郡和三条方略；郡必须按顺序持有，中间断档的后续郡作废 */
-function sanitizeFiefs(value: unknown): FiefHoldings {
+function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): FiefHoldings {
   if (!value || typeof value !== 'object') return {};
+  // 第一代没到侯府不可能有封地（传下来的除外）
+  if (generation <= 1 && homeLevel < FIEF_UNLOCK_HOME_LEVEL) return {};
   const raw = value as Record<string, unknown>;
   const out: FiefHoldings = {};
   for (const fief of fiefCatalog) {

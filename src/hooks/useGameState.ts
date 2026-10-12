@@ -7,7 +7,7 @@ import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUC
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
-import { fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
+import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
@@ -35,6 +35,11 @@ type Action =
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
 
+/** 屯田与封地随家业传下，对应的「第一次」任务下一代不再重领 */
+function inheritedQuestIds(farmLevel: number, fiefs: GameState['fiefs']) {
+  return [...(farmLevel > 0 ? ['farm-first'] : []), ...(Object.keys(fiefs).length > 0 ? ['fief-first'] : [])];
+}
+
 function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case 'setScreen':
@@ -56,6 +61,7 @@ function reducer(state: GameState, action: Action): GameState {
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
         fiefs: state.generation > 1 ? state.fiefs : defaultGameState.fiefs,
+        claimedQuestIds: state.generation > 1 ? inheritedQuestIds(state.farmLevel, state.fiefs) : [],
         eventLog: [
           {
             id: `lord-${Date.now()}`,
@@ -217,6 +223,7 @@ function reducer(state: GameState, action: Action): GameState {
         return state;
       }
       const fiefs = { ...state.fiefs, [fief.id]: policy.id };
+      const reclaimed = Math.max(0, state.orders - orderCapFor(fiefs));
       return {
         ...state,
         gold: state.gold - action.cost,
@@ -228,7 +235,7 @@ function reducer(state: GameState, action: Action): GameState {
             id: `fief-policy-${fief.id}-${Date.now()}`,
             day: state.day,
             title: '改弦更张',
-            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}。`,
+            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}${reclaimed > 0 ? `，军令上限降为 ${orderCapFor(fiefs)}，收回 ${reclaimed} 道` : ''}。`,
             goldDelta: -action.cost
           },
           ...state.eventLog
@@ -422,6 +429,7 @@ function reducer(state: GameState, action: Action): GameState {
         // 屯田与封地是田产，随家业传给下一代
         farmLevel: state.farmLevel,
         fiefs: state.fiefs,
+        claimedQuestIds: inheritedQuestIds(state.farmLevel, state.fiefs),
         eventLog: [
           {
             id: `succeed-${Date.now()}`,
@@ -513,6 +521,8 @@ export function useGameState() {
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
   const fiefPercent = fiefIncomePercent(state.fiefs);
   const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent);
+  // 再开一郡行劝农，每次政务多多少金（给封地弹窗算账用）
+  const farmingGain = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent + FIEF_INCOME_PERCENT) - dailyIncome;
   const buffActive = Boolean(state.incomeBuff && state.day + 1 <= state.incomeBuff.untilDay);
   const displayedIncome = buffActive && state.incomeBuff ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
   const recruitDiscount = recruitDiscountPercent(charisma);
@@ -603,6 +613,7 @@ export function useGameState() {
     dailyIncome: displayedIncome,
     fiefPercent,
     fiefStat,
+    farmingGain,
     orderCap,
     buffActive,
     recruitDiscount,

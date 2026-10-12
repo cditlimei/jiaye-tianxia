@@ -336,6 +336,9 @@ export function App() {
         {modal === 'fief' && (
           <FiefModal
             state={game.state}
+            farmingGain={game.farmingGain}
+            totalPower={game.totalPower}
+            orderCap={game.orderCap}
             onClose={() => setModal(null)}
             onClaim={(policyId) => {
               if (!game.claimFief(policyId)) return false;

@@ -796,6 +796,39 @@ button:disabled {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
 }
 
+/* 内容区自己滚：小屏/横屏下弹窗超高也能够到底部，关闭按钮始终在顶 */
+.modal-shell__body {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .modal-shell {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .modal-backdrop {
+    padding: 8px;
+  }
+}
+
+@media (max-width: 360px) {
+  .fief-policies {
+    grid-template-columns: 1fr;
+  }
+
+  .fief-policies button {
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    column-gap: 8px;
+  }
+
+  .fief-policies small {
+    grid-column: 1 / -1;
+  }
+}
+
 .modal-shell__header {
   display: flex;
   justify-content: space-between;
@@ -4675,4 +4708,18 @@ small.stat-legend {
   flex-wrap: wrap;
   gap: 6px;
   width: 100%;
+}
+
+.fief-claim__after {
+  margin: 0;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 12px;
+  text-align: center;
+}
+
+.fief-row__warn {
+  width: 100%;
+  color: #f2c879;
+  font-size: 11px;
+  line-height: 1.4;
 }

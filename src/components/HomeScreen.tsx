@@ -90,6 +90,8 @@ export function HomeScreen({
   titleStatus
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
+  const nextFiefToClaim = nextFief(state.fiefs);
+  const fiefAffordable = state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim !== null && state.gold >= nextFiefToClaim.cost;
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
   const partnerNames = useMemo(() => ownedPartners.map((partner) => partner.name).join('、') || '尚未招募', [ownedPartners]);
   // 开局引导：四步，每步指向一个按钮；钱不够时先指向「处理政务」
@@ -236,26 +238,25 @@ export function HomeScreen({
         </section>
       )}
 
-      {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
-        <section className="succession-hint" aria-label="传位提示">
-          <strong>家业已至王城，可传位给下一代</strong>
-          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。</span>
-          <button type="button" onClick={onOpenSettings}>去传位 →</button>
-        </section>
-      )}
-
-      {(() => {
-        const next = nextFief(state.fiefs);
+      {fiefAffordable && nextFiefToClaim && (() => {
+        const next = nextFiefToClaim;
         const owned = ownedFiefCount(state.fiefs);
-        if (state.homeLevel < FIEF_UNLOCK_HOME_LEVEL || !next || state.gold < next.cost) return null;
         return (
           <section className="fief-hint" aria-label="封地提示">
             <strong>{owned === 0 ? '侯府已成，可裂土封郡' : `府库充盈，可再开拓${next.name}`}</strong>
-            <span>{next.name}开拓价 {next.cost.toLocaleString()} 金，定一条方略：劝农加收入、整军加军令上限、教化加三项属性。</span>
+            <span>{next.name}开拓价 {next.cost.toLocaleString()} 金，开拓后余 {(state.gold - next.cost).toLocaleString()} 金。方略三选一，开拓后可改。</span>
             <button type="button" onClick={onOpenFief}>去经略 →</button>
           </section>
         );
       })()}
+
+      {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
+        <section className="succession-hint" aria-label="传位提示">
+          <strong>家业已至王城，可传位给下一代</strong>
+          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。{fiefAffordable ? '封地随家业传下，先把钱投在封郡上再传位更划算。' : ''}</span>
+          <button type="button" onClick={onOpenSettings}>去传位 →</button>
+        </section>
+      )}
 
       <section className="home-estate">
         <div className="home-estate__image-wrap">

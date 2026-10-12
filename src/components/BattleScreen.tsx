@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
+import type { AiSkill } from '../lib/doudizhu';
 import { battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, type BattleMode } from '../types';
@@ -43,6 +44,7 @@ interface Venue {
   requiredPower: number;
   prize: string;
   rewardGold: number;
+  aiSkill: AiSkill;
 }
 
 interface MapRegion {
@@ -133,9 +135,10 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
 
 const VENUES: Venue[] = [
   // 斗地主靠真本事，缴获约为同级自动战的两倍
-  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '胜利可得基础缴获', rewardGold: 3000 },
-  { id: 'middle', name: '中级场', requiredPower: 140, prize: '更高金币奖励', rewardGold: 8000 },
-  { id: 'high', name: '高级场', requiredPower: 190, prize: '名望与重赏', rewardGold: 20000 }
+  // 场次越高农民牌艺越好：生手会放水，老手中规中矩，高手会配合卡牌
+  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '对手生手 · 基础缴获', rewardGold: 3000, aiSkill: 'novice' },
+  { id: 'middle', name: '中级场', requiredPower: 140, prize: '对手老手 · 更高缴获', rewardGold: 8000, aiSkill: 'veteran' },
+  { id: 'high', name: '高级场', requiredPower: 190, prize: '对手高手 · 名望重赏', rewardGold: 20000, aiSkill: 'master' }
 ];
 
 // 出征开场动画（旌旗入阵 + 兵器特效）每次打开游戏只在第一场播放
@@ -360,6 +363,7 @@ export function BattleScreen({
         wins={wins}
         losses={losses}
         rewardGold={selectedVenue.rewardGold * bonusMultiplier}
+        aiSkill={selectedVenue.aiSkill}
         lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
         // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次

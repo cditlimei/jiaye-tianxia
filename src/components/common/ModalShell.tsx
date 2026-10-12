@@ -17,7 +17,7 @@ export function ModalShell({ title, children, onClose }: ModalShellProps) {
             关闭
           </GameButton>
         </header>
-        {children}
+        <div className="modal-shell__body">{children}</div>
       </section>
     </div>
   );

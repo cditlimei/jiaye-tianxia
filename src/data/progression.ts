@@ -146,9 +146,9 @@ export const titles: Title[] = [
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
   { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).length >= 5 },
   { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
-  { id: 'marquis', name: '裂土封侯', requirement: '封地三郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 3 },
   { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2, lineage: true },
   { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true },
+  { id: 'marquis', name: '裂土封侯', requirement: '封地三郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 3, lineage: true },
   { id: 'six-commanderies', name: '六郡之主', requirement: '六郡尽归府下', isEarned: (s) => ownedFiefCount(s.fiefs) >= 6, lineage: true }
 ];
 

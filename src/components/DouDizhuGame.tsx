@@ -4,7 +4,7 @@ import { lords } from '../data/gameData';
 import type { Lord } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import type { Card, Combo, PlayerIndex } from '../lib/doudizhu';
-import { AI_STYLE_LABEL, LORD_AI_STYLE, canBeat, chooseAiPlay, comboLabel, createDoudizhuDeal, evaluateCards, findPlayableCombos, formatCards, sortCards, sortCardsDescending } from '../lib/doudizhu';
+import { AI_SKILL_LABEL, AI_STYLE_LABEL, LORD_AI_STYLE, type AiSkill, canBeat, chooseAiPlay, comboLabel, createDoudizhuDeal, evaluateCards, findPlayableCombos, formatCards, sortCards, sortCardsDescending } from '../lib/doudizhu';
 import type { AiStyle } from '../lib/doudizhu';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -14,6 +14,8 @@ interface DouDizhuGameProps {
   wins: number;
   losses: number;
   rewardGold: number;
+  /** 场次决定农民牌艺 */
+  aiSkill: AiSkill;
   lossGold: number;
   onSfx: (path: string, volume?: number) => void;
   onResolved: (win: boolean, rewardGold: number, lossGold: number, forfeit?: boolean) => void;
@@ -50,6 +52,7 @@ interface PlayerProfile {
   role: '地主' | '农民';
   imagePath: string;
   style: AiStyle | null;
+  skill?: AiSkill;
 }
 
 const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu', 'machao', 'sunce', 'luxun'];
@@ -58,13 +61,13 @@ const HAND_EDGE_PERCENT = 7.2;
 const TWO_ROW_THRESHOLD = 12;
 const PORTRAIT_QUERY = '(orientation: portrait) and (max-width: 700px)';
 
-export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
+export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
   const [table, setTable] = useState<TableState>(() => createInitialTable());
   const [hintIndex, setHintIndex] = useState(0);
   const settledRef = useRef(false);
   const aiTimerRef = useRef<number | null>(null);
   const [gamesPlayedAtStart] = useState(() => wins + losses);
-  const profiles = useMemo(() => createPlayerProfiles(lord, gamesPlayedAtStart), [lord, gamesPlayedAtStart]);
+  const profiles = useMemo(() => createPlayerProfiles(lord, gamesPlayedAtStart, aiSkill), [aiSkill, lord, gamesPlayedAtStart]);
   const playerNames = useMemo(
     () => ({
       0: profiles[0].name,
@@ -141,7 +144,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
     aiTimerRef.current = window.setTimeout(() => {
       setTable((prev) => {
         if (prev.winner !== null || prev.currentPlayer !== activePlayer) return prev;
-        return resolveSingleAiTurn(prev, playerNames, styles);
+        return resolveSingleAiTurn(prev, playerNames, styles, aiSkill);
       });
       aiTimerRef.current = null;
     }, 560);
@@ -152,7 +155,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, lossGold, onSfx, 
         aiTimerRef.current = null;
       }
     };
-  }, [playerNames, styles, table.currentPlayer, table.winner]);
+  }, [aiSkill, playerNames, styles, table.currentPlayer, table.winner]);
 
   useEffect(() => {
     if (table.winner === null || settledRef.current) {
@@ -423,7 +426,7 @@ function PlayerSeat({
 }) {
   return (
     <article className={`table-seat table-seat--${seat} ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
-      <span className="seat-turn-badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? AI_STYLE_LABEL[profile.style] : profile.role}</span>
+      <span className="seat-turn-badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? `${AI_STYLE_LABEL[profile.style]}${profile.skill ? AI_SKILL_LABEL[profile.skill] : ''}` : profile.role}</span>
       <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} className="table-seat__avatar" />
       <div className="table-seat__copy">
         <strong>{profile.name}</strong>
@@ -562,7 +565,7 @@ function createSeatActions(): Record<PlayerIndex, SeatAction> {
 }
 
 // 对手按已打场次轮换，每局换一对，性格不同打法也不同
-function createPlayerProfiles(lord: Lord, gamesPlayed: number): Record<PlayerIndex, PlayerProfile> {
+function createPlayerProfiles(lord: Lord, gamesPlayed: number, skill: AiSkill): Record<PlayerIndex, PlayerProfile> {
   const pool = OPPONENT_POOL.map((id) => lords.find((item) => item.id === id))
     .filter((item): item is Lord => item !== undefined && item.id !== lord.id);
   const firstOpponent = pool[gamesPlayed % pool.length] ?? lord;
@@ -570,16 +573,16 @@ function createPlayerProfiles(lord: Lord, gamesPlayed: number): Record<PlayerInd
 
   return {
     0: { name: lord.name, title: lord.title, role: '地主', imagePath: lord.imagePath, style: null },
-    1: { name: firstOpponent.name, title: firstOpponent.title, role: '农民', imagePath: firstOpponent.imagePath, style: LORD_AI_STYLE[firstOpponent.id] ?? 'balanced' },
-    2: { name: secondOpponent.name, title: secondOpponent.title, role: '农民', imagePath: secondOpponent.imagePath, style: LORD_AI_STYLE[secondOpponent.id] ?? 'balanced' }
+    1: { name: firstOpponent.name, title: firstOpponent.title, role: '农民', imagePath: firstOpponent.imagePath, style: LORD_AI_STYLE[firstOpponent.id] ?? 'balanced', skill },
+    2: { name: secondOpponent.name, title: secondOpponent.title, role: '农民', imagePath: secondOpponent.imagePath, style: LORD_AI_STYLE[secondOpponent.id] ?? 'balanced', skill }
   };
 }
 
-function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex, string>, styles: Record<PlayerIndex, AiStyle | null>): TableState {
+function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex, string>, styles: Record<PlayerIndex, AiStyle | null>, skill: AiSkill): TableState {
   const player = table.currentPlayer;
   const target = table.lastPlay && table.lastPlay.player !== player ? table.lastPlay.combo : null;
   const teammateLeads = Boolean(table.lastPlay && table.lastPlay.player !== player && table.lastPlay.player !== 0);
-  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: table.hands[0].length, teammateLeads });
+  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: table.hands[0].length, teammateLeads, skill });
   const combo = cards ? evaluateCards(cards) : null;
 
   if (cards && combo && canBeat(combo, target)) {
