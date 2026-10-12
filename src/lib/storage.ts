@@ -5,9 +5,9 @@ import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../l
 import { isOrderDay, ORDER_START } from '../types';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
 import { fiefs as fiefCatalog } from '../data/fiefs';
-import { isAmbitionId } from '../data/ambitions';
+import { findAmbition, isAmbitionId, trimChronicle } from '../data/ambitions';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
-import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
+import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -218,7 +218,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
     orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))), sanitizeNumber(parsed.orders, ORDER_START, 0)),
     fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
-    ambition: sanitizeAmbition(parsed.ambition),
+    ambition: sanitizeAmbition(parsed.ambition, sanitizeNumber(parsed.generation, 1, 1), sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))),
     chronicle: sanitizeChronicle(parsed.chronicle),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
@@ -311,16 +311,18 @@ function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): F
   return out;
 }
 
-function sanitizeAmbition(value: unknown): GameState['ambition'] {
-  if (!value || typeof value !== 'object') return null;
-  const a = value as { id?: unknown; target?: unknown; baseFiefs?: unknown };
-  if (!isAmbitionId(a.id) || typeof a.target !== 'number' || !Number.isFinite(a.target)) return null;
-  return { id: a.id, target: Math.max(1, Math.floor(a.target)), baseFiefs: sanitizeNumber(a.baseFiefs, 0, 0) };
+function sanitizeAmbition(value: unknown, generation: number, fiefs: FiefHoldings): GameState['ambition'] {
+  if (!value || typeof value !== 'object' || generation < 2) return null;
+  const a = value as { id?: unknown; baseFiefs?: unknown };
+  const ambition = isAmbitionId(a.id) ? findAmbition(a.id) : null;
+  if (!ambition) return null;
+  // 目标按世代重算，不信任存档里的数；开疆缺基数时按当前郡数算
+  return { id: ambition.id, target: ambition.target(generation), baseFiefs: typeof a.baseFiefs === 'number' && Number.isFinite(a.baseFiefs) ? Math.max(0, Math.floor(a.baseFiefs)) : Object.keys(fiefs).length };
 }
 
 function sanitizeChronicle(value: unknown): GameState['chronicle'] {
   if (!Array.isArray(value)) return [];
-  return value
+  const entries = value
     .filter((entry) => entry && typeof entry === 'object')
     .map((entry) => {
       const e = entry as Record<string, unknown>;
@@ -334,8 +336,8 @@ function sanitizeChronicle(value: unknown): GameState['chronicle'] {
         ambition: isAmbitionId(e.ambition) ? e.ambition : null,
         ambitionDone: e.ambitionDone === true
       };
-    })
-    .slice(-40);
+    });
+  return trimChronicle(entries);
 }
 
 function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {
@@ -352,7 +354,7 @@ function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {
 
 function sanitizeResolved(value: unknown): GameState['resolvedPartnerEvents'] {
   if (!value || typeof value !== 'object') return {};
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([id, v]) => partners.some((p) => p.id === id) && typeof v === 'string') as [string, string][]);
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key, v]) => partners.some((p) => p.id === partnerIdOfKey(key)) && typeof v === 'string') as [string, string][]);
 }
 
 function sanitizeBuff(value: unknown): GameState['incomeBuff'] {

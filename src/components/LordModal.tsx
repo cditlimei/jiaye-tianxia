@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Lord } from '../data/gameData';
 import { titles } from '../data/progression';
 import { ambitionStatus, findAmbition } from '../data/ambitions';
@@ -19,6 +20,8 @@ interface LordModalProps {
 
 export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose }: LordModalProps) {
   const ambition = ambitionStatus(state);
+  const [chronicleOpen, setChronicleOpen] = useState(false);
+  const chronicleRows = chronicleOpen || state.chronicle.length <= 5 ? state.chronicle : state.chronicle.slice(-3);
   return (
     <ModalShell title="主公与称号" onClose={onClose}>
       <div className="lord-sheet">
@@ -48,18 +51,21 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
         <section className="chronicle" aria-label="家谱">
           <div className="section-title">
             <span>家谱</span>
-            <strong>{state.chronicle.length} 代</strong>
+            <strong>第 {state.generation} 代传家 · 载 {state.chronicle.length} 代</strong>
           </div>
-          {state.chronicle.map((entry) => {
+          {chronicleRows.map((entry, index) => {
             const name = findLord(entry.lordId)?.name ?? '无名氏';
             const ambitionName = entry.ambition ? findAmbition(entry.ambition)?.name : null;
             return (
-              <div key={entry.generation} className={`chronicle-row ${entry.ambitionDone ? 'is-done' : ''}`}>
+              <div key={`${entry.generation}-${index}`} className={`chronicle-row ${entry.ambitionDone ? 'is-done' : ''}`}>
                 <strong>第 {entry.generation} 代 · {name}</strong>
-                <span>{entry.days} 日 · {entry.wins} 胜 · 传下 {entry.gold.toLocaleString()} 金{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? ` · 志向「${ambitionName}」${entry.ambitionDone ? '达成' : '未竟'}` : ''}</span>
+                <span>{entry.days} 日 · {entry.wins} 胜 · 传下 {entry.gold.toLocaleString()} 金{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ' · 未定志向'}</span>
               </div>
             );
           })}
+          {state.chronicle.length > 5 && (
+            <button type="button" className="chronicle-toggle" onClick={() => setChronicleOpen((open) => !open)}>{chronicleOpen ? '收起' : `展开全部 ${state.chronicle.length} 代`}</button>
+          )}
         </section>
       )}
       {[
@@ -76,7 +82,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           return (
             <div key={title.id} className={`title-row ${earned ? 'is-earned' : ''}`}>
               <strong>「{title.name}」</strong>
-              <span>{earned ? '已获得' : title.requirement || '开局即有'}</span>
+              <span>{earned ? '已获得' : title.id === 'scholarly' && state.generation < 2 ? '传位后方可解锁' : title.requirement || '开局即有'}</span>
             </div>
           );
         })}

@@ -6,6 +6,7 @@ import { legacyPointsGainable, weaponBonusForLord } from '../lib/battle';
 import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
+import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
@@ -94,6 +95,14 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   const ambition = ambitionStatus(state);
+  // 「稍后再定」只记在本次会话里，刷新后再提醒一次
+  const [ambitionDeferred, setAmbitionDeferred] = useState(() => {
+    try { return window.sessionStorage.getItem('jiaye-ambition-deferred') === String(state.generation); } catch { return false; }
+  });
+  const deferAmbition = () => {
+    setAmbitionDeferred(true);
+    try { window.sessionStorage.setItem('jiaye-ambition-deferred', String(state.generation)); } catch { /* 无存储也能用 */ }
+  };
   const nextFiefToClaim = nextFief(state.fiefs);
   const fiefAffordable = state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim !== null && state.gold >= nextFiefToClaim.cost;
   const canUpgrade = Boolean(nextHome && state.gold >= nextHome.upgradeCost);
@@ -168,6 +177,7 @@ export function HomeScreen({
           <div>
             <strong>{lord.name}</strong>
             <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}{titleStatus.lineage && titleStatus.lineage.name !== '开国元勋' ? ` · ${titleStatus.lineage.name}` : ''}</span>
+            {ambition && <em className="home-hud__ambition">{ambition.ambition.name} {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}</em>}
             <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em>
           </div>
         </div>
@@ -203,7 +213,7 @@ export function HomeScreen({
       {state.pendingChoice && (() => {
         const event = resolvePendingEvent(state.pendingChoice);
         if (!event) return null;
-        const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === event.id.slice('partner:'.length)) : null;
+        const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === partnerIdOfKey(event.id.slice('partner:'.length))) : null;
         return (
           <section ref={choiceRef} className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={partner ? '伴侣心事' : '府中事件'}>
             {partner && <ImageWithFallback src={imageUrl(partner.imagePath, 160)} alt={partner.name} className="choice-card__portrait" />}
@@ -242,7 +252,15 @@ export function HomeScreen({
         </section>
       )}
 
-      {state.generation >= 2 && !state.ambition && (
+      {state.generation >= 2 && !state.ambition && ambitionDeferred && (
+        <section className="fief-hint ambition-chip" aria-label="本代志向待定">
+          <strong>本代志向未定</strong>
+          <span>定下志向才有传位结算与家谱记录。</span>
+          <button type="button" onClick={() => setAmbitionDeferred(false)}>去选 →</button>
+        </section>
+      )}
+
+      {state.generation >= 2 && !state.ambition && !ambitionDeferred && (
         <section className="ambition-card" aria-label="本代志向">
           <div className="section-title">
             <span>第 {state.generation} 代 · 本代志向</span>
@@ -254,9 +272,12 @@ export function HomeScreen({
               <button key={item.id} type="button" onClick={() => onChooseAmbition(item.id)}>
                 <strong>{item.name}</strong>
                 <span>{item.describe(item.target(state.generation))}</span>
-                <small>{item.motto}</small>
+                <small>{item.hint(state, item.target(state.generation))}</small>
               </button>
             ))}
+          </div>
+          <div className="starter-actions">
+            <button type="button" onClick={deferAmbition}>稍后再定</button>
           </div>
         </section>
       )}
@@ -267,7 +288,7 @@ export function HomeScreen({
         return (
           <section className="fief-hint" aria-label="封地提示">
             <strong>{owned === 0 ? '侯府已成，可裂土封郡' : `府库充盈，可再开拓${next.name}`}</strong>
-            <span>{next.name}开拓价 {next.cost.toLocaleString()} 金，开拓后余 {(state.gold - next.cost).toLocaleString()} 金。方略三选一，开拓后可改。</span>
+            <span>{next.name}开拓价 {next.cost.toLocaleString()} 金，开拓后余 {(state.gold - next.cost).toLocaleString()} 金。方略三选一，开拓后可改。{ambition && ambition.ambition.id === 'wealth' && ambition.done && state.gold - next.cost < ambition.target ? `开拓后将低于志向「富国」的 ${ambition.target.toLocaleString()} 金。` : ''}</span>
             <button type="button" onClick={onOpenFief}>去经略 →</button>
           </section>
         );
@@ -276,7 +297,7 @@ export function HomeScreen({
       {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
         <section className="succession-hint" aria-label="传位提示">
           <strong>家业已至王城，可传位给下一代</strong>
-          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。{fiefAffordable ? '封地随家业传下，先把钱投在封郡上再传位更划算。' : ''}</span>
+          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。{fiefAffordable ? '封地随家业传下，先把钱投在封郡上再传位更划算。' : ''}{ambition && !ambition.done ? `志向「${ambition.ambition.name}」还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}，现在传位将记未竟。` : ''}</span>
           <button type="button" onClick={onOpenSettings}>去传位 →</button>
         </section>
       )}

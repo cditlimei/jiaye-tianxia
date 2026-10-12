@@ -500,7 +500,7 @@ await scenario('称号', async () => {
   const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military' } }));
   const hud2 = await vet.locator('.home-hud').innerText();
   const hint2 = await vet.locator('.honor-hint').innerText();
-  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hud2.includes('裂土封侯') && hint2.includes('另有 4 个称号待集齐'), hint2);
+  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hud2.includes('裂土封侯') && hint2.includes('另有 5 个称号待集齐'), hint2);
   await vet.context().close();
   // 第二代：开国元勋是家声，不盖住本代称号；提示指向更高的本代称号
   const heir = await open(save({ homeLevel: 3, battleWins: 2, generation: 2, legacyPoints: 2 }));
@@ -932,6 +932,47 @@ await scenario('本代志向与家谱', async () => {
   await heir.getByRole('button', { name: '主公' }).click();
   check('主公页显示家谱', (await heir.locator('.chronicle').last().innerText()).includes('第 2 代') && (await heir.locator('.chronicle').last().innerText()).includes('达成'));
   await heir.context().close();
+});
+
+await scenario('伴侣心事第二段', async () => {
+  // 貂蝉第一段已了却：第 25 日轮到第二段「故地重游」，加成累加
+  const page = await open(save({ day: 24, ownedPartnerIds: ['diaochan'], resolvedPartnerEvents: { diaochan: 'a' }, partnerBoosts: { diaochan: { strength: 6 } } }));
+  await page.getByRole('button', { name: /^处理政务/ }).click();
+  await page.waitForTimeout(400);
+  let s = await read(page);
+  check('第 25 日起第二段心事', s.pendingChoice?.eventId === 'partner:diaochan#2' && (await page.locator('.choice-card').innerText()).includes('故地重游'), JSON.stringify(s.pendingChoice));
+  await page.locator('.choice-card__options button').filter({ hasText: '亲自护送' }).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  check('第二段加成累加且分段记录', s.partnerBoosts?.diaochan?.strength === 12 && s.resolvedPartnerEvents?.['diaochan#2'] === 'a' && s.resolvedPartnerEvents?.diaochan === 'a', JSON.stringify({ b: s.partnerBoosts, r: s.resolvedPartnerEvents }));
+  await page.context().close();
+});
+
+await scenario('志向审查修复', async () => {
+  const page = await open(save({ generation: 2, legacyPoints: 2 }));
+  await page.getByRole('button', { name: '稍后再定' }).click();
+  check('稍后再定后折叠成一行', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.ambition-chip').innerText()).includes('志向未定'));
+  await page.getByRole('button', { name: '去选 →' }).click();
+  check('可重新展开选择', await page.locator('.ambition-card').isVisible());
+  await page.context().close();
+
+  const tampered = await open(save({ generation: 2, ambition: { id: 'wealth', target: 1, baseFiefs: 0 } }));
+  await tampered.waitForTimeout(300);
+  check('存档里的志向目标按世代重算', (await read(tampered)).ambition?.target === 500000, JSON.stringify((await read(tampered)).ambition));
+  check('HUD 显示志向进度', (await tampered.locator('.home-hud__ambition').innerText()).includes('富国'));
+  await tampered.context().close();
+
+  const gen1 = await open(save({ generation: 1, ambition: { id: 'might', target: 30, baseFiefs: 0 } }));
+  await gen1.waitForTimeout(300);
+  check('第一代的志向字段被清空', (await read(gen1)).ambition === null);
+  await gen1.context().close();
+
+  const undone = await open(save({ generation: 2, homeLevel: 6, gold: 150000, battleWins: 9, ambition: { id: 'might', target: 30, baseFiefs: 0 } }));
+  check('传位卡提示志向未竟', (await undone.locator('.succession-hint').innerText()).includes('还差 21 胜'));
+  await undone.getByRole('button', { name: '设置与存档' }).click();
+  await undone.getByText('当前存档').first().waitFor();
+  check('传位面板写明志向未竟', (await undone.locator('.succession-panel').innerText()).includes('未竟'));
+  await undone.context().close();
 });
 
 await scenario('斗地主难度随场次', async () => {

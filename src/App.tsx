@@ -5,6 +5,7 @@ import { useEffectOverlay } from './hooks/useEffectOverlay';
 import { useGameState } from './hooks/useGameState';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
+import { ambitionSummary } from './data/ambitions';
 import { BattleScreen } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
 import { HomeScreen } from './components/HomeScreen';
@@ -83,7 +84,7 @@ export function App() {
       current.claimedQuestIds.length > 0 ||
       current.ownedPartnerIds.length > 0
     );
-    if (hasProgress && !confirmReset('重选主公会清空当前家业进度。')) return;
+    if (hasProgress && !confirmReset(`重选主公会清空当前家业进度${current.ambition ? '，本代志向作废' : ''}。`)) return;
     setTransitioning(true);
     try {
       audio.unlock();
@@ -186,7 +187,8 @@ export function App() {
   };
 
   const succeed = () => {
-    if (!confirmReset(`传位后金币、主公、伴侣、兵器与宅邸全部重来，屯田与封地传给下一代，换取永久收入加成。`)) {
+    const note = ambitionSummary(game.state);
+    if (!confirmReset(`${note && !note.includes('已达成') ? `${note}\n\n` : ''}传位后金币、主公、伴侣、兵器与宅邸全部重来，屯田与封地传给下一代，换取永久收入加成。`)) {
       return;
     }
     audio.unlock();

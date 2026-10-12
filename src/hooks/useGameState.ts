@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
-import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
+import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
 import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
-import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, type AmbitionId } from '../data/ambitions';
+import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
@@ -40,6 +40,11 @@ type Action =
 /** 屯田与封地随家业传下，对应的「第一次」任务下一代不再重领 */
 function inheritedQuestIds(farmLevel: number, fiefs: GameState['fiefs']) {
   return [...(farmLevel > 0 ? ['farm-first'] : []), ...(Object.keys(fiefs).length > 0 ? ['fief-first'] : [])];
+}
+
+function addBoost(current: GameState['partnerBoosts'][string] | undefined, extra: GameState['partnerBoosts'][string]) {
+  const sum = (k: 'strength' | 'intelligence' | 'charisma') => (current?.[k] ?? 0) + (extra[k] ?? 0) || undefined;
+  return { strength: sum('strength'), intelligence: sum('intelligence'), charisma: sum('charisma') };
 }
 
 function reducer(state: GameState, action: Action): GameState {
@@ -147,17 +152,19 @@ function reducer(state: GameState, action: Action): GameState {
       const event = resolvePendingEvent(state.pendingChoice);
       if (!event) return { ...state, pendingChoice: null };
       if (event.id.startsWith('partner:')) {
-        const partnerId = event.id.slice('partner:'.length);
-        const partnerEvent = findPartnerEvent(partnerId);
+        const eventKey = event.id.slice('partner:'.length);
+        const partnerId = partnerIdOfKey(eventKey);
+        const partnerEvent = findPartnerEvent(eventKey);
         const chosen = partnerEvent?.options.find((item) => item.id === action.optionId) ?? partnerEvent?.options[0];
         if (!partnerEvent || !chosen) return { ...state, pendingChoice: null };
         return {
           ...state,
           pendingChoice: null,
-          partnerBoosts: { ...state.partnerBoosts, [partnerId]: chosen.boost },
-          resolvedPartnerEvents: { ...state.resolvedPartnerEvents, [partnerId]: chosen.id },
+          // 两段心事的加成累加
+          partnerBoosts: { ...state.partnerBoosts, [partnerId]: addBoost(state.partnerBoosts[partnerId], chosen.boost) },
+          resolvedPartnerEvents: { ...state.resolvedPartnerEvents, [eventKey]: chosen.id },
           eventLog: [
-            { id: `partner-event-${partnerId}`, day: state.day, title: `${partnerEvent.title} · ${chosen.label}`, detail: chosen.detail },
+            { id: `partner-event-${eventKey}`, day: state.day, title: `${partnerEvent.title} · ${chosen.label}`, detail: chosen.detail },
             ...state.eventLog
           ].slice(0, 18)
         };
@@ -448,7 +455,7 @@ function reducer(state: GameState, action: Action): GameState {
       };
       return {
         ...defaultGameState,
-        chronicle: [...state.chronicle, entry].slice(-40),
+        chronicle: trimChronicle([...state.chronicle, entry]),
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,

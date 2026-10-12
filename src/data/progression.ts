@@ -1,6 +1,6 @@
 import type { HomeLevel, Partner, Weapon } from './gameData';
 import type { GameState } from '../types';
-import { findPartnerEvent } from './partnerEvents';
+import { findPartnerEvent, partnersWithResolvedEvent } from './partnerEvents';
 import { ownedFiefCount } from './fiefs';
 import { AMBITION_TITLE_COUNT, ambitionsAchieved } from './ambitions';
 
@@ -107,7 +107,7 @@ export const quests: Quest[] = [
     title: '良缘佳话',
     description: '替一位伴侣了却一桩心事。',
     rewardGold: 1500,
-    isComplete: (state) => Object.keys(state.resolvedPartnerEvents).length >= 1
+    isComplete: (state) => partnersWithResolvedEvent(state.resolvedPartnerEvents) >= 1
   },
   {
     id: 'fief-first',
@@ -145,7 +145,8 @@ export const titles: Title[] = [
   { id: 'court-star', name: '朝堂新贵', requirement: '赢得 5 场朝议', isEarned: (s) => s.courtWins >= 5 },
   { id: 'north-general', name: '镇北将军', requirement: '击退 3 次边患', isEarned: (s) => s.frontierWins >= 3 },
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
-  { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).length >= 5 },
+  { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => partnersWithResolvedEvent(s.resolvedPartnerEvents) >= 5 },
+  { id: 'confidant', name: '知心人', requirement: '了却 5 位伴侣的第二段心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).filter((k) => k.endsWith('#2')).length >= 5 },
   { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
   { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2, lineage: true },
   { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true },
