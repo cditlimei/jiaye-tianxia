@@ -1,6 +1,7 @@
 import type { HomeLevel, Partner, Weapon } from './gameData';
 import type { GameState } from '../types';
 import { findPartnerEvent } from './partnerEvents';
+import { ownedFiefCount } from './fiefs';
 
 export interface Quest {
   id: string;
@@ -108,6 +109,13 @@ export const quests: Quest[] = [
     isComplete: (state) => Object.keys(state.resolvedPartnerEvents).length >= 1
   },
   {
+    id: 'fief-first',
+    title: '裂土封郡',
+    description: '开拓第一块封地（宅邸升至侯府后）。',
+    rewardGold: 8000,
+    isComplete: (state) => ownedFiefCount(state.fiefs) >= 1
+  },
+  {
     id: 'three-partners',
     title: '内府成势',
     description: '招募三位伴侣。',
@@ -138,8 +146,10 @@ export const titles: Title[] = [
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
   { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).length >= 5 },
   { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
+  { id: 'marquis', name: '裂土封侯', requirement: '封地三郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 3 },
   { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2, lineage: true },
-  { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true }
+  { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true },
+  { id: 'six-commanderies', name: '六郡之主', requirement: '六郡尽归府下', isEarned: (s) => ownedFiefCount(s.fiefs) >= 6, lineage: true }
 ];
 
 export function getTitleStatus(state: GameState) {

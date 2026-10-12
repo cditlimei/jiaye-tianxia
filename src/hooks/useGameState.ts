@@ -6,7 +6,8 @@ import { BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent
 import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
-import { isOrderDay, ORDER_CAP } from '../types';
+import { isOrderDay } from '../types';
+import { fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, policyChangeCost, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
@@ -18,6 +19,8 @@ type Action =
   | { type: 'collectIncome'; amount: number }
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
+  | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
+  | { type: 'setFiefPolicy'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
   | { type: 'buyWeapon'; weaponId: string; price: number }
@@ -52,6 +55,7 @@ function reducer(state: GameState, action: Action): GameState {
         generation: state.generation,
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
+        fiefs: state.generation > 1 ? state.fiefs : defaultGameState.fiefs,
         eventLog: [
           {
             id: `lord-${Date.now()}`,
@@ -122,7 +126,7 @@ function reducer(state: GameState, action: Action): GameState {
         day: nextDay,
         frontierRaid: frontier.frontierRaid,
         nextRaidDay: frontier.nextRaidDay,
-        orders: isOrderDay(nextDay) ? Math.min(ORDER_CAP, state.orders + 1) : state.orders,
+        orders: isOrderDay(nextDay) ? Math.min(orderCapFor(state.fiefs), state.orders + 1) : state.orders,
         incomeBuff,
         pendingChoice,
         eventLog
@@ -156,7 +160,7 @@ function reducer(state: GameState, action: Action): GameState {
         gold: state.gold + gold,
         incomeBuff: option.id === 'incomeBuff' ? { percent: INCOME_BUFF_PERCENT, untilDay: state.day + INCOME_BUFF_DAYS } : state.incomeBuff,
         nextBattleBonus: option.id === 'battleBonus' ? BATTLE_BONUS_MULTIPLIER : state.nextBattleBonus,
-        orders: option.id === 'order' ? Math.min(ORDER_CAP, state.orders + 1) : state.orders,
+        orders: option.id === 'order' ? Math.min(orderCapFor(state.fiefs), state.orders + 1) : state.orders,
         eventLog: [
           { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.detail, goldDelta: gold || undefined },
           ...state.eventLog
@@ -182,6 +186,55 @@ function reducer(state: GameState, action: Action): GameState {
           ...state.eventLog
         ].slice(0, 18)
       };
+    case 'claimFief': {
+      const fief = findFief(action.fiefId);
+      const policy = findFiefPolicy(action.policyId);
+      // 只能按顺序开拓下一郡，钱要够
+      if (!fief || !policy || nextFief(state.fiefs)?.id !== fief.id || state.gold < action.cost || action.cost !== fief.cost) {
+        return state;
+      }
+      return {
+        ...state,
+        gold: state.gold - action.cost,
+        fiefs: { ...state.fiefs, [fief.id]: policy.id },
+        eventLog: [
+          {
+            id: `fief-${fief.id}-${Date.now()}`,
+            day: state.day,
+            title: '开拓封地',
+            detail: `以 ${action.cost.toLocaleString()} 金开拓${fief.name}，行「${policy.name}」之策：${policy.effect}。`,
+            goldDelta: -action.cost
+          },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
+    case 'setFiefPolicy': {
+      const fief = findFief(action.fiefId);
+      const policy = findFiefPolicy(action.policyId);
+      const current = fief ? state.fiefs[fief.id] : undefined;
+      if (!fief || !policy || !current || current === policy.id || state.gold < action.cost || action.cost !== policyChangeCost(fief)) {
+        return state;
+      }
+      const fiefs = { ...state.fiefs, [fief.id]: policy.id };
+      return {
+        ...state,
+        gold: state.gold - action.cost,
+        fiefs,
+        // 撤掉整军方略后军令上限下降，存量超出的部分收回
+        orders: Math.min(orderCapFor(fiefs), state.orders),
+        eventLog: [
+          {
+            id: `fief-policy-${fief.id}-${Date.now()}`,
+            day: state.day,
+            title: '改弦更张',
+            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}。`,
+            goldDelta: -action.cost
+          },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
     case 'upgradeHome':
       return {
         ...state,
@@ -366,14 +419,15 @@ function reducer(state: GameState, action: Action): GameState {
         tutorialDone: true,
         generation: state.generation + 1,
         legacyPoints,
-        // 屯田是田产，随家业传给下一代
+        // 屯田与封地是田产，随家业传给下一代
         farmLevel: state.farmLevel,
+        fiefs: state.fiefs,
         eventLog: [
           {
             id: `succeed-${Date.now()}`,
             day: 1,
             title: '传位',
-            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}。`
+            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。`
           }
         ]
       };
@@ -445,17 +499,20 @@ export function useGameState() {
     [state.ownedPartnerIds, state.partnerBoosts]
   );
 
-  const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome) : 0;
-  const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome) : 0;
-  const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome) : 0;
-  const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners) : 0;
-  const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners) : 0;
+  const fiefStat = fiefStatBonus(state.fiefs);
+  const orderCap = orderCapFor(state.fiefs);
+  const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome, fiefStat) : 0;
+  const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome, fiefStat) : 0;
+  const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome, fiefStat) : 0;
+  const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners, fiefStat) : 0;
+  const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners, fiefStat) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
   const titleStatus = useMemo(() => getTitleStatus(state), [state]);
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
-  const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome);
+  const fiefPercent = fiefIncomePercent(state.fiefs);
+  const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent);
   const buffActive = Boolean(state.incomeBuff && state.day + 1 <= state.incomeBuff.untilDay);
   const displayedIncome = buffActive && state.incomeBuff ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
   const recruitDiscount = recruitDiscountPercent(charisma);
@@ -494,6 +551,30 @@ export function useGameState() {
     return true;
   }, [nextFarm, state.gold]);
 
+  const claimFief = useCallback(
+    (policyId: FiefPolicyId) => {
+      const fief = nextFief(state.fiefs);
+      if (!fief || state.gold < fief.cost) {
+        return false;
+      }
+      dispatch({ type: 'claimFief', fiefId: fief.id, policyId, cost: fief.cost });
+      return true;
+    },
+    [state.fiefs, state.gold]
+  );
+
+  const setFiefPolicy = useCallback(
+    (fiefId: string, policyId: FiefPolicyId) => {
+      const fief = findFief(fiefId);
+      if (!fief || !state.fiefs[fiefId] || state.fiefs[fiefId] === policyId || state.gold < policyChangeCost(fief)) {
+        return false;
+      }
+      dispatch({ type: 'setFiefPolicy', fiefId, policyId, cost: policyChangeCost(fief) });
+      return true;
+    },
+    [state.fiefs, state.gold]
+  );
+
   const buyWeapon = useCallback(
     (weapon: Weapon) => {
       if (state.ownedWeaponIds.includes(weapon.id) || state.gold < weapon.price) {
@@ -520,6 +601,9 @@ export function useGameState() {
     intelligence,
     charisma,
     dailyIncome: displayedIncome,
+    fiefPercent,
+    fiefStat,
+    orderCap,
     buffActive,
     recruitDiscount,
     recruitCostFor,
@@ -535,6 +619,8 @@ export function useGameState() {
     recruitPartner,
     buyWeapon,
     upgradeFarm,
+    claimFief,
+    setFiefPolicy,
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0, doudizhu = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold, doudizhu }),
     claimQuest: (questId: string) => dispatch({ type: 'claimQuest', questId }),

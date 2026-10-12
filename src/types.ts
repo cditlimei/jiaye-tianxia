@@ -1,3 +1,5 @@
+import type { FiefHoldings } from './data/fiefs';
+
 export type Screen = 'title' | 'lordSelect' | 'partnerSelect' | 'home' | 'battle';
 
 export interface GameState {
@@ -28,8 +30,10 @@ export interface GameState {
   /** 进入战斗时记下，结算后清空；读档时仍在说明中途离开，按认输处理 */
   /** 进行中的战斗；rewardGold/odds 用于中途离开时按胜率替玩家打完，斗地主中途离开按认输 */
   activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean } | null;
-  /** 军令：出征消耗，每 3 个游戏日回 1 道 */
+  /** 军令：出征消耗，每 2 个游戏日回 1 道，上限随整军封地增加 */
   orders: number;
+  /** 封地：郡 id → 方略，传位随家业传下 */
+  fiefs: FiefHoldings;
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;

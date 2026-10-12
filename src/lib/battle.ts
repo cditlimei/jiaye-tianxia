@@ -26,9 +26,9 @@ export function incomeMultiplier(intelligence: number) {
   return 1 + Math.floor(intelligence / 10) / 100;
 }
 
-/** 宅邸收入 × 屯田比例 × 家业点 × 智谋 */
-export function totalDailyIncome(homeIncome: number, farmPercent: number, legacyPoints: number, intelligence: number, farmFlat = 0) {
-  return effectiveDailyIncome(Math.round((homeIncome * (1 + farmPercent / 100) + farmFlat) * legacyIncomeMultiplier(legacyPoints)), intelligence);
+/** 宅邸收入 × (屯田 + 劝农封地)比例 × 家业点 × 智谋 */
+export function totalDailyIncome(homeIncome: number, farmPercent: number, legacyPoints: number, intelligence: number, farmFlat = 0, fiefPercent = 0) {
+  return effectiveDailyIncome(Math.round((homeIncome * (1 + (farmPercent + fiefPercent) / 100) + farmFlat) * legacyIncomeMultiplier(legacyPoints)), intelligence);
 }
 
 export function effectiveDailyIncome(baseIncome: number, intelligence: number) {
@@ -43,21 +43,22 @@ export function effectiveRecruitCost(baseCost: number, charisma: number) {
   return Math.round(baseCost * (1 - recruitDiscountPercent(charisma) / 100));
 }
 
-export function calculateTotalPower(lord: Lord, ownedPartners: Partner[], weapon: Weapon, home: HomeLevel) {
+export function calculateTotalPower(lord: Lord, ownedPartners: Partner[], weapon: Weapon, home: HomeLevel, extra = 0) {
   const homeBonus = home.level * 5;
   const partnerBonus = ownedPartners.reduce((sum, partner) => sum + partnerStrengthBonus(partner, lord.id), 0);
-  return Math.round(lord.strength + weaponBonusForLord(weapon, lord.id) + partnerBonus + homeBonus);
+  return Math.round(lord.strength + weaponBonusForLord(weapon, lord.id) + partnerBonus + homeBonus + extra);
 }
 
-export function calculateIntelligence(lord: Lord, ownedPartners: Partner[]) {
+/** extra：教化封地等不来自伴侣的加成 */
+export function calculateIntelligence(lord: Lord, ownedPartners: Partner[], extra = 0) {
   return Math.round(
-    lord.intelligence + ownedPartners.reduce((sum, partner) => sum + partnerIntelligenceBonus(partner, lord.id), 0)
+    lord.intelligence + ownedPartners.reduce((sum, partner) => sum + partnerIntelligenceBonus(partner, lord.id), 0) + extra
   );
 }
 
-export function calculateCharisma(lord: Lord, ownedPartners: Partner[]) {
+export function calculateCharisma(lord: Lord, ownedPartners: Partner[], extra = 0) {
   return Math.round(
-    lord.charisma + ownedPartners.reduce((sum, partner) => sum + partnerCharismaBonus(partner, lord.id), 0)
+    lord.charisma + ownedPartners.reduce((sum, partner) => sum + partnerCharismaBonus(partner, lord.id), 0) + extra
   );
 }
 
@@ -256,13 +257,13 @@ export function estimateWinRate(attackPower: number, enemyPower: number, runs = 
 }
 
 // 水战不看兵器：智谋 + 宅邸
-export function calculateNavalPower(lord: Lord, ownedPartners: Partner[], home: HomeLevel) {
-  return calculateIntelligence(lord, ownedPartners) + home.level * 5;
+export function calculateNavalPower(lord: Lord, ownedPartners: Partner[], home: HomeLevel, extra = 0) {
+  return calculateIntelligence(lord, ownedPartners, extra) + home.level * 5;
 }
 
 // 朝堂不看兵器：声望 + 宅邸
-export function calculateCourtPower(lord: Lord, ownedPartners: Partner[], home: HomeLevel) {
-  return calculateCharisma(lord, ownedPartners) + home.level * 5;
+export function calculateCourtPower(lord: Lord, ownedPartners: Partner[], home: HomeLevel, extra = 0) {
+  return calculateCharisma(lord, ownedPartners, extra) + home.level * 5;
 }
 
 export const NAVAL_UNLOCK_HOME_LEVEL = 3;

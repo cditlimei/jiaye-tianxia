@@ -7,7 +7,7 @@ import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
 import type { GameState } from '../types';
-import { ORDER_CAP } from '../types';
+import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { StatBar } from './common/StatBar';
@@ -25,6 +25,7 @@ interface HomeScreenProps {
   dailyIncome: number;
   farmPercent: number;
   farmFlat: number;
+  orderCap: number;
   recruitDiscount: number;
   onCollectIncome: () => number;
   onResolveChoice: (optionId: string) => void;
@@ -37,6 +38,7 @@ interface HomeScreenProps {
   onCompleteTutorial: () => void;
   onOpenSettings: () => void;
   onOpenLord: () => void;
+  onOpenFief: () => void;
   onIncomeSfx: () => void;
   onUpgradeEffect: (imagePath: string, name: string) => void;
   questStatuses: QuestStatus[];
@@ -68,6 +70,7 @@ export function HomeScreen({
   dailyIncome,
   farmPercent,
   farmFlat,
+  orderCap,
   recruitDiscount,
   onCollectIncome,
   onResolveChoice,
@@ -80,6 +83,7 @@ export function HomeScreen({
   onCompleteTutorial,
   onOpenSettings,
   onOpenLord,
+  onOpenFief,
   onIncomeSfx,
   onUpgradeEffect,
   questStatuses,
@@ -171,7 +175,7 @@ export function HomeScreen({
             <span>武力</span>
           </div>
           <div>
-            <strong>{state.orders}/{ORDER_CAP}</strong>
+            <strong>{state.orders}/{orderCap}</strong>
             <span>军令</span>
           </div>
           <div>
@@ -240,6 +244,19 @@ export function HomeScreen({
         </section>
       )}
 
+      {(() => {
+        const next = nextFief(state.fiefs);
+        const owned = ownedFiefCount(state.fiefs);
+        if (state.homeLevel < FIEF_UNLOCK_HOME_LEVEL || !next || state.gold < next.cost) return null;
+        return (
+          <section className="fief-hint" aria-label="封地提示">
+            <strong>{owned === 0 ? '侯府已成，可裂土封郡' : `府库充盈，可再开拓${next.name}`}</strong>
+            <span>{next.name}开拓价 {next.cost.toLocaleString()} 金，定一条方略：劝农加收入、整军加军令上限、教化加三项属性。</span>
+            <button type="button" onClick={onOpenFief}>去经略 →</button>
+          </section>
+        );
+      })()}
+
       <section className="home-estate">
         <div className="home-estate__image-wrap">
           <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
@@ -251,7 +268,7 @@ export function HomeScreen({
           <div className="home-estate__content">
             <span className="eyebrow">主城经营</span>
             <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
+            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}%（至第 ${state.incomeBuff.untilDay} 日）` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
           </div>
           <div className="home-estate__stats">
             <StatBar label="武力" value={totalPower} max={280} tone="red" />
@@ -269,6 +286,12 @@ export function HomeScreen({
             <span>伴侣状态</span>
             <strong>已招募 {ownedPartners.length} 位</strong>
             <small>{partnerNames === '尚未招募' ? '尚未招募伴侣，当前内庭寂静。' : partnerNames}</small>
+          </div>
+          <div className="home-support-grid__fief">
+            <span>封地</span>
+            <strong>{ownedFiefCount(state.fiefs) > 0 ? `已领 ${ownedFiefCount(state.fiefs)}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '尚未封郡' : '侯府后开放'}</strong>
+            <small>{ownedFiefCount(state.fiefs) > 0 ? `劝农 +${fiefIncomePercent(state.fiefs)}% · 军令上限 ${orderCap} · 教化 +${fiefStatBonus(state.fiefs)}` : '六郡依次开拓，每郡定一条方略。'}</small>
+            <button type="button" className="home-support-grid__link" onClick={onOpenFief}>经略封地</button>
           </div>
         </div>
       </section>

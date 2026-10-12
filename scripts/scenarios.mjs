@@ -497,10 +497,10 @@ await scenario('称号', async () => {
   const hud = await fresh.locator('.home-hud').innerText();
   check('开局称号为白身并提示下一称号', hud.includes('「白身」') && (await fresh.locator('.honor-hint').innerText()).includes('乡绅'));
   await fresh.context().close();
-  const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1 }));
+  const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military' } }));
   const hud2 = await vet.locator('.home-hud').innerText();
   const hint2 = await vet.locator('.honor-hint').innerText();
-  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hint2.includes('另有 4 个称号待集齐'), hint2);
+  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「裂土封侯」') && hint2.includes('另有 4 个称号待集齐'), hint2);
   await vet.context().close();
   // 第二代：开国元勋是家声，不盖住本代称号；提示指向更高的本代称号
   const heir = await open(save({ homeLevel: 3, battleWins: 2, generation: 2, legacyPoints: 2 }));
@@ -822,6 +822,73 @@ await scenario('传位后刷新不丢世代', async () => {
   check('传位后刷新再选主公仍是第 2 代且保留家业点', s.generation === 2 && s.legacyPoints === 2 && s.gold === 1000 + 2 * 3000 && s.tutorialDone === true, `title=${title.includes('继续家业')} g=${s.generation} lp=${s.legacyPoints} gold=${s.gold}`);
   check('第 2 代不再出现开局引导', !(await page.locator('[aria-label="开局引导"]').isVisible().catch(() => false)));
   await page.context().close();
+});
+
+await scenario('封地经略', async () => {
+  const power = async (page) => Number((await page.locator('.home-hud__chips div').nth(1).innerText()).match(/\d+/)[0]);
+  // 府邸 4 级：封地未开放
+  const locked = await open(save({ homeLevel: 4, gold: 200000 }));
+  check('侯府前主城不提示封地', !(await locked.locator('main').innerText()).includes('裂土封郡'));
+  await locked.getByRole('button', { name: '经略封地' }).click();
+  check('侯府前封地页只说明门槛', (await locked.locator('.fief-sheet').innerText()).includes('侯府后方可') && !(await locked.getByRole('button', { name: /开拓南阳郡/ }).isVisible().catch(() => false)));
+  await locked.getByRole('button', { name: '关闭' }).click();
+  await locked.context().close();
+
+  // 侯府 + 16 万金：主城提示 → 选整军 → 开拓南阳郡；军令上限 7；任务可领
+  const page = await open(save({ homeLevel: 5, gold: 160000, claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third', 'first-win', 'power-200', 'naval-first-win', 'court-first-win', 'farm-first'] }));
+  const base = await open(save({ homeLevel: 5, gold: 160000 }));
+  const n0 = income(await base.getByRole('button', { name: /^处理政务/ }).innerText());
+  const p0 = await power(base);
+  await base.context().close();
+  check('侯府且金够时主城提示封郡', (await page.locator('.fief-hint').innerText()).includes('裂土封郡'));
+  await page.getByRole('button', { name: '去经略 →' }).click();
+  await page.getByRole('radio', { name: /整军/ }).click();
+  await page.getByRole('button', { name: /开拓南阳郡 · 行整军之策/ }).click();
+  await page.waitForTimeout(400);
+  let s = await read(page);
+  check('开拓南阳郡扣 15 万并记整军方略', s.gold === 10000 && s.fiefs?.nanyang === 'military', JSON.stringify({ gold: s.gold, fiefs: s.fiefs }));
+  check('下一郡显示差额', (await page.getByRole('button', { name: /差 290,000 金/ }).isVisible()));
+  await page.getByRole('button', { name: '关闭' }).click();
+  check('整军后军令上限 7', (await page.locator('.home-hud__chips').innerText()).includes('/7'));
+  check('任务「裂土封郡」可领赏', await page.locator('.quest-item').filter({ hasText: '裂土封郡' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
+  await page.context().close();
+
+  // 劝农：收入提高；教化：武力 +4
+  const farming = await open(save({ homeLevel: 5, gold: 160000, fiefs: { nanyang: 'farming' } }));
+  const n1 = income(await farming.getByRole('button', { name: /^处理政务/ }).innerText());
+  check('劝农封地提高政务收入', n1 > n0, `${n0} → ${n1}`);
+  await farming.context().close();
+  const schooling = await open(save({ homeLevel: 5, gold: 160000, fiefs: { nanyang: 'schooling' } }));
+  check('教化封地武力 +4', (await power(schooling)) === p0 + 4, `${p0} → ${await power(schooling)}`);
+  await schooling.context().close();
+
+  // 改方略：整军 → 劝农收一成费，超出上限的军令收回
+  const change = await open(save({ homeLevel: 5, gold: 20000, orders: 7, fiefs: { nanyang: 'military' } }));
+  await change.getByRole('button', { name: '经略封地' }).click();
+  await change.getByRole('button', { name: /改方略 15,000 金/ }).click();
+  await change.getByRole('button', { name: '改为劝农' }).click();
+  await change.waitForTimeout(400);
+  s = await read(change);
+  check('改方略扣一成费并收回超额军令', s.gold === 5000 && s.fiefs.nanyang === 'farming' && s.orders === 6, JSON.stringify({ gold: s.gold, fiefs: s.fiefs, orders: s.orders }));
+  await change.context().close();
+
+  // 存档断档：没有南阳却有汝南 → 作废
+  const broken = await open(save({ homeLevel: 5, fiefs: { runan: 'farming' } }));
+  await broken.waitForTimeout(300);
+  check('断档封地存档被清理', Object.keys((await read(broken)).fiefs ?? {}).length === 0);
+  await broken.context().close();
+
+  // 传位保留封地
+  const heir = await open(save({ homeLevel: 6, gold: 250000, fiefs: { nanyang: 'farming', runan: 'military' } }));
+  await heir.getByRole('button', { name: '设置与存档' }).click();
+  await heir.getByText('当前存档').first().waitFor();
+  check('传位面板写明封地传下', (await heir.locator('.succession-panel').innerText()).includes('封地随之传下'));
+  heir.on('dialog', (d) => d.accept());
+  await heir.getByRole('button', { name: '传位给下一代' }).click();
+  await heir.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  s = await read(heir);
+  check('传位后封地保留', s.generation === 2 && s.fiefs?.nanyang === 'farming' && s.fiefs?.runan === 'military', JSON.stringify(s.fiefs));
+  await heir.context().close();
 });
 
 await scenario('斗地主', async () => {

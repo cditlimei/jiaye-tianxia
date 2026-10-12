@@ -2,7 +2,9 @@ import type { GameState, Screen } from '../types';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/progression';
 import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
-import { isOrderDay, ORDER_CAP, ORDER_START } from '../types';
+import { isOrderDay, ORDER_START } from '../types';
+import { fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
+import { fiefs as fiefCatalog } from '../data/fiefs';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 
@@ -41,6 +43,7 @@ export const defaultGameState: GameState = {
   nextBattleBonus: null,
   activeBattle: null,
   orders: ORDER_START,
+  fiefs: {},
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -210,7 +213,8 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
-    orders: Math.min(ORDER_CAP, sanitizeNumber(parsed.orders, ORDER_START, 0)),
+    orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs)), sanitizeNumber(parsed.orders, ORDER_START, 0)),
+    fiefs: sanitizeFiefs(parsed.fiefs),
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -285,6 +289,19 @@ function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
   if (typeof c.eventId !== 'string' || typeof c.day !== 'number' || typeof c.dailyIncome !== 'number') return null;
   if (c.eventId !== 'merchants' && c.eventId !== 'advisor' && c.eventId !== 'refugees' && !c.eventId.startsWith('partner:')) return null;
   return { eventId: c.eventId, day: Math.floor(c.day), dailyIncome: Math.max(0, Math.floor(c.dailyIncome)) };
+}
+
+/** 只认目录里的郡和三条方略；郡必须按顺序持有，中间断档的后续郡作废 */
+function sanitizeFiefs(value: unknown): FiefHoldings {
+  if (!value || typeof value !== 'object') return {};
+  const raw = value as Record<string, unknown>;
+  const out: FiefHoldings = {};
+  for (const fief of fiefCatalog) {
+    const policy = raw[fief.id];
+    if (!isFiefPolicyId(policy)) break;
+    out[fief.id] = policy;
+  }
+  return out;
 }
 
 function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {
@@ -399,8 +416,9 @@ function applyOfflineIncome(state: GameState): GameState {
     findHomeLevel(state.homeLevel).dailyIncome,
     findFarmLevel(state.farmLevel).incomePercent,
     state.legacyPoints,
-    lord ? calculateIntelligence(lord, ownedPartners) : 0,
-    findFarmLevel(state.farmLevel).flatIncome
+    lord ? calculateIntelligence(lord, ownedPartners, fiefStatBonus(state.fiefs)) : 0,
+    findFarmLevel(state.farmLevel).flatIncome,
+    fiefIncomePercent(state.fiefs)
   );
   let regainedOrders = 0;
   // 与手动处理政务一致：离线期间经过的每一天也触发府中事件
@@ -446,7 +464,7 @@ function applyOfflineIncome(state: GameState): GameState {
     day: state.day + ticks,
     pendingChoice,
     incomeBuff,
-    orders: Math.min(ORDER_CAP, state.orders + regainedOrders),
+    orders: Math.min(orderCapFor(state.fiefs), state.orders + regainedOrders),
     eventLog: [
       {
         id: `offline-${Date.now()}`,

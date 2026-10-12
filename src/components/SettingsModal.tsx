@@ -38,7 +38,7 @@ export function SettingsModal({
       ? '家业点已达上限，传位不再增加加成。'
       : gainedPoints < 1
         ? `至少需 ${LEGACY_GOLD_PER_POINT.toLocaleString()} 金才能换到 1 点家业点。`
-        : `现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
+        : `现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -79,7 +79,7 @@ export function SettingsModal({
         <section className="succession-panel">
           <span>传位 · 第 {state.generation} 代</span>
           <strong>家业点 {state.legacyPoints}/{LEGACY_MAX_POINTS} · 收入 +{Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%</strong>
-          <p>把全部金币换成家业点（每 {LEGACY_GOLD_PER_POINT.toLocaleString()} 金 1 点），每点让处理政务与屯田收入永久 +5%，并让之后每一代开局多 3,000 金。主公、伴侣、兵器、宅邸、屯田与任务从头再来。</p>
+          <p>把全部金币换成家业点（每 {LEGACY_GOLD_PER_POINT.toLocaleString()} 金 1 点），每点让处理政务与屯田收入永久 +5%，并让之后每一代开局多 3,000 金。主公、伴侣、兵器、宅邸与任务从头再来，屯田与封地传给下一代。</p>
           <p className={canSucceed ? 'is-ok' : ''}>{successionHint}</p>
           <GameButton variant={canSucceed ? 'primary' : 'ghost'} disabled={!canSucceed} onClick={onSucceed}>
             传位给下一代

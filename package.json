@@ -14,6 +14,7 @@
     "smoke:live": "JIAYE_URL=https://cditlimei.github.io/jiaye-tianxia/ node scripts/smoke.mjs",
     "smoke:chrome": "JIAYE_USE_SYSTEM_CHROME=1 node scripts/smoke.mjs",
     "scenarios": "node scripts/scenarios.mjs",
+    "econ": "node scripts/econ-sim.mjs",
     "scenarios:live": "JIAYE_URL=https://cditlimei.github.io/jiaye-tianxia/ node scripts/scenarios.mjs"
   },
   "dependencies": {

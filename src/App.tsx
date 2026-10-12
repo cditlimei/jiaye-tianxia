@@ -16,9 +16,10 @@ import { SettingsModal } from './components/SettingsModal';
 import { TitleScreen } from './components/TitleScreen';
 import { WeaponModal } from './components/WeaponModal';
 import { LordModal } from './components/LordModal';
+import { FiefModal } from './components/FiefModal';
 import './styles.css';
 
-type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | 'lord' | null;
+type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | 'lord' | 'fief' | null;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -185,7 +186,7 @@ export function App() {
   };
 
   const succeed = () => {
-    if (!confirmReset(`传位后金币、主公、伴侣、兵器、宅邸与屯田全部重来，换取永久收入加成。`)) {
+    if (!confirmReset(`传位后金币、主公、伴侣、兵器与宅邸全部重来，屯田与封地传给下一代，换取永久收入加成。`)) {
       return;
     }
     audio.unlock();
@@ -258,6 +259,7 @@ export function App() {
           courtPower={game.courtPower}
           farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold, homeIncome: game.currentHome.dailyIncome }}
           orders={game.state.orders}
+          orderCap={game.orderCap}
           battleBonus={game.state.nextBattleBonus}
           day={game.state.day}
           frontier={{ raid: game.state.frontierRaid, nextRaidDay: game.state.nextRaidDay, day: game.state.day }}
@@ -297,6 +299,7 @@ export function App() {
           dailyIncome={game.dailyIncome}
           farmPercent={game.currentFarm.incomePercent}
           farmFlat={game.currentFarm.flatIncome}
+          orderCap={game.orderCap}
           recruitDiscount={game.recruitDiscount}
           questStatuses={game.questStatuses}
           titleStatus={game.titleStatus}
@@ -317,6 +320,7 @@ export function App() {
           onCompleteTutorial={game.completeTutorial}
           onOpenSettings={() => setModal('settings')}
           onOpenLord={() => setModal('lord')}
+          onOpenFief={() => setModal('fief')}
           onIncomeSfx={() => audio.playSfx('audio/sfx/sfx_coins.mp3', 0.28)}
           onUpgradeEffect={handleUpgradeEffect}
         />
@@ -328,6 +332,22 @@ export function App() {
         )}
         {modal === 'lord' && (
           <LordModal lord={game.selectedLord} state={game.state} totalPower={game.totalPower} intelligence={game.intelligence} charisma={game.charisma} onClose={() => setModal(null)} />
+        )}
+        {modal === 'fief' && (
+          <FiefModal
+            state={game.state}
+            onClose={() => setModal(null)}
+            onClaim={(policyId) => {
+              if (!game.claimFief(policyId)) return false;
+              audio.playSfx('audio/sfx/sfx_home_upgrade.mp3', 0.5);
+              return true;
+            }}
+            onChangePolicy={(fiefId, policyId) => {
+              if (!game.setFiefPolicy(fiefId, policyId)) return false;
+              audio.playSfx('audio/sfx/sfx_coins.mp3', 0.35);
+              return true;
+            }}
+          />
         )}
         {modal === 'weapon' && (
           <WeaponModal lord={game.selectedLord} state={game.state} onClose={() => setModal(null)} onEquip={handleEquip} />

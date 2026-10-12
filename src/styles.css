@@ -4413,7 +4413,8 @@ small.stat-legend {
   text-align: center;
 }
 
-.succession-hint {
+.succession-hint,
+.fief-hint {
   display: grid;
   gap: 6px;
   padding: 12px 14px;
@@ -4422,17 +4423,20 @@ small.stat-legend {
   background: linear-gradient(180deg, rgba(80, 58, 14, 0.75), rgba(25, 18, 8, 0.85));
 }
 
-.succession-hint strong {
+.succession-hint strong,
+.fief-hint strong {
   color: var(--gold-light);
 }
 
-.succession-hint span {
+.succession-hint span,
+.fief-hint span {
   color: rgba(245, 230, 200, 0.82);
   font-size: 13px;
   line-height: 1.5;
 }
 
-.succession-hint button {
+.succession-hint button,
+.fief-hint button {
   justify-self: end;
   padding: 6px 14px;
   border: 0;
@@ -4522,4 +4526,153 @@ small.stat-legend {
   .expedition-screen > :not(.screen-header):not(.expedition-map) {
     grid-column: 2;
   }
+}
+
+/* 封地经略 */
+.home-support-grid__fief {
+  position: relative;
+  padding-bottom: 40px !important;
+}
+
+.home-support-grid__link {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  padding: 4px 12px;
+  border: 1px solid rgba(212, 168, 67, 0.5);
+  border-radius: 999px;
+  background: rgba(80, 58, 14, 0.6);
+  color: var(--gold-light);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fief-sheet {
+  display: grid;
+  gap: 10px;
+}
+
+.fief-sheet__summary {
+  margin: 0;
+  color: var(--gold-light);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fief-sheet__intro,
+.fief-sheet__locked,
+.fief-claim p {
+  margin: 0;
+  color: rgba(245, 230, 200, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fief-sheet__locked {
+  padding: 10px 12px;
+  border: 1px dashed rgba(212, 168, 67, 0.35);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.fief-claim {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(212, 168, 67, 0.45);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(80, 58, 14, 0.55), rgba(25, 18, 8, 0.8));
+}
+
+.fief-policies {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fief-policies button {
+  display: grid;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  border-radius: 10px;
+  background: rgba(13, 13, 26, 0.6);
+  color: rgba(245, 230, 200, 0.8);
+  text-align: left;
+}
+
+.fief-policies button.is-selected {
+  border-color: var(--gold-light);
+  background: rgba(80, 58, 14, 0.7);
+  color: #f5e6c8;
+}
+
+.fief-policies strong {
+  color: var(--gold-light);
+  font-size: 14px;
+}
+
+.fief-policies span {
+  font-size: 12px;
+}
+
+.fief-policies small {
+  color: rgba(245, 230, 200, 0.55);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.fief-list {
+  display: grid;
+  gap: 6px;
+}
+
+.fief-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.2);
+  border-radius: 10px;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 13px;
+}
+
+.fief-row.is-held {
+  border-color: rgba(212, 168, 67, 0.55);
+  color: #f5e6c8;
+}
+
+.fief-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fief-row strong {
+  color: var(--gold-light);
+}
+
+.fief-row span {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.fief-row button {
+  padding: 4px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.4);
+  border-radius: 999px;
+  background: rgba(80, 58, 14, 0.5);
+  color: var(--gold-light);
+  font-size: 12px;
+}
+
+.fief-row__edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
 }
