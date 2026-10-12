@@ -23,15 +23,16 @@ interface LordModalProps {
 export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose }: LordModalProps) {
   const ambition = ambitionStatus(state);
   const [chronicleOpen, setChronicleOpen] = useState(false);
+  const [rankedOpen, setRankedOpen] = useState(false);
   const tradition = traditionOf(state.chronicle);
   const chronicleRows = chronicleOpen || state.chronicle.length <= 5 ? state.chronicle : state.chronicle.slice(-3);
   return (
-    <ModalShell title="主公与称号" onClose={onClose}>
+    <ModalShell title="主公" onClose={onClose}>
       <div className="lord-sheet">
         <ImageWithFallback src={imageUrl(lord.imagePath, 256)} alt={lord.name} className="lord-sheet__portrait" />
         <div className="lord-sheet__copy">
           <strong>{lord.name}</strong>
-          <span>{lord.title}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
+          <span>{lord.title}{dynastyCount(state.realms) > 0 ? ` · ${state.realm ? `${findRealm(state.realm)?.name} · ` : ''}第 ${dynastyCount(state.realms) + 1} 朝` : ''}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
           <p>{lord.description}</p>
           <dl>
             <div><dt>武力</dt><dd>{totalPower}</dd></div>
@@ -52,25 +53,11 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           <p>{ambition.ambition.describe(ambition.target)}。{ambition.ambition.motto}。</p>
         </section>
       )}
-      {state.pastDynasties.length > 0 && (
-        <section className="chronicle" aria-label="前朝">
-          <div className="section-title">
-            <span>前朝</span>
-            <strong>{state.pastDynasties.length} 朝</strong>
-          </div>
-          {state.pastDynasties.map((entry) => (
-            <div key={entry.dynasty} className="chronicle-row is-done">
-              <strong>第 {entry.dynasty} 朝 · {findRealm(entry.realm)?.name} · 天下归心</strong>
-              <span>{entry.generations} 代 · {entry.days.toLocaleString()} 日 · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
-            </div>
-          ))}
-        </section>
-      )}
       {state.chronicle.length > 0 && (
         <section className="chronicle" aria-label="家谱">
           <div className="section-title">
             <span>家谱</span>
-            <strong>第 {state.generation} 代传家 · 载 {state.chronicle.length} 代</strong>
+            <strong>第 {state.generation} 代 · 载 {state.chronicle.length} 代</strong>
           </div>
           {chronicleRows.map((entry, index) => {
             const name = findLord(entry.lordId)?.name ?? '无名氏';
@@ -78,7 +65,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
             return (
               <div key={`${entry.generation}-${index}`} className={`chronicle-row ${entry.ambitionDone ? 'is-done' : ''}`}>
                 <strong>第 {entry.generation} 代 · {name}</strong>
-                <span>{entry.days} 日 · {entry.wins} 胜 · 传下 {entry.gold.toLocaleString()} 金{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ' · 未定志向'}</span>
+                <span>{entry.days} 日 · {entry.wins} 胜 · 存金 {entry.gold.toLocaleString()}{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ' · 未定志向'}</span>
               </div>
             );
           })}
@@ -88,15 +75,15 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
         </section>
       )}
       {[
-        { label: '本代称号', list: titles.filter((title) => !title.lineage) },
-        { label: '家声（跨代保留）', list: titles.filter((title) => title.lineage) }
+        { label: '家声（跨代保留）', list: titles.filter((title) => title.lineage) },
+        { label: '本代称号', list: titles.filter((title) => !title.lineage) }
       ].map((group) => (
       <section key={group.label} className="title-list" aria-label={group.label}>
         <div className="section-title">
           <span>{group.label}</span>
           <strong>{group.list.filter((title) => title.isEarned(state)).length}/{group.list.length}</strong>
         </div>
-        {group.list.map((title) => {
+        {(group.label === '本代称号' && !rankedOpen && group.list.every((title) => title.isEarned(state)) ? [] : group.list).map((title) => {
           const earned = title.isEarned(state);
           return (
             <div key={title.id} className={`title-row ${earned ? 'is-earned' : ''}`}>
@@ -105,8 +92,25 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
             </div>
           );
         })}
+        {group.label === '本代称号' && group.list.every((title) => title.isEarned(state)) && (
+          <button type="button" className="chronicle-toggle" onClick={() => setRankedOpen((open) => !open)}>{rankedOpen ? '收起' : `本代称号已集齐 ${group.list.length}/${group.list.length} · 展开`}</button>
+        )}
       </section>
       ))}
+      {state.pastDynasties.length > 0 && (
+        <section className="chronicle" aria-label="前朝">
+          <div className="section-title">
+            <span>前朝</span>
+            <strong>{state.pastDynasties.length} 朝</strong>
+          </div>
+          {state.pastDynasties.map((entry) => (
+            <div key={entry.dynasty} className="chronicle-row is-done">
+              <strong>第 {entry.dynasty} 朝{entry.realm ? ` · ${findRealm(entry.realm)?.name}` : ' · 开国'} · 天下归心</strong>
+              <span>{entry.generations} 代 · {entry.days.toLocaleString()} 日 · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
+            </div>
+          ))}
+        </section>
+      )}
     </ModalShell>
   );
 }

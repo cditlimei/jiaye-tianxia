@@ -33,7 +33,7 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
           {lordName ? (
             <>
               <span>{lordName} · 「{getTitleStatus(state).current.name}」</span>
-              <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
+              <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 日 · {state.gold.toLocaleString()} 金</strong>
             </>
           ) : (
             // 传位后还没选新主公

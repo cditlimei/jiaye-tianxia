@@ -40,7 +40,9 @@ export interface GameState {
   ambition: { id: AmbitionId; target: number; baseFiefs: number } | null;
   /** 家谱：每代传位时记一笔 */
   chronicle: ChronicleEntry[];
-  /** 历朝国号计数：加成按计数叠加，跨朝永久保留 */
+  /** 本朝国号（第一朝无） */
+  realm: RealmId | null;
+  /** 历朝国号计数（含本朝）：加成按计数叠加，跨朝永久保留 */
   realms: RealmCounts;
   /** 前朝记录 */
   pastDynasties: DynastyEntry[];
@@ -53,7 +55,8 @@ export interface GameState {
 
 export interface DynastyEntry {
   dynasty: number;
-  realm: RealmId;
+  /** 该朝的国号（开国第一朝为 null） */
+  realm: RealmId | null;
   generations: number;
   days: number;
   wins: number;

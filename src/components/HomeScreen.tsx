@@ -9,7 +9,7 @@ import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
-import { dynastyCount, endingHint, isEndingReached, realmIncomePercent } from '../data/dynasty';
+import { dynastyCount, endingHint, findRealm, isEndingReached, realmIncomePercent } from '../data/dynasty';
 import { fiefCostFor, legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
@@ -183,6 +183,15 @@ export function HomeScreen({
     }
   };
 
+  // 机会栏：封郡 / 传位 / 志向未定 / 天下归心 等非阻塞选择合成一行，首屏只留真正要决断的事
+  const chances = [
+    ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可开拓${nextFiefToClaim.name}`, detail: `${nextFiefCost.toLocaleString()} 金，余 ${(state.gold - nextFiefCost).toLocaleString()}`, onClick: onOpenFief }] : []),
+    ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
+      ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [endingHint(state)?.replace(/。$/, '') ?? (fiefAffordable ? '先封郡再传位更划算' : ''), ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
+      : []),
+    ...(state.generation >= 2 && !state.ambition && !isEndingReached(state) && ambitionDeferred ? [{ key: 'ambition', label: '本代志向未定', detail: '定下志向才有传位结算', onClick: () => setAmbitionDeferred(false) }] : []),
+    ...(isEndingReached(state) && endingSeen ? [{ key: 'ending', label: '天下归心', detail: '展开卷轴开创新朝', onClick: onOpenEnding }] : [])
+  ];
   return (
     <main className="screen home-screen">
       <header className="home-hud">
@@ -190,16 +199,17 @@ export function HomeScreen({
           <ImageWithFallback src={imageUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
           <div>
             <strong>{lord.name}</strong>
-            <span>{lord.title}{dynastyCount(state.realms) > 0 ? ` · 第 ${dynastyCount(state.realms) + 1} 朝` : ''}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}{titleStatus.lineage && titleStatus.lineage.name !== '开国元勋' ? ` · ${titleStatus.lineage.name}` : ''}</span>
-            {tradition && <em className="home-hud__ambition" title={tradition.effect}>{tradition.name}</em>}
-            {ambition && <em className="home-hud__ambition">{ambition.ambition.name} {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}</em>}
+            <span>{lord.title}{dynastyCount(state.realms) > 0 ? ` · ${state.realm ? `${findRealm(state.realm)?.name} · ` : ''}第 ${dynastyCount(state.realms) + 1} 朝` : ''}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
+            {(tradition || (ambition && !isEndingReached(state))) && (
+              <em className="home-hud__ambition" title={tradition?.effect}>{[tradition?.name, ambition && !isEndingReached(state) ? `志向 ${ambition.ambition.name} ${ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}` : null].filter(Boolean).join(' · ')}</em>
+            )}
             <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em>
           </div>
         </div>
         <div className="home-hud__chips">
           <div>
             <strong title={`${state.gold.toLocaleString()} 金`}>{compactGold(state.gold)}</strong>
-            <span>金币</span>
+            <span>金</span>
           </div>
           <div>
             <strong>{totalPower}</strong>
@@ -220,9 +230,35 @@ export function HomeScreen({
       </header>
 
       {state.frontierRaid && (
-        <p className="frontier-alert" role="status">
-          北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金币。
-        </p>
+        <div className="frontier-alert" role="status">
+          <span>北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金。</span>
+          <button type="button" onClick={onBattle}>去迎战 →</button>
+        </div>
+      )}
+
+      {!state.tutorialDone && currentOrder && (
+        <>
+          {!state.tutorialDone && currentOrder && (
+            <section className="starter-panel" aria-label="开局引导">
+              <div className="section-title">
+                <span>开局引导 · 第 {completedStarterOrders + 1} 步 / {starterOrders.length}</span>
+                <strong>{currentOrder.label}</strong>
+              </div>
+              <p className="starter-hint">{currentOrder.hint}</p>
+              <div className="starter-list">
+                {starterOrders.map((order) => (
+                  <span key={order.label} className={order.done ? 'is-done' : order === currentOrder ? 'is-current' : ''}>
+                    {order.done ? '已成' : order === currentOrder ? '进行中' : '待办'} · {order.label}
+                  </span>
+                ))}
+              </div>
+              <div className="starter-actions">
+                <button type="button" className="starter-go" onClick={() => actionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>去做这一步 ↓</button>
+                <button type="button" onClick={onCompleteTutorial}>跳过引导</button>
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       {state.pendingChoice && (() => {
@@ -246,48 +282,11 @@ export function HomeScreen({
         );
       })()}
 
-      {!state.tutorialDone && currentOrder && (
-        <section className="starter-panel" aria-label="开局引导">
-          <div className="section-title">
-            <span>开局引导 · 第 {completedStarterOrders + 1} 步 / {starterOrders.length}</span>
-            <strong>{currentOrder.label}</strong>
-          </div>
-          <p className="starter-hint">{currentOrder.hint}</p>
-          <div className="starter-list">
-            {starterOrders.map((order) => (
-              <span key={order.label} className={order.done ? 'is-done' : order === currentOrder ? 'is-current' : ''}>
-                {order.done ? '已成' : order === currentOrder ? '进行中' : '待办'} · {order.label}
-              </span>
-            ))}
-          </div>
-          <div className="starter-actions">
-            <button type="button" className="starter-go" onClick={() => actionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>去做这一步 ↓</button>
-            <button type="button" onClick={onCompleteTutorial}>跳过引导</button>
-          </div>
-        </section>
-      )}
-
-      {isEndingReached(state) && endingSeen && (
-        <section className="fief-hint ending-chip" aria-label="天下归心">
-          <strong>天下归心</strong>
-          <span>可开创新朝。</span>
-          <button type="button" onClick={onOpenEnding}>展开卷轴 →</button>
-        </section>
-      )}
-
-      {isEndingReached(state) && !endingSeen && (
+      {state.tutorialDone && isEndingReached(state) && !endingSeen && (
         <section className="succession-hint ending-hint" aria-label="天下归心">
           <strong>天下归心</strong>
           <span>六郡尽归、王城巍峨、家业点已满。可开创新朝：定一国号，加成永久保留，历朝叠加。</span>
           <button type="button" onClick={() => { markEndingSeen(); onOpenEnding(); }}>展开卷轴 →</button>
-        </section>
-      )}
-
-      {state.generation >= 2 && !state.ambition && !isEndingReached(state) && ambitionDeferred && (
-        <section className="fief-hint ambition-chip" aria-label="本代志向待定">
-          <strong>本代志向未定</strong>
-          <span>定下志向才有传位结算与家谱记录。</span>
-          <button type="button" onClick={() => setAmbitionDeferred(false)}>去选 →</button>
         </section>
       )}
 
@@ -313,24 +312,15 @@ export function HomeScreen({
         </section>
       )}
 
-      {fiefAffordable && nextFiefToClaim && (() => {
-        const next = nextFiefToClaim;
-        const owned = ownedFiefCount(state.fiefs);
-        return (
-          <section className="fief-hint" aria-label="封地提示">
-            <strong>{owned === 0 ? '侯府已成，可裂土封郡' : `府库充盈，可再开拓${next.name}`}</strong>
-            <span>{next.name}开拓价 {nextFiefCost.toLocaleString()} 金，开拓后余 {(state.gold - nextFiefCost).toLocaleString()} 金。方略三选一，开拓后可改。{ambition && ambition.ambition.id === 'wealth' && ambition.done && state.gold - nextFiefCost < ambition.target ? `开拓后将低于志向「富国」的 ${ambition.target.toLocaleString()} 金。` : ''}</span>
-            <button type="button" onClick={onOpenFief}>去经略 →</button>
-          </section>
-        );
-      })()}
-
-      {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
-        <section className="succession-hint" aria-label="传位提示">
-          <strong>家业已至王城，可传位给下一代</strong>
-          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。{fiefAffordable ? '封地随家业传下，先把钱投在封郡上再传位更划算。' : ''}{ambition && !ambition.done ? `志向「${ambition.ambition.name}」还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}，现在传位将记未竟。` : ''}{endingHint(state) ?? ''}</span>
-          <button type="button" onClick={onOpenSettings}>去传位 →</button>
-        </section>
+      {chances.length > 0 && (
+        <nav className="chance-bar" aria-label="可做的事">
+          {chances.map((item) => (
+            <button key={item.key} type="button" onClick={item.onClick} disabled={!item.onClick}>
+              <strong>{item.label}</strong>
+              {item.detail && <span>{item.detail}</span>}
+            </button>
+          ))}
+        </nav>
       )}
 
       <section className="home-estate">
@@ -365,7 +355,7 @@ export function HomeScreen({
           </div>
           <div className="home-support-grid__fief">
             <span>封地</span>
-            <strong>{ownedFiefCount(state.fiefs) > 0 ? `已领 ${ownedFiefCount(state.fiefs)}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '尚未封郡' : '侯府后开放'}</strong>
+            <strong>{ownedFiefCount(state.fiefs) > 0 ? `已开拓 ${ownedFiefCount(state.fiefs)}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '尚未封郡' : '侯府后开放'}</strong>
             <small>{ownedFiefCount(state.fiefs) > 0 ? `劝农 +${fiefIncomePercent(state.fiefs)}% · 军令上限 ${orderCap} · 教化 +${fiefStatBonus(state.fiefs)}` : '六郡依次开拓，每郡定一条方略。'}</small>
             <button type="button" className="home-support-grid__link" onClick={onOpenFief}>经略封地</button>
           </div>
@@ -413,7 +403,7 @@ export function HomeScreen({
           <span>家业目标</span>
           <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
         </div>
-        {ambition && (
+        {ambition && !isEndingReached(state) && (
           <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.ambition.describe(ambition.target)}，现 {ambition.progress.toLocaleString()} {ambition.ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
         )}
         <p className="honor-hint">
@@ -452,7 +442,7 @@ export function HomeScreen({
           ) : (
             state.eventLog.slice(0, 4).map((event) => (
               <article key={event.id}>
-                <span>第{event.day}天 · {event.title}</span>
+                <span>第 {event.day} 日 · {event.title}</span>
                 <p>{event.detail}{event.goldDelta ? ` ${event.goldDelta > 0 ? '+' : '−'}${Math.abs(event.goldDelta).toLocaleString()}金` : ''}</p>
               </article>
             ))

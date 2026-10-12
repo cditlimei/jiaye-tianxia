@@ -85,7 +85,7 @@ try {
     })
   );
   await page.getByRole('button', { name: '导入存档' }).click();
-  await expectText(page, '已导入第 12 天存档。');
+  await expectText(page, '已导入第 12 日存档。');
   await page.getByRole('button', { name: '关闭' }).click();
   await page.getByRole('button', { name: '招募伴侣' }).click();
   await expectText(page, '伴侣招募');

@@ -185,7 +185,7 @@ export function App() {
       const imported = parseImportedGameState(payload);
       game.restoreGame(imported);
       audio.playSfx('audio/sfx/sfx_coins.mp3', 0.32);
-      return { ok: true, message: `已导入第 ${imported.day} 天存档。` };
+      return { ok: true, message: `已导入第 ${imported.day} 日存档。` };
     } catch (error) {
       audio.playSfx('audio/sfx/sfx_button.mp3', 0.18);
       return { ok: false, message: error instanceof Error ? error.message : '存档导入失败。' };

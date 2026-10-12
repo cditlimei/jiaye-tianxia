@@ -500,7 +500,7 @@ await scenario('称号', async () => {
   const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military' } }));
   const hud2 = await vet.locator('.home-hud').innerText();
   const hint2 = await vet.locator('.honor-hint').innerText();
-  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hud2.includes('裂土封侯') && hint2.includes('另有 5 个称号待集齐'), hint2);
+  check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hint2.includes('另有 5 个称号待集齐'), hint2);
   await vet.context().close();
   // 第二代：开国元勋是家声，不盖住本代称号；提示指向更高的本代称号
   const heir = await open(save({ homeLevel: 3, battleWins: 2, generation: 2, legacyPoints: 2 }));
@@ -595,7 +595,7 @@ await scenario('开局引导', async () => {
 await scenario('主公与称号页', async () => {
   const page = await open(save({ homeLevel: 4, battleWins: 12 }));
   await page.getByRole('button', { name: '主公' }).click();
-  await page.getByText('主公与称号').first().waitFor();
+  await page.getByRole('dialog', { name: '主公' }).waitFor();
   const rows = await page.locator('.title-row').count();
   const earned = await page.locator('.title-row.is-earned').count();
   check('主公页列出全部称号并标出已获得', rows >= 11 && earned >= 4 && (await page.locator('.lord-sheet').innerText()).includes('吕布'), `rows=${rows} earned=${earned}`);
@@ -736,8 +736,8 @@ await scenario('流民归附', async () => {
 await scenario('第五轮修复', async () => {
   // 传位点数封顶：已有 18 点、手上 234 万金，只能再换 2 点
   const rich = await open(save({ homeLevel: 6, gold: 2345678, legacyPoints: 18, generation: 3 }));
-  const hintText = await rich.locator('.succession-hint').innerText();
-  check('主城传位提示按上限封顶', hintText.includes('可换 2 点'), hintText.replace(/\n/g, ' ').slice(0, 80));
+  const hintText = await rich.locator('.chance-bar').innerText();
+  check('主城传位提示按上限封顶', hintText.includes('换 2 点'), hintText.replace(/\n/g, ' ').slice(0, 80));
   const gold = await rich.locator('.home-hud__chips strong').first().innerText();
   check('百万以上金币用「万」显示', gold === '234.6万', gold);
   const chipsFit = await rich.locator('.home-hud__chips strong').evaluateAll((els) => els.every((e) => e.scrollWidth <= e.clientWidth + 1));
@@ -840,8 +840,8 @@ await scenario('封地经略', async () => {
   const n0 = income(await base.getByRole('button', { name: /^处理政务/ }).innerText());
   const p0 = await power(base);
   await base.context().close();
-  check('侯府且金够时主城提示封郡', (await page.locator('.fief-hint').innerText()).includes('裂土封郡'));
-  await page.getByRole('button', { name: '去经略 →' }).click();
+  check('侯府且金够时机会栏提示封郡', (await page.locator('.chance-bar').innerText()).includes('可开拓南阳郡'));
+  await page.getByRole('button', { name: /可开拓南阳郡/ }).click();
   await page.getByRole('radio', { name: /整军/ }).click();
   await page.getByRole('button', { name: /开拓南阳郡 · 行整军之策/ }).click();
   await page.waitForTimeout(400);
@@ -850,7 +850,7 @@ await scenario('封地经略', async () => {
   check('下一郡显示差额', (await page.getByRole('button', { name: /差 290,000 金/ }).isVisible()));
   await page.getByRole('button', { name: '关闭' }).click();
   check('整军后军令上限 7', (await page.locator('.home-hud__chips').innerText()).includes('/7'));
-  check('任务「裂土封郡」可领赏', await page.locator('.quest-item').filter({ hasText: '裂土封郡' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
+  check('任务「初封一郡」可领赏', await page.locator('.quest-item').filter({ hasText: '初封一郡' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
 
   // 劝农：收入提高；教化：武力 +4
@@ -951,8 +951,8 @@ await scenario('伴侣心事第二段', async () => {
 await scenario('志向审查修复', async () => {
   const page = await open(save({ generation: 2, legacyPoints: 2 }));
   await page.getByRole('button', { name: '稍后再定' }).click();
-  check('稍后再定后折叠成一行', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.ambition-chip').innerText()).includes('志向未定'));
-  await page.getByRole('button', { name: '去选 →' }).click();
+  check('稍后再定后折叠成一行', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.chance-bar').innerText()).includes('志向未定'));
+  await page.getByRole('button', { name: /本代志向未定/ }).click();
   check('可重新展开选择', await page.locator('.ambition-card').isVisible());
   await page.context().close();
 
@@ -968,7 +968,7 @@ await scenario('志向审查修复', async () => {
   await gen1.context().close();
 
   const undone = await open(save({ generation: 2, homeLevel: 6, gold: 150000, battleWins: 9, ambition: { id: 'might', target: 30, baseFiefs: 0 } }));
-  check('传位卡提示志向未竟', (await undone.locator('.succession-hint').innerText()).includes('还差 21 胜'));
+  check('机会栏传位项提示志向未竟', (await undone.locator('.chance-bar').innerText()).includes('还差 21 胜'));
   await undone.getByRole('button', { name: '设置与存档' }).click();
   await undone.getByText('当前存档').first().waitFor();
   check('传位面板写明志向未竟', (await undone.locator('.succession-panel').innerText()).includes('未竟'));
@@ -983,7 +983,7 @@ await scenario('天下归心与新朝', async () => {
   await almost.context().close();
 
   const page = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, battleWins: 12, day: 30, fiefs: six, chronicle: [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: null, ambitionDone: false }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: 'wealth', ambitionDone: true }] }));
-  check('条件齐全出终局卡且 HUD 带天下归心', (await page.locator('.ending-hint').innerText()).includes('天下归心') && (await page.locator('.home-hud').innerText()).includes('天下归心'));
+  check('条件齐全出终局卡且 HUD 带天下归心', (await page.locator('.ending-hint').innerText()).includes('天下归心') && !(await page.locator('.home-hud').innerText()).includes('天下归心'));
   await page.getByRole('button', { name: '展开卷轴 →' }).click();
   const scroll = await page.locator('.ending-sheet__scroll').innerText();
   check('卷轴汇总三代总账', scroll.includes('共 3 代') && scroll.includes('106 日') && scroll.includes('71 场胜利') && scroll.includes('1 代志向达成'), scroll);
@@ -1019,7 +1019,7 @@ await scenario('新朝审查修复', async () => {
   check('终局时不再出志向卡', !(await end.locator('.ambition-card').isVisible().catch(() => false)));
   await end.getByRole('button', { name: '展开卷轴 →' }).click();
   await end.getByRole('button', { name: '再经营些时日' }).click();
-  check('关闭卷轴后终局卡折叠成一行', (await end.locator('.ending-chip').isVisible()) && !(await end.locator('.ending-hint').isVisible().catch(() => false)));
+  check('关闭卷轴后终局卡折叠进机会栏', (await end.locator('.chance-bar').innerText()).includes('天下归心') && !(await end.locator('.ending-hint').isVisible().catch(() => false)));
   await end.context().close();
 
   // 新朝后择主前刷新：标题页仍是「继续家业」且显示第 2 朝
@@ -1059,9 +1059,9 @@ await scenario('家风', async () => {
   await wealth.context().close();
   // 开疆家风：封地九折
   const exp = await open(save({ generation: 3, homeLevel: 5, gold: 135000, chronicle: two('expansion') }));
-  check('开疆家风九折后金够提示封郡', (await exp.locator('.fief-hint').innerText()).includes('135,000 金'));
-  await exp.getByRole('button', { name: '去经略 →' }).click();
-  await exp.getByRole('button', { name: /开拓南阳郡/ }).click();
+  check('开疆家风九折后机会栏报折后价', (await exp.locator('.chance-bar').innerText()).includes('135,000 金'));
+  await exp.getByRole('button', { name: /可开拓南阳郡/ }).click();
+  await exp.getByRole('button', { name: /^开拓南阳郡/ }).click();
   await exp.waitForTimeout(300);
   check('九折开拓扣 135,000', (await read(exp)).gold === 0 && (await read(exp)).fiefs?.nanyang === 'farming');
   await exp.context().close();

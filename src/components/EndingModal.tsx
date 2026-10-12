@@ -15,7 +15,7 @@ interface EndingModalProps {
 
 export function EndingModal({ state, dailyIncome, orderCap, onClose, onFound }: EndingModalProps) {
   const summary = dynastySummary(state);
-  const [realm, setRealm] = useState<RealmId>('wei');
+  const [realm, setRealm] = useState<RealmId>(state.realm ?? 'wei');
   const chosen = findRealm(realm)!;
   const lordName = findLord(state.selectedLordId)?.name ?? '主公';
   const concrete: Record<RealmId, string> = {
@@ -34,7 +34,7 @@ export function EndingModal({ state, dailyIncome, orderCap, onClose, onFound }: 
             <span>新朝国号</span>
             <strong>第 {dynastyCount(state.realms) + 1} 朝</strong>
           </div>
-          <p>定下国号后，金币、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来；国号加成永久保留，历朝可叠加。新朝开局每朝多得 20,000 金。</p>
+          <p>定下新朝国号后，金、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来；国号加成永久保留，历朝可叠加。新朝开局每朝多得 20,000 金。{state.realm ? `本朝国号「${findRealm(state.realm)?.name}」将随本朝入前朝。` : ''}</p>
           <div className="fief-policies" role="radiogroup" aria-label="选择国号">
             {realms.map((item) => (
               <button key={item.id} type="button" role="radio" aria-checked={realm === item.id} className={realm === item.id ? 'is-selected' : ''} onClick={() => setRealm(item.id)}>
@@ -59,7 +59,7 @@ export function EndingModal({ state, dailyIncome, orderCap, onClose, onFound }: 
             </div>
             {state.pastDynasties.map((entry) => (
               <div key={entry.dynasty} className="chronicle-row is-done">
-                <strong>第 {entry.dynasty} 朝 · {findRealm(entry.realm)?.name}</strong>
+                <strong>第 {entry.dynasty} 朝{entry.realm ? ` · ${findRealm(entry.realm)?.name}` : ' · 开国'}</strong>
                 <span>{entry.generations} 代 · {entry.days.toLocaleString()} 日 · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
               </div>
             ))}

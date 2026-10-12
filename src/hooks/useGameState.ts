@@ -69,6 +69,7 @@ function reducer(state: GameState, action: Action): GameState {
         tutorialDone: state.generation > 1 || state.tutorialDone,
         gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation > 1 && state.chronicle[state.chronicle.length - 1]?.ambitionDone ? AMBITION_REWARD_GOLD : 0) + (state.generation === 1 ? dynastyCount(state.realms) * DYNASTY_START_GOLD : 0),
         chronicle: state.chronicle,
+        realm: state.realm,
         realms: state.realms,
         pastDynasties: state.pastDynasties,
         ambition: null,
@@ -466,6 +467,7 @@ function reducer(state: GameState, action: Action): GameState {
       return {
         ...defaultGameState,
         chronicle: trimChronicle([...state.chronicle, entry]),
+        realm: state.realm,
         realms: state.realms,
         pastDynasties: state.pastDynasties,
         screen: 'lordSelect',
@@ -492,8 +494,8 @@ function reducer(state: GameState, action: Action): GameState {
       const realm = findRealm(action.realm);
       if (!realm || !isEndingReached(state)) return state;
       const summary = dynastySummary(state);
+      // 国号记在新朝：前朝条目带的是它自己的国号（开国第一朝为空）
       const realms = { ...state.realms, [realm.id]: state.realms[realm.id] + 1 };
-      // 本代志向此时一并结算
       const dynasty = state.pastDynasties.length + 1;
       return {
         ...defaultGameState,
@@ -501,8 +503,9 @@ function reducer(state: GameState, action: Action): GameState {
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,
         tutorialDone: true,
+        realm: realm.id,
         realms,
-        pastDynasties: [...state.pastDynasties, { dynasty, realm: realm.id, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions }].slice(-20),
+        pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions }].slice(-20),
         eventLog: [
           { id: `dynasty-${Date.now()}`, day: 1, title: `开创新朝 · ${realm.name}`, detail: `前朝历 ${summary.generations} 代 ${summary.days} 日，${summary.wins} 胜，六郡归心。新朝国号「${realm.name}」：${realm.effect}，永久保留。` }
         ]
@@ -510,7 +513,7 @@ function reducer(state: GameState, action: Action): GameState {
     }
     // 重开基业：放弃本朝重来，国号加成与前朝记录是跨朝资产，保留（只有「重置存档」才全清）
     case 'restart':
-      return { ...defaultGameState, soundEnabled: state.soundEnabled, realms: state.realms, pastDynasties: state.pastDynasties, tutorialDone: dynastyCount(state.realms) > 0 };
+      return { ...defaultGameState, soundEnabled: state.soundEnabled, realm: state.realm, realms: state.realms, pastDynasties: state.pastDynasties, tutorialDone: dynastyCount(state.realms) > 0 };
     case 'reset':
       clearGameState();
       return {

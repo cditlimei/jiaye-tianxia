@@ -81,7 +81,7 @@ export function SettingsModal({
       <div className="settings-panel">
         <section>
           <span>当前存档</span>
-          <strong>第 {state.day} 天 · {state.gold.toLocaleString()} 金</strong>
+          <strong>第 {state.day} 日 · {state.gold.toLocaleString()} 金</strong>
           <p>胜 {state.battleWins}（讨伐 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins}）· 负 {state.battleLosses}</p>
         </section>
         <section className="succession-panel">

@@ -1540,6 +1540,7 @@ body {
 
 .home-hud {
   position: relative;
+  flex: none;
   align-items: flex-start;
   min-height: 156px;
   padding: 58px 0 0;
@@ -4905,4 +4906,89 @@ small.stat-legend {
 
 .ending-chip {
   padding: 8px 12px;
+}
+
+/* 机会栏：非阻塞的选择合成一行 chip */
+.chance-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chance-bar button {
+  display: grid;
+  gap: 1px;
+  padding: 6px 12px;
+  border: 1px solid rgba(212, 168, 67, 0.5);
+  border-radius: 999px;
+  background: rgba(80, 58, 14, 0.55);
+  color: var(--gold-light);
+  text-align: left;
+}
+
+.chance-bar strong {
+  font-size: 12px;
+}
+
+.chance-bar span {
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 11px;
+}
+
+.frontier-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.frontier-alert button {
+  flex: none;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffe99d, #d4a843);
+  color: #241303;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home-hud__lord > div {
+  min-width: 0;
+}
+
+.home-hud__lord span {
+  display: block;
+  line-height: 1.3;
+}
+
+.home-hud__ambition {
+  white-space: normal;
+  line-height: 1.3;
+}
+
+@media (max-width: 360px) {
+  .home-hud {
+    flex-wrap: wrap;
+    /* 主城是纵向 flex，HUD 不能被压缩（原 min-height 156 只是顺带挡住了这点） */
+    flex: none;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+
+  .home-hud__lord {
+    width: 100%;
+  }
+
+  .home-hud__chips {
+    width: 100%;
+    margin: 6px 0 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .home-hud__chips div {
+    min-height: 46px;
+    padding: 4px 4px;
+  }
 }

@@ -113,7 +113,7 @@ export const quests: Quest[] = [
   },
   {
     id: 'fief-first',
-    title: '裂土封郡',
+    title: '初封一郡',
     description: '开拓第一块封地（宅邸升至侯府后）。',
     rewardGold: 8000,
     isComplete: (state) => ownedFiefCount(state.fiefs) >= 1
