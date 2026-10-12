@@ -9,6 +9,7 @@ import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
 import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmIncomePercent, realmStatBonus, type RealmId } from '../data/dynasty';
+import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
@@ -49,6 +50,10 @@ function inheritedQuestIds(farmLevel: number, fiefs: GameState['fiefs']) {
 function addBoost(current: GameState['partnerBoosts'][string] | undefined, extra: GameState['partnerBoosts'][string]) {
   const sum = (k: 'strength' | 'intelligence' | 'charisma') => (current?.[k] ?? 0) + (extra[k] ?? 0) || undefined;
   return { strength: sum('strength'), intelligence: sum('intelligence'), charisma: sum('charisma') };
+}
+
+function findPartnerName(partnerId: string) {
+  return partners.find((item) => item.id === partnerId)?.name ?? '';
 }
 
 function reducer(state: GameState, action: Action): GameState {
@@ -128,7 +133,10 @@ function reducer(state: GameState, action: Action): GameState {
       // 伴侣心事日：轮到一位还没了却心事的伴侣（没有待决事件时才起）
       const partnerDue = !calendarChoice && !state.pendingChoice && isPartnerEventDay(nextDay) ? nextPartnerForEvent(state.ownedPartnerIds, state.resolvedPartnerEvents) : null;
       const partnerChoice = partnerDue ? findPartnerEvent(partnerDue) : null;
-      const choice = calendarChoice ?? (partnerChoice ? { id: `partner:${partnerDue}`, title: partnerChoice.title, prompt: partnerChoice.prompt } : null);
+      // 府中小事：每 30 日轮一位伴侣，日历事件与心事都不在时才起
+      const minor = !calendarChoice && !partnerChoice && !state.pendingChoice ? minorEventFor(nextDay, state.ownedPartnerIds) : null;
+      const minorPartner = minor ? findPartnerName(minor.partnerId) : '';
+      const choice = calendarChoice ?? (partnerChoice ? { id: `partner:${partnerDue}`, title: partnerChoice.title, prompt: partnerChoice.prompt } : minor ? { id: minor.key, title: minor.template.title, prompt: minor.template.prompt(minorPartner) } : null);
       // 上一个二选一还没决断又来新的：旧的按「拿现钱」自动结算（伴侣心事无现钱，按第一项处理在 resolve 里不做，此处直接作废）
       const staleChoice = choice && state.pendingChoice ? resolvePendingEvent(state.pendingChoice) : null;
       const staleGold = staleChoice ? choiceGoldValue(staleChoice, state.pendingChoice!.dailyIncome) : 0;
@@ -176,6 +184,24 @@ function reducer(state: GameState, action: Action): GameState {
           resolvedPartnerEvents: { ...state.resolvedPartnerEvents, [eventKey]: chosen.id },
           eventLog: [
             { id: `partner-event-${eventKey}`, day: state.day, title: `${partnerEvent.title} · ${chosen.label}`, detail: chosen.detail },
+            ...state.eventLog
+          ].slice(0, 18)
+        };
+      }
+      if (event.id.startsWith('minor:')) {
+        const minor = parseMinorKey(event.id.slice('minor:'.length));
+        if (!minor) return { ...state, pendingChoice: null };
+        const picked = action.optionId === 'b' ? minor.template.options[1] : minor.template.options[0];
+        const gold = picked.kind === 'gold' ? minorGoldValue(state.pendingChoice.dailyIncome) : 0;
+        const boost = picked.kind === 'boost' && picked.stat ? { [picked.stat]: MINOR_BOOST_AMOUNT } : {};
+        return {
+          ...state,
+          pendingChoice: null,
+          gold: state.gold + gold,
+          orders: picked.kind === 'order' ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
+          partnerBoosts: picked.kind === 'boost' ? { ...state.partnerBoosts, [minor.partner.id]: addBoost(state.partnerBoosts[minor.partner.id], boost) } : state.partnerBoosts,
+          eventLog: [
+            { id: `minor-${state.pendingChoice.day}`, day: state.day, title: `${minor.partner.name} · ${minor.template.title} · ${picked.label}`, detail: picked.detail(minor.partner.name, gold), goldDelta: gold || undefined },
             ...state.eventLog
           ].slice(0, 18)
         };

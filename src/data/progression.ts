@@ -5,6 +5,7 @@ import { ownedFiefCount } from './fiefs';
 import { AMBITION_TITLE_COUNT, ambitionsAchieved } from './ambitions';
 import { isEndingReached } from './dynasty';
 import { traditionOf } from './traditions';
+import { minorGoldValue, parseMinorKey } from './minorEvents';
 
 export interface Quest {
   id: string;
@@ -244,6 +245,16 @@ export function resolvePendingEvent(pending: { eventId: string; day: number; dai
     return { id: pending.eventId, title: partnerEvent.title, prompt: partnerEvent.prompt, options: [
       { id: partnerEvent.options[0].id, label: partnerEvent.options[0].label, detail: partnerEvent.options[0].detail },
       { id: partnerEvent.options[1].id, label: partnerEvent.options[1].label, detail: partnerEvent.options[1].detail }
+    ] };
+  }
+  if (pending.eventId.startsWith('minor:')) {
+    const minor = parseMinorKey(pending.eventId.slice('minor:'.length));
+    if (!minor) return null;
+    const gold = minorGoldValue(pending.dailyIncome);
+    const [a, b] = minor.template.options;
+    return { id: pending.eventId, title: minor.template.title, prompt: minor.template.prompt(minor.partner.name), options: [
+      { id: 'a', label: a.label, detail: a.detail(minor.partner.name, gold) },
+      { id: 'b', label: b.label, detail: b.detail(minor.partner.name, gold) }
     ] };
   }
   return getChoiceEvent(pending.day, pending.dailyIncome);

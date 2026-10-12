@@ -43,7 +43,7 @@ try {
   await page.getByRole('button', { name: /升级宅邸/ }).click();
   await expectText(page, '木屋', 4000);
   await expectText(page, '家业目标');
-  await page.getByRole('button', { name: '领赏' }).first().click();
+  await page.getByRole('button', { name: '领赏', exact: true }).first().click();
   await expectText(page, '目标达成');
 
   await setSave(page, {

@@ -157,6 +157,7 @@ export function HomeScreen({
 
   const choiceRef = useRef<HTMLElement | null>(null);
   const actionRef = useRef<HTMLElement | null>(null);
+  const questRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (state.pendingChoice) choiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [state.pendingChoice]);
@@ -184,7 +185,9 @@ export function HomeScreen({
   };
 
   // 机会栏：封郡 / 传位 / 志向未定 / 天下归心 等非阻塞选择合成一行，首屏只留真正要决断的事
+  const claimable = questStatuses.filter((quest) => quest.complete && !quest.claimed).length;
   const chances = [
+    ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => questRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }] : []),
     ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可开拓${nextFiefToClaim.name}`, detail: `${nextFiefCost.toLocaleString()} 金，余 ${(state.gold - nextFiefCost).toLocaleString()}`, onClick: onOpenFief }] : []),
     ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
       ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [endingHint(state)?.replace(/。$/, '') ?? (fiefAffordable ? '先封郡再传位更划算' : ''), ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
@@ -264,9 +267,9 @@ export function HomeScreen({
       {state.pendingChoice && (() => {
         const event = resolvePendingEvent(state.pendingChoice);
         if (!event) return null;
-        const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === partnerIdOfKey(event.id.slice('partner:'.length))) : null;
+        const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === partnerIdOfKey(event.id.slice('partner:'.length))) : event.id.startsWith('minor:') ? partners.find((item) => item.id === event.id.split(':')[2]) : null;
         return (
-          <section ref={choiceRef} className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={partner ? '伴侣心事' : '府中事件'}>
+          <section ref={choiceRef} className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={event.id.startsWith('minor:') ? '府中小事' : partner ? '伴侣心事' : '府中事件'}>
             {partner && <ImageWithFallback src={imageUrl(partner.imagePath, 160)} alt={partner.name} className="choice-card__portrait" />}
             <span>第 {state.pendingChoice.day} 日 · {partner ? `${partner.name} · ` : ''}{event.title}</span>
             <strong>{event.prompt}</strong>
@@ -398,7 +401,7 @@ export function HomeScreen({
         </button>
       </nav>
 
-      <section className="quest-panel">
+      <section className="quest-panel" ref={questRef}>
         <div className="section-title">
           <span>家业目标</span>
           <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>

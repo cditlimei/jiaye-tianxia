@@ -1085,6 +1085,32 @@ await scenario('家风', async () => {
   await broken.context().close();
 });
 
+await scenario('府中小事与领赏角标', async () => {
+  // 第 7 → 8 日：轮到貂蝉的「寿宴」，选大办 → 声望 +2
+  const page = await open(save({ day: 7, ownedPartnerIds: ['diaochan'], claimedQuestIds: ['upgrade-wood'] }));
+  check('有可领任务时机会栏出现领赏角标', (await page.locator('.chance-bar').innerText()).includes('可领赏'));
+  await page.getByRole('button', { name: /^处理政务/ }).click();
+  await page.waitForTimeout(400);
+  let s = await read(page);
+  check('第 8 日起府中小事', s.pendingChoice?.eventId === 'minor:feast:diaochan' && (await page.locator('.choice-card').innerText()).includes('寿宴'), JSON.stringify(s.pendingChoice));
+  await page.locator('.choice-card__options button').filter({ hasText: '大办' }).click();
+  await page.waitForTimeout(300);
+  s = await read(page);
+  check('小事选项给伴侣加 2 点', s.partnerBoosts?.diaochan?.charisma === 2 && s.pendingChoice === null, JSON.stringify(s.partnerBoosts));
+  await page.context().close();
+  // 第 37 → 38 日：第二轮换模板「偶感风寒」，遣军医 → 军令 +1
+  const p2 = await open(save({ day: 37, orders: 2, ownedPartnerIds: ['diaochan', 'zhenji'] }));
+  await p2.getByRole('button', { name: /^处理政务/ }).click();
+  await p2.waitForTimeout(400);
+  s = await read(p2);
+  check('第 38 日换伴侣换模板', s.pendingChoice?.eventId === 'minor:ill:zhenji', JSON.stringify(s.pendingChoice));
+  await p2.locator('.choice-card__options button').filter({ hasText: '遣军医' }).click();
+  await p2.waitForTimeout(300);
+  // 第 38 日本身回 1 道（2→3），再加军医 +1
+  check('遣军医军令 +1', (await read(p2)).orders === 4, `orders=${(await read(p2)).orders}`);
+  await p2.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();
