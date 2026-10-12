@@ -582,7 +582,7 @@ function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex,
   const player = table.currentPlayer;
   const target = table.lastPlay && table.lastPlay.player !== player ? table.lastPlay.combo : null;
   const teammateLeads = Boolean(table.lastPlay && table.lastPlay.player !== player && table.lastPlay.player !== 0);
-  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: table.hands[0].length, teammateLeads, skill });
+  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: table.hands[0].length, teammateLeads, skill, unseen: [...table.hands[0], ...table.hands[player === 1 ? 2 : 1]] });
   const combo = cards ? evaluateCards(cards) : null;
 
   if (cards && combo && canBeat(combo, target)) {

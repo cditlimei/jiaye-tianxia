@@ -189,6 +189,8 @@ export interface AiContext {
   /** 当前要压的牌是否是队友打出的 */
   teammateLeads: boolean;
   skill?: AiSkill;
+  /** 未见牌（地主与队友手牌合集，不知归属）：高手按它推断哪手牌必不被压 */
+  unseen?: Card[];
   /** 测试用随机源 */
   rand?: () => number;
 }
@@ -207,6 +209,9 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
 
   if (skill === 'novice') return chooseNovicePlay(hand, target, playable, ctx, rand);
   if (skill === 'master') {
+    // 两手走完：手里剩「一手必不被压 + 一手任意牌」时，先出必不被压的保住出牌权
+    const finisher = ctx.unseen ? findTwoStepFinish(hand, target, playable, ctx.unseen) : null;
+    if (finisher) return finisher;
     const masterPlay = chooseMasterPlay(hand, target, playable, ctx);
     if (masterPlay !== undefined) return masterPlay;
   }
@@ -252,6 +257,43 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
   return null;
 }
 
+/** 未见牌里能否出现炸弹（四张同点或双王）：有可能就没有「必不被压」 */
+function bombPossible(unseen: Card[]) {
+  const counts = new Map<number, number>();
+  for (const card of unseen) counts.set(card.value, (counts.get(card.value) ?? 0) + 1);
+  if ([...counts.values()].some((n) => n >= 4)) return true;
+  return unseen.filter((card) => card.value >= 16).length >= 2;
+}
+
+/** 单张/对子/三张在未见牌里没有更大的同型，且没人可能有炸弹 */
+function isUnbeatable(combo: Combo, unseen: Card[]) {
+  if (combo.type === 'rocket') return true;
+  if (bombPossible(unseen)) return combo.type === 'bomb' && !unseen.some((card) => card.value >= 16) && !hasHigherBomb(combo.value, unseen);
+  const need = combo.type === 'single' ? 1 : combo.type === 'pair' ? 2 : combo.type === 'triple' ? 3 : combo.type === 'bomb' ? 4 : 0;
+  if (need === 0) return false;
+  const counts = new Map<number, number>();
+  for (const card of unseen) counts.set(card.value, (counts.get(card.value) ?? 0) + 1);
+  return ![...counts.entries()].some(([value, n]) => value > combo.value && n >= need);
+}
+
+function hasHigherBomb(value: number, unseen: Card[]) {
+  const counts = new Map<number, number>();
+  for (const card of unseen) counts.set(card.value, (counts.get(card.value) ?? 0) + 1);
+  return [...counts.entries()].some(([v, n]) => v > value && n >= 4);
+}
+
+/** 先出必不被压的一手，剩下的刚好是一手合法牌型，下一轮直接走完 */
+function findTwoStepFinish(hand: Card[], target: Combo | null, playable: Card[][], unseen: Card[]) {
+  for (const cards of playable) {
+    const combo = evaluateCards(cards);
+    if (!combo || !canBeat(combo, target) || !isUnbeatable(combo, unseen)) continue;
+    const played = new Set(cards.map((card) => card.id));
+    const rest = hand.filter((card) => !played.has(card.id));
+    if (rest.length > 0 && evaluateCards(rest)) return cards;
+  }
+  return null;
+}
+
 /** 生手：该压不压、大牌舍不得出、领出只会甩最小的单牌 */
 function chooseNovicePlay(hand: Card[], target: Combo | null, playable: Card[][], ctx: AiContext, rand: () => number): Card[] | null {
   const normal = playable.filter((cards) => !isBig(evaluateCards(cards)!));
@@ -280,6 +322,7 @@ function chooseMasterPlay(hand: Card[], target: Combo | null, playable: Card[][]
     return undefined;
   }
   if (!target) {
+    // 注意：「地主快走完时领牌先出必不被压的牌」实测让地主胜率反升 5pp，别再加
     if (ctx.landlordCards === 1) {
       const nonSingle = normal.find((cards) => evaluateCards(cards)!.type !== 'single');
       if (nonSingle) return nonSingle;
