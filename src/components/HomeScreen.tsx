@@ -9,7 +9,7 @@ import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
-import { dynastyCount, isEndingReached, realmIncomePercent } from '../data/dynasty';
+import { dynastyCount, endingHint, isEndingReached, realmIncomePercent } from '../data/dynasty';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -102,6 +102,13 @@ export function HomeScreen({
   const [ambitionDeferred, setAmbitionDeferred] = useState(() => {
     try { return window.sessionStorage.getItem('jiaye-ambition-deferred') === String(state.generation); } catch { return false; }
   });
+  const [endingSeen, setEndingSeen] = useState(() => {
+    try { return window.sessionStorage.getItem('jiaye-ending-seen') === String(state.pastDynasties.length); } catch { return false; }
+  });
+  const markEndingSeen = () => {
+    setEndingSeen(true);
+    try { window.sessionStorage.setItem('jiaye-ending-seen', String(state.pastDynasties.length)); } catch { /* 无存储也能用 */ }
+  };
   const deferAmbition = () => {
     setAmbitionDeferred(true);
     try { window.sessionStorage.setItem('jiaye-ambition-deferred', String(state.generation)); } catch { /* 无存储也能用 */ }
@@ -255,15 +262,23 @@ export function HomeScreen({
         </section>
       )}
 
-      {isEndingReached(state) && (
-        <section className="succession-hint ending-hint" aria-label="天下归心">
+      {isEndingReached(state) && endingSeen && (
+        <section className="fief-hint ending-chip" aria-label="天下归心">
           <strong>天下归心</strong>
-          <span>六郡尽归、王城巍峨、家业点已满。可开创新朝：定一国号，加成永久保留，历朝叠加。</span>
+          <span>可开创新朝。</span>
           <button type="button" onClick={onOpenEnding}>展开卷轴 →</button>
         </section>
       )}
 
-      {state.generation >= 2 && !state.ambition && ambitionDeferred && (
+      {isEndingReached(state) && !endingSeen && (
+        <section className="succession-hint ending-hint" aria-label="天下归心">
+          <strong>天下归心</strong>
+          <span>六郡尽归、王城巍峨、家业点已满。可开创新朝：定一国号，加成永久保留，历朝叠加。</span>
+          <button type="button" onClick={() => { markEndingSeen(); onOpenEnding(); }}>展开卷轴 →</button>
+        </section>
+      )}
+
+      {state.generation >= 2 && !state.ambition && !isEndingReached(state) && ambitionDeferred && (
         <section className="fief-hint ambition-chip" aria-label="本代志向待定">
           <strong>本代志向未定</strong>
           <span>定下志向才有传位结算与家谱记录。</span>
@@ -271,7 +286,7 @@ export function HomeScreen({
         </section>
       )}
 
-      {state.generation >= 2 && !state.ambition && !ambitionDeferred && (
+      {state.generation >= 2 && !state.ambition && !isEndingReached(state) && !ambitionDeferred && (
         <section className="ambition-card" aria-label="本代志向">
           <div className="section-title">
             <span>第 {state.generation} 代 · 本代志向</span>
@@ -308,7 +323,7 @@ export function HomeScreen({
       {state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && (
         <section className="succession-hint" aria-label="传位提示">
           <strong>家业已至王城，可传位给下一代</strong>
-          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。{fiefAffordable ? '封地随家业传下，先把钱投在封郡上再传位更划算。' : ''}{ambition && !ambition.done ? `志向「${ambition.ambition.name}」还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}，现在传位将记未竟。` : ''}</span>
+          <span>现有 {state.gold.toLocaleString()} 金可换 {legacyPointsGainable(state.gold, state.legacyPoints)} 点家业点：每点让政务与屯田收入 +5%，下一代开局多 3,000 金。{fiefAffordable ? '封地随家业传下，先把钱投在封郡上再传位更划算。' : ''}{ambition && !ambition.done ? `志向「${ambition.ambition.name}」还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}，现在传位将记未竟。` : ''}{endingHint(state) ?? ''}</span>
           <button type="button" onClick={onOpenSettings}>去传位 →</button>
         </section>
       )}

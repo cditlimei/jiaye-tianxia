@@ -49,6 +49,20 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           <p>{ambition.ambition.describe(ambition.target)}。{ambition.ambition.motto}。</p>
         </section>
       )}
+      {state.pastDynasties.length > 0 && (
+        <section className="chronicle" aria-label="前朝">
+          <div className="section-title">
+            <span>前朝</span>
+            <strong>{state.pastDynasties.length} 朝</strong>
+          </div>
+          {state.pastDynasties.map((entry) => (
+            <div key={entry.dynasty} className="chronicle-row is-done">
+              <strong>第 {entry.dynasty} 朝 · {findRealm(entry.realm)?.name} · 天下归心</strong>
+              <span>{entry.generations} 代 · {entry.days.toLocaleString()} 日 · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
+            </div>
+          ))}
+        </section>
+      )}
       {state.chronicle.length > 0 && (
         <section className="chronicle" aria-label="家谱">
           <div className="section-title">

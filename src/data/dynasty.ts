@@ -1,6 +1,7 @@
 import type { GameState } from '../types';
 import { ownedFiefCount } from './fiefs';
 import { LEGACY_MAX_POINTS } from '../lib/battle';
+import { ambitionStatus } from './ambitions';
 
 /**
  * 终局与新朝：六郡尽归 + 王城 + 家业点满，即「天下归心」。
@@ -43,6 +44,12 @@ export const realmIncomePercent = (realms: RealmCounts) => realms.shu * REALM_IN
 export const realmStatBonus = (realms: RealmCounts) => realms.wu * REALM_STAT_BONUS;
 export const dynastyCount = (realms: RealmCounts) => realms.wei + realms.shu + realms.wu;
 
+/** 离天下归心还差什么（六郡 + 王城齐了才提示家业点） */
+export function endingHint(state: GameState) {
+  if (isEndingReached(state) || ownedFiefCount(state.fiefs) < 6 || state.homeLevel < 6) return null;
+  return `再得 ${LEGACY_MAX_POINTS - state.legacyPoints} 点家业点即天下归心，可开创新朝。`;
+}
+
 /** 天下归心：六郡 + 王城 + 家业点满 */
 export function isEndingReached(state: GameState) {
   return ownedFiefCount(state.fiefs) >= 6 && state.homeLevel >= 6 && state.legacyPoints >= LEGACY_MAX_POINTS;
@@ -55,7 +62,8 @@ export function dynastySummary(state: GameState) {
     generations: state.generation,
     days: past.reduce((sum, entry) => sum + entry.days, 0) + state.day,
     wins: past.reduce((sum, entry) => sum + entry.wins, 0) + state.battleWins,
-    ambitions: past.filter((entry) => entry.ambitionDone).length,
+    // 本代志向此时一并计入
+    ambitions: past.filter((entry) => entry.ambitionDone).length + (ambitionStatus(state)?.done ? 1 : 0),
     fiefs: ownedFiefCount(state.fiefs)
   };
 }

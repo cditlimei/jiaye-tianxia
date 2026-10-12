@@ -1012,6 +1012,42 @@ await scenario('天下归心与新朝', async () => {
   await wei.context().close();
 });
 
+await scenario('新朝审查修复', async () => {
+  const six = { nanyang: 'farming', runan: 'farming', yingchuan: 'military', changsha: 'farming', bajun: 'farming', liaodong: 'farming' };
+  // 终局时不出志向卡；关闭卷轴后终局卡折叠
+  const end = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, fiefs: six }));
+  check('终局时不再出志向卡', !(await end.locator('.ambition-card').isVisible().catch(() => false)));
+  await end.getByRole('button', { name: '展开卷轴 →' }).click();
+  await end.getByRole('button', { name: '再经营些时日' }).click();
+  check('关闭卷轴后终局卡折叠成一行', (await end.locator('.ending-chip').isVisible()) && !(await end.locator('.ending-hint').isVisible().catch(() => false)));
+  await end.context().close();
+
+  // 新朝后择主前刷新：标题页仍是「继续家业」且显示第 2 朝
+  const page = await open(save({ screen: 'lordSelect', lastScreen: 'lordSelect', selectedLordId: null, generation: 1, legacyPoints: 0, realms: { wei: 1, shu: 0, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: 'wei', generations: 3, days: 100, wins: 70, ambitions: 1 }] }));
+  // 没有主公的存档读档直接落标题页
+  await page.getByText('家业天下').first().waitFor();
+  check('新朝待择主时标题页可继续', (await page.getByRole('button', { name: '继续家业' }).isVisible()) && (await page.locator('.title-screen__save').innerText()).includes('第 2 朝'));
+  await page.getByRole('button', { name: '继续家业' }).click();
+  check('择主页显示朝代横幅', (await page.locator('.dynasty-banner').innerText()).includes('国号加成 魏×1'));
+  await page.context().close();
+
+  // 重开基业保留国号与前朝
+  const restart = await open(save({ screen: 'title', lastScreen: 'title', realms: { wei: 1, shu: 1, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: 'wei', generations: 2, days: 70, wins: 50, ambitions: 1 }, { dynasty: 2, realm: 'shu', generations: 2, days: 60, wins: 40, ambitions: 0 }] }));
+  restart.on('dialog', (d) => d.accept());
+  await restart.getByRole('button', { name: '重开基业' }).click();
+  await restart.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  const s = await read(restart);
+  check('重开基业保留国号与前朝', s.realms?.wei === 1 && s.realms?.shu === 1 && s.pastDynasties?.length === 2 && s.generation === 1, JSON.stringify({ r: s.realms, p: s.pastDynasties?.length }));
+  await restart.context().close();
+
+  // 脏前朝记录：重编号并以前朝反推国号
+  const dirty = await open(save({ realms: { wei: 0, shu: 0, wu: 0 }, pastDynasties: [{ dynasty: 7, realm: 'wu', generations: 1e9, days: 1e12, wins: 1, ambitions: 0 }, { dynasty: 7, realm: 'wu', generations: 2, days: 10, wins: 1, ambitions: 0 }] }));
+  await dirty.waitForTimeout(300);
+  const d = await read(dirty);
+  check('前朝脏数据重编号且国号反推', d.pastDynasties?.[1]?.dynasty === 2 && d.pastDynasties?.[0]?.generations === 99 && d.realms?.wu === 2, JSON.stringify({ p: d.pastDynasties, r: d.realms }));
+  await dirty.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

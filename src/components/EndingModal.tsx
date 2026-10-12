@@ -7,15 +7,22 @@ import { ModalShell } from './common/ModalShell';
 
 interface EndingModalProps {
   state: GameState;
+  dailyIncome: number;
+  orderCap: number;
   onClose: () => void;
   onFound: (realm: RealmId) => void;
 }
 
-export function EndingModal({ state, onClose, onFound }: EndingModalProps) {
+export function EndingModal({ state, dailyIncome, orderCap, onClose, onFound }: EndingModalProps) {
   const summary = dynastySummary(state);
   const [realm, setRealm] = useState<RealmId>('wei');
   const chosen = findRealm(realm)!;
   const lordName = findLord(state.selectedLordId)?.name ?? '主公';
+  const concrete: Record<RealmId, string> = {
+    wei: `军令上限 ${orderCap} → ${orderCap + 1}，新朝第一天就多一道`,
+    shu: `按本朝现在的收入折算约 +${Math.round(dailyIncome / 10).toLocaleString()} 金/日，前期量小后期可观`,
+    wu: '相当于 1.5 个教化郡，开局战场即受益'
+  };
   return (
     <ModalShell title="天下归心" onClose={onClose}>
       <div className="ending-sheet">
@@ -33,7 +40,7 @@ export function EndingModal({ state, onClose, onFound }: EndingModalProps) {
               <button key={item.id} type="button" role="radio" aria-checked={realm === item.id} className={realm === item.id ? 'is-selected' : ''} onClick={() => setRealm(item.id)}>
                 <strong>{item.name}</strong>
                 <span>{item.effect}</span>
-                <small>{item.motto}{state.realms[item.id] > 0 ? ` · 已立 ${state.realms[item.id]} 朝` : ''}</small>
+                <small>{concrete[item.id]}{state.realms[item.id] > 0 ? ` · 已立 ${state.realms[item.id]} 朝` : ''}</small>
               </button>
             ))}
           </div>

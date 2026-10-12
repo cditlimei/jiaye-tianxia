@@ -220,7 +220,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
     orders: Math.min(orderCapFor(sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)), sanitizeRealms(parsed.realms)), sanitizeNumber(parsed.orders, ORDER_START, 0)),
-    realms: sanitizeRealms(parsed.realms),
+    realms: reconcileRealms(sanitizeRealms(parsed.realms), sanitizePastDynasties(parsed.pastDynasties)),
     pastDynasties: sanitizePastDynasties(parsed.pastDynasties),
     fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
     ambition: sanitizeAmbition(parsed.ambition, sanitizeNumber(parsed.generation, 1, 1), sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))),
@@ -322,15 +322,25 @@ function sanitizeRealms(value: unknown): GameState['realms'] {
   return { wei: pick('wei'), shu: pick('shu'), wu: pick('wu') };
 }
 
+/** realms 与前朝记录不一致时以前朝记录为准反推 */
+function reconcileRealms(realms: GameState['realms'], past: GameState['pastDynasties']): GameState['realms'] {
+  if (past.length === 0) return realms;
+  const derived = { wei: 0, shu: 0, wu: 0 };
+  for (const entry of past) derived[entry.realm] += 1;
+  return derived;
+}
+
 function sanitizePastDynasties(value: unknown): GameState['pastDynasties'] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((entry) => entry && typeof entry === 'object' && isRealmId((entry as { realm?: unknown }).realm))
     .map((entry) => {
       const e = entry as Record<string, unknown>;
-      return { dynasty: sanitizeNumber(e.dynasty, 1, 1), realm: e.realm as RealmId, generations: sanitizeNumber(e.generations, 1, 1), days: sanitizeNumber(e.days, 0, 0), wins: sanitizeNumber(e.wins, 0, 0), ambitions: sanitizeNumber(e.ambitions, 0, 0) };
+      return { dynasty: 0, realm: e.realm as RealmId, generations: Math.min(99, sanitizeNumber(e.generations, 1, 1)), days: Math.min(999999, sanitizeNumber(e.days, 0, 0)), wins: Math.min(999999, sanitizeNumber(e.wins, 0, 0)), ambitions: Math.min(99, sanitizeNumber(e.ambitions, 0, 0)) };
     })
-    .slice(-20);
+    .slice(-20)
+    // 朝代号按顺序重编，脏档的重复/乱序号不信
+    .map((entry, index) => ({ ...entry, dynasty: index + 1 }));
 }
 
 function sanitizeAmbition(value: unknown, generation: number, fiefs: FiefHoldings): GameState['ambition'] {

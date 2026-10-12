@@ -3,6 +3,7 @@ import type { GameState } from '../types';
 import { LEGACY_GOLD_PER_POINT, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, legacyPointsGainable, SUCCESSION_HOME_LEVEL } from '../lib/battle';
 import { GameButton } from './common/GameButton';
 import { ambitionSummary } from '../data/ambitions';
+import { endingHint, isEndingReached } from '../data/dynasty';
 import { ModalShell } from './common/ModalShell';
 
 interface SettingsModalProps {
@@ -35,12 +36,15 @@ export function SettingsModal({
   const canSucceed = state.homeLevel >= SUCCESSION_HOME_LEVEL && gainedPoints >= 1 && state.legacyPoints < LEGACY_MAX_POINTS;
   const successionHint = state.homeLevel < SUCCESSION_HOME_LEVEL
     ? `宅邸升至王城（${SUCCESSION_HOME_LEVEL} 级）后可传位。`
-    : state.legacyPoints >= LEGACY_MAX_POINTS
+    : isEndingReached(state)
+      ? '天下归心：家业点已满，可在主城展开卷轴开创新朝。'
+      : state.legacyPoints >= LEGACY_MAX_POINTS
       ? '家业点已达上限，传位不再增加加成。'
       : gainedPoints < 1
         ? `至少需 ${LEGACY_GOLD_PER_POINT.toLocaleString()} 金才能换到 1 点家业点。`
         : `现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
-  const ambitionNote = ambitionSummary(state);
+  const ambitionNote = isEndingReached(state) ? null : ambitionSummary(state);
+  const nearEnding = endingHint(state);
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -84,6 +88,7 @@ export function SettingsModal({
           <p>把全部金币换成家业点（每 {LEGACY_GOLD_PER_POINT.toLocaleString()} 金 1 点），每点让处理政务与屯田收入永久 +5%，并让之后每一代开局多 3,000 金。主公、伴侣、兵器、宅邸与任务从头再来，屯田与封地传给下一代。</p>
           <p className={canSucceed ? 'is-ok' : ''}>{successionHint}</p>
           {ambitionNote && <p className={ambitionNote.includes('已达成') ? 'is-ok' : 'is-warn'}>{ambitionNote}</p>}
+          {nearEnding && <p className="is-ok">{nearEnding}</p>}
           <GameButton variant={canSucceed ? 'primary' : 'ghost'} disabled={!canSucceed} onClick={onSucceed}>
             传位给下一代
           </GameButton>

@@ -24,6 +24,7 @@ type Action =
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'chooseAmbition'; ambitionId: AmbitionId }
   | { type: 'foundDynasty'; realm: RealmId }
+  | { type: 'restart' }
   | { type: 'setFiefPolicy'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
@@ -79,10 +80,12 @@ function reducer(state: GameState, action: Action): GameState {
           {
             id: `lord-${Date.now()}`,
             day: 1,
-            title: state.generation > 1 ? `第 ${state.generation} 代择主` : '择主立业',
+            title: state.generation > 1 ? `第 ${state.generation} 代择主` : dynastyCount(state.realms) > 0 ? `第 ${dynastyCount(state.realms) + 1} 朝开国` : '择主立业',
             detail: state.generation > 1
               ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%${state.chronicle[state.chronicle.length - 1]?.ambitionDone ? `；上一代志向达成，开局多得 ${AMBITION_REWARD_GOLD.toLocaleString()} 金` : ''}。请在主城定下本代志向。`
-              : '乱世基业已定，待择良缘共理家业。'
+              : dynastyCount(state.realms) > 0
+                ? `新朝开国。历朝国号加成：${(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')}；开局多得 ${(dynastyCount(state.realms) * DYNASTY_START_GOLD).toLocaleString()} 金。`
+                : '乱世基业已定，待择良缘共理家业。'
           }
         ]
       };
@@ -487,6 +490,7 @@ function reducer(state: GameState, action: Action): GameState {
       if (!realm || !isEndingReached(state)) return state;
       const summary = dynastySummary(state);
       const realms = { ...state.realms, [realm.id]: state.realms[realm.id] + 1 };
+      // 本代志向此时一并结算
       const dynasty = state.pastDynasties.length + 1;
       return {
         ...defaultGameState,
@@ -501,6 +505,9 @@ function reducer(state: GameState, action: Action): GameState {
         ]
       };
     }
+    // 重开基业：放弃本朝重来，国号加成与前朝记录是跨朝资产，保留（只有「重置存档」才全清）
+    case 'restart':
+      return { ...defaultGameState, soundEnabled: state.soundEnabled, realms: state.realms, pastDynasties: state.pastDynasties, tutorialDone: dynastyCount(state.realms) > 0 };
     case 'reset':
       clearGameState();
       return {
@@ -682,7 +689,7 @@ export function useGameState() {
     questStatuses,
     titleStatus,
     // 传位后还没选新主公时也算有存档，避免标题页「开始游戏」把世代清零
-    hasSave: Boolean(state.selectedLordId) || state.generation > 1,
+    hasSave: Boolean(state.selectedLordId) || state.generation > 1 || dynastyCount(state.realms) > 0 || state.pastDynasties.length > 0,
     setScreen: (screen: Screen) => dispatch({ type: 'setScreen', screen }),
     selectLord: (lordId: string) => dispatch({ type: 'selectLord', lordId }),
     selectStarterPartner: (partner: Partner) => dispatch({ type: 'selectStarterPartner', partner }),
@@ -705,6 +712,7 @@ export function useGameState() {
     succeed: () => dispatch({ type: 'succeed' }),
     startBattle: (mode: BattleMode, lossGold: number, extra: { rewardGold?: number; odds?: number; doudizhu?: boolean } = {}) => dispatch({ type: 'startBattle', mode, lossGold, ...extra }),
     resolveChoice: (optionId: string) => dispatch({ type: 'resolveChoice', optionId }),
-    resetGame: () => dispatch({ type: 'reset' })
+    resetGame: () => dispatch({ type: 'reset' }),
+    restartGame: () => dispatch({ type: 'restart' })
   };
 }

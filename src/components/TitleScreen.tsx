@@ -4,6 +4,7 @@ import { getTitleStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { LEGACY_START_GOLD_PER_POINT } from '../lib/battle';
 import { defaultGameState } from '../lib/storage';
+import { DYNASTY_START_GOLD, dynastyCount } from '../data/dynasty';
 import { GameButton } from './common/GameButton';
 
 interface TitleScreenProps {
@@ -37,8 +38,8 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
           ) : (
             // 传位后还没选新主公
             <>
-              <span>第 {state.generation} 代 · 待择新主</span>
-              <strong>家业点 {state.legacyPoints} · 新主起手 {(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT).toLocaleString()} 金</strong>
+              <span>{dynastyCount(state.realms) > 0 ? `第 ${dynastyCount(state.realms) + 1} 朝 · ` : ''}第 {state.generation} 代 · 待择新主</span>
+              <strong>家业点 {state.legacyPoints} · 新主起手 {(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation === 1 ? dynastyCount(state.realms) * DYNASTY_START_GOLD : 0)).toLocaleString()} 金</strong>
             </>
           )}
         </div>

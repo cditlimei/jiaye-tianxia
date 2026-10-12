@@ -6,6 +6,10 @@ import { useGameState } from './hooks/useGameState';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
 import { ambitionSummary } from './data/ambitions';
+import { DYNASTY_START_GOLD, dynastyCount, findRealm } from './data/dynasty';
+import { defaultGameState } from './lib/storage';
+import { LEGACY_START_GOLD_PER_POINT } from './lib/battle';
+import type { GameState } from './types';
 import { BattleScreen } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
 import { HomeScreen } from './components/HomeScreen';
@@ -65,12 +69,13 @@ export function App() {
   };
 
   const handleNew = () => {
-    if (game.hasSave && !confirmReset(game.state.legacyPoints > 0 ? `重开会清空当前家业进度，连同 ${game.state.legacyPoints} 点家业点与第 ${game.state.generation} 代传承一并作废。` : '重开会清空当前家业进度。')) {
+    const dynasties = game.state.pastDynasties.length;
+    if (game.hasSave && !confirmReset(`${game.state.legacyPoints > 0 ? `重开会清空当前家业进度，连同 ${game.state.legacyPoints} 点家业点与第 ${game.state.generation} 代传承一并作废。` : '重开会清空当前家业进度。'}${dynasties > 0 ? ` ${dynasties} 朝国号加成与前朝记录保留。` : ''}`)) {
       return;
     }
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
-    game.resetGame();
+    game.restartGame();
     game.setScreen('lordSelect');
   };
 
@@ -204,7 +209,7 @@ export function App() {
   };
 
   const resetGame = () => {
-    if (!confirmReset('重置会清空当前本地存档。')) {
+    if (!confirmReset(`重置会清空当前本地存档${game.state.pastDynasties.length > 0 ? '，连同历朝国号加成与前朝记录' : ''}。`)) {
       return;
     }
     game.resetGame();
@@ -239,7 +244,7 @@ export function App() {
     }
 
     if (game.state.screen === 'lordSelect') {
-      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} />;
+      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} banner={dynastyBanner(game.state)} />;
     }
 
     if (game.state.screen === 'partnerSelect' && game.selectedLord) {
@@ -344,6 +349,8 @@ export function App() {
         {modal === 'ending' && (
           <EndingModal
             state={game.state}
+            dailyIncome={game.dailyIncome}
+            orderCap={game.orderCap}
             onClose={() => setModal(null)}
             onFound={(realm) => {
               if (!confirmReset('开创新朝会把金币、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来，只保留国号加成。')) return;
@@ -400,6 +407,12 @@ export function App() {
       {effects.overlay && <EffectOverlay overlay={effects.overlay} onFinish={effects.finishEffect} />}
     </div>
   );
+}
+
+function dynastyBanner(state: GameState) {
+  const count = dynastyCount(state.realms);
+  if (count === 0) return undefined;
+  return `第 ${count + 1} 朝 · 国号加成 ${(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')} · 开局 ${(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + count * DYNASTY_START_GOLD).toLocaleString()} 金`;
 }
 
 function confirmReset(message: string) {

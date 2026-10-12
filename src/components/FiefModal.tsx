@@ -57,7 +57,7 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
       <div className="fief-sheet">
         {owned > 0 && (
           <p className="fief-sheet__summary">
-            已领 {owned}/{fiefs.length} 郡 · 劝农 +{fiefIncomePercent(state.fiefs)}% 收入 · 军令上限 {orderCapFor(state.fiefs, state.realms)} · 教化三项 +{fiefStatBonus(state.fiefs)}
+            已领 {owned}/{fiefs.length} 郡 · 劝农 +{fiefIncomePercent(state.fiefs)}% 收入 · 整军军令 +{orderCapFor(state.fiefs) - 6} · 教化三项 +{fiefStatBonus(state.fiefs)}
           </p>
         )}
         <p className="fief-sheet__intro">

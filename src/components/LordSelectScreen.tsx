@@ -9,9 +9,11 @@ interface LordSelectScreenProps {
   onConfirm: (lordId: string) => void;
   onBack: () => void;
   disabled?: boolean;
+  /** 新朝开国时的朝代提示 */
+  banner?: string;
 }
 
-export function LordSelectScreen({ onConfirm, onBack, disabled = false }: LordSelectScreenProps) {
+export function LordSelectScreen({ onConfirm, onBack, disabled = false, banner }: LordSelectScreenProps) {
   const [selectedId, setSelectedId] = useState(lords[0].id);
   const selectedLord = useMemo(() => lords.find((lord) => lord.id === selectedId) ?? lords[0], [selectedId]);
   const camp = CAMP_META[selectedLord.camp];
@@ -27,6 +29,7 @@ export function LordSelectScreen({ onConfirm, onBack, disabled = false }: LordSe
           返回
         </GameButton>
       </header>
+      {banner && <p className="dynasty-banner">{banner}</p>}
 
       <section className="lord-grid" aria-label="主公列表">
         {lords.map((lord) => {
