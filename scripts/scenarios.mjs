@@ -1201,6 +1201,20 @@ await scenario('整合复测修复', async () => {
   await fresh.context().close();
 });
 
+await scenario('府邸前军令每日回复', async () => {
+  // 木屋第 12 → 13 日（奇数日）也回 1 道；府邸同样操作不回
+  const early = await open(save({ homeLevel: 2, day: 12, orders: 0 }));
+  await early.getByRole('button', { name: /^处理政务/ }).click();
+  await early.waitForTimeout(300);
+  check('府邸前奇数日也回军令', (await read(early)).orders === 1 && (await read(early)).day === 13);
+  await early.context().close();
+  const late = await open(save({ homeLevel: 4, day: 12, orders: 0 }));
+  await late.getByRole('button', { name: /^处理政务/ }).click();
+  await late.waitForTimeout(300);
+  check('府邸后奇数日不回军令', (await read(late)).orders === 0 && (await read(late)).day === 13);
+  await late.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

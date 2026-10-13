@@ -19,7 +19,7 @@ function run(lordId, clicksPerDay) {
     const H = g.findHomeLevel(home), F = g.findFarmLevel(farm);
     const intel = b.calculateIntelligence(lord, partners), cha = b.calculateCharisma(lord, partners);
     for (let c = 0; c < clicksPerDay; c++) {
-      day++; const inc = b.totalDailyIncome(H.dailyIncome, F.incomePercent, 0, intel, F.flatIncome, ff.fiefIncomePercent(holdings)); if (day % 2 === 0) orders = Math.min(ff.orderCapFor(holdings), orders + 1);
+      day++; const inc = b.totalDailyIncome(H.dailyIncome, F.incomePercent, 0, intel, F.flatIncome, ff.fiefIncomePercent(holdings)); if (day % 2 === 0 || (process.env.ORDER_EARLY && home < 4)) orders = Math.min(ff.orderCapFor(holdings), orders + 1);
       const ev = pr.getDailyEvent(day, inc)?.goldDelta ?? 0; gold += inc + ev; income.work += inc + ev;
       const f = fr.advanceFrontier({ gold, homeLevel: home, frontierRaid: raid, nextRaidDay: nextRaid }, day);
       if (f.goldDelta < 0) { lostRaids++; } gold += f.goldDelta; raid = f.frontierRaid; nextRaid = f.nextRaidDay;
@@ -40,7 +40,7 @@ function run(lordId, clicksPerDay) {
       const nf = home >= 3 ? g.farmLevels.find((x) => x.level === farm + 1) : null; if (nf && gold >= nf.cost * CM) { gold -= nf.cost * CM; spent += nf.cost * CM; farm++; mark('farm' + farm, d); continue; }
       const bw = g.weapons.filter((w) => !owned.includes(w.id) && gold >= w.price).sort((x, y) => b.weaponBonusForLord(y, lordId) - b.weaponBonusForLord(x, lordId))[0];
       if (bw && b.weaponBonusForLord(bw, lordId) > b.weaponBonusForLord(weapon, lordId)) { gold -= bw.price; spent += bw.price; owned.push(bw.id); weapon = bw; mark('weapon_' + bw.rarity, d); continue; }
-      const cost = b.effectiveRecruitCost(800, cha); const cand = g.partners.find((p) => !partners.includes(p)); if (cand && gold >= cost) { gold -= cost; spent += cost; partners.push(cand); mark('partners' + partners.length, d); continue; }
+      const cand = g.partners.find((p) => !partners.includes(p)); const cost = cand ? b.effectiveRecruitCost(Math.round(cand.recruitCost * (1 + Number(process.env.PARTNER_STEP ?? 0) * (partners.length - 1))), cha) : Infinity; if (cand && gold >= cost) { gold -= cost; spent += cost; partners.push(cand); mark('partners' + partners.length, d); continue; }
       const nfief = home >= 5 ? ff.nextFief(holdings) : null; if (nfief && gold >= nfief.cost) { gold -= nfief.cost; spent += nfief.cost; holdings[nfief.id] = process.env.POLICY ?? 'farming'; mark('fief' + ff.ownedFiefCount(holdings), d); continue; }
       break;
     }
@@ -54,5 +54,5 @@ for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
   const k = (key) => { const v = R.map((r) => r.ms[key]).filter(Boolean); return v.length === R.length ? med(v) : v.length ? `${med(v)}(${v.length}%)` : '-'; };
   const inc = R.map((r) => r.income); const tot = inc.map((i) => i.battle + i.work + i.quest);
   const share = (f) => Math.round(100 * med(inc.map((i, j) => i[f] / tot[j])));
-  console.log(`RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 战斗收入占比 ${share('battle')}%`);
+  console.log(`RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 伴侣10 第${k('partners10')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 战斗收入占比 ${share('battle')}%`);
 }

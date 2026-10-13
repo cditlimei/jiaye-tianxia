@@ -403,7 +403,7 @@ export function HomeScreen({
           兵器库
         </GameButton>
         <GameButton variant="danger" onClick={onBattle} className={guided('battle')}>
-          出征讨伐{state.orders < 1 && !state.frontierRaid && <small className="game-button__sub">军令 0 · {daysUntilNextOrder(state.day)} 日后 +1</small>}
+          出征讨伐{state.orders < 1 && !state.frontierRaid && <small className="game-button__sub">军令 0 · {daysUntilNextOrder(state.day, state.homeLevel)} 日后 +1</small>}
         </GameButton>
       </section>
 

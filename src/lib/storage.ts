@@ -509,7 +509,7 @@ function applyOfflineIncome(state: GameState): GameState {
       eventGold += dailyEvent.goldDelta;
       eventCount += 1;
     }
-    if (isOrderDay(day)) regainedOrders += 1;
+    if (isOrderDay(day, state.homeLevel)) regainedOrders += 1;
     // 府中小事离线按「拿现钱」入账
     if (!getChoiceEvent(day, dailyIncome) && !(duePartner && isPartnerEventDay(day)) && minorEventFor(day, state.ownedPartnerIds)) {
       eventGold += minorGoldValue(dailyIncome);

@@ -80,8 +80,10 @@ export const ORDER_CAP = 6;
 export const ORDER_START = 3;
 export const ORDER_REGEN_DAYS = 2;
 /** 推进到第 day 日是否回一道军令 */
-export const isOrderDay = (day: number) => day % ORDER_REGEN_DAYS === 0;
-export const daysUntilNextOrder = (day: number) => ORDER_REGEN_DAYS - (day % ORDER_REGEN_DAYS);
+/** 府邸以前军令每日回 1 道（新手期每天都想出征），之后每 2 日回 1 道 */
+export const ORDER_FAST_HOME_LEVEL = 4;
+export const isOrderDay = (day: number, homeLevel = ORDER_FAST_HOME_LEVEL) => homeLevel < ORDER_FAST_HOME_LEVEL || day % ORDER_REGEN_DAYS === 0;
+export const daysUntilNextOrder = (day: number, homeLevel = ORDER_FAST_HOME_LEVEL) => (homeLevel < ORDER_FAST_HOME_LEVEL ? 1 : ORDER_REGEN_DAYS - (day % ORDER_REGEN_DAYS));
 export type BattleMode = 'land' | 'naval' | 'court' | 'frontier';
 
 export interface GameEvent {

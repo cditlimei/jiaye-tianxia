@@ -160,7 +160,7 @@ function reducer(state: GameState, action: Action): GameState {
         day: nextDay,
         frontierRaid: frontier.frontierRaid,
         nextRaidDay: frontier.nextRaidDay,
-        orders: isOrderDay(nextDay) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
+        orders: isOrderDay(nextDay, state.homeLevel) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
         incomeBuff,
         pendingChoice,
         eventLog

@@ -392,7 +392,7 @@ export function BattleScreen({
       <main className="screen battle-screen expedition-screen">
         <header className="screen-header">
           <div>
-            <span className="eyebrow">出征地图 · 军令 {orders}/{orderCap}{orders < orderCap ? `（${daysUntilNextOrder(day)} 日后 +1）` : ''}</span>
+            <span className="eyebrow">出征地图 · 军令 {orders}/{orderCap}{orders < orderCap ? `（${daysUntilNextOrder(day, homeLevel)} 日后 +1）` : ''}</span>
             <h2>九州征途</h2>
           </div>
           <GameButton variant="ghost" onClick={onReturnHome}>
@@ -559,10 +559,10 @@ export function BattleScreen({
             setMapOpen(false);
           }}
         >
-          {outOfOrders ? `军令不足 · 回府处理政务，${daysUntilNextOrder(day)} 日后 +1` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
+          {outOfOrders ? `军令不足 · 回府处理政务，${daysUntilNextOrder(day, homeLevel)} 日后 +1` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
         </GameButton>
         )}
-        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），每 2 日回 1 道，最多存 {orderCap} 道（整军封地可提高上限）。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
+        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），府邸前每日回 1 道、之后每 2 日回 1 道，最多存 {orderCap} 道（整军封地可提高上限）。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
       </main>
     );
   }
