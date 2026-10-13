@@ -26,9 +26,9 @@ export function incomeMultiplier(intelligence: number) {
   return 1 + Math.floor(intelligence / 10) / 100;
 }
 
-/** 宅邸收入 × (屯田 + 劝农封地)比例 × 家业点 × 智谋 */
+/** (宅邸 × 屯田比例 + 屯田固定收成) × 劝农/国号蜀 × 家业点 × 智谋；劝农乘全部政务收入，与文案「政务收入 +8%」一致 */
 export function totalDailyIncome(homeIncome: number, farmPercent: number, legacyPoints: number, intelligence: number, farmFlat = 0, fiefPercent = 0) {
-  return effectiveDailyIncome(Math.round((homeIncome * (1 + (farmPercent + fiefPercent) / 100) + farmFlat) * legacyIncomeMultiplier(legacyPoints)), intelligence);
+  return effectiveDailyIncome(Math.round((homeIncome * (1 + farmPercent / 100) + farmFlat) * (1 + fiefPercent / 100) * legacyIncomeMultiplier(legacyPoints)), intelligence);
 }
 
 export function effectiveDailyIncome(baseIncome: number, intelligence: number) {

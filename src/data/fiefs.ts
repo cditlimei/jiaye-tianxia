@@ -30,11 +30,11 @@ export const FIEF_POLICY_CHANGE_RATE = 0.1;
 
 export const fiefs: Fief[] = [
   { id: 'nanyang', name: '南阳郡', cost: 150000, description: '帝乡沃土，户口殷实，天下第一大郡。' },
-  { id: 'runan', name: '汝南郡', cost: 300000, description: '袁氏故里，士族林立，门生遍天下。' },
-  { id: 'yingchuan', name: '颍川郡', cost: 600000, description: '谋士之乡，荀氏、郭氏皆出于此。' },
-  { id: 'changsha', name: '长沙郡', cost: 1200000, description: '湘水之滨，粮米丰足，兵源充沛。' },
-  { id: 'bajun', name: '巴郡', cost: 2000000, description: '巴山蜀水，关隘险固，盐铁之利。' },
-  { id: 'liaodong', name: '辽东郡', cost: 3200000, description: '极北之地，胡汉杂居，良马成群。' }
+  { id: 'runan', name: '汝南郡', cost: 250000, description: '袁氏故里，士族林立，门生遍天下。' },
+  { id: 'yingchuan', name: '颍川郡', cost: 400000, description: '谋士之乡，荀氏、郭氏皆出于此。' },
+  { id: 'changsha', name: '长沙郡', cost: 700000, description: '湘水之滨，粮米丰足，兵源充沛。' },
+  { id: 'bajun', name: '巴郡', cost: 1100000, description: '巴山蜀水，关隘险固，盐铁之利。' },
+  { id: 'liaodong', name: '辽东郡', cost: 1600000, description: '极北之地，胡汉杂居，良马成群。' }
 ];
 
 export const fiefPolicies: FiefPolicy[] = [

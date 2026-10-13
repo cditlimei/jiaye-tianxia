@@ -847,7 +847,7 @@ await scenario('封地经略', async () => {
   await page.waitForTimeout(400);
   let s = await read(page);
   check('开拓南阳郡扣 15 万并记整军方略', s.gold === 10000 && s.fiefs?.nanyang === 'military', JSON.stringify({ gold: s.gold, fiefs: s.fiefs }));
-  check('下一郡显示差额', (await page.getByRole('button', { name: /差 290,000 金/ }).isVisible()));
+  check('下一郡显示差额', (await page.getByRole('button', { name: /差 240,000 金/ }).isVisible()));
   await page.getByRole('button', { name: '关闭' }).click();
   check('整军后军令上限 7', (await page.locator('.home-hud__chips').innerText()).includes('/7'));
   check('任务「初封一郡」可领赏', await page.locator('.quest-item').filter({ hasText: '初封一郡' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
@@ -1213,6 +1213,23 @@ await scenario('府邸前军令每日回复', async () => {
   await late.waitForTimeout(300);
   check('府邸后奇数日不回军令', (await read(late)).orders === 0 && (await read(late)).day === 13);
   await late.context().close();
+});
+
+await scenario('后期试玩修复', async () => {
+  // 传位 chip 写明下一代收益，不再给「先封郡」建议
+  const king = await open(save({ homeLevel: 6, gold: 250000, legacyPoints: 2, generation: 2, fiefs: {} }));
+  const bar = await king.locator('.chance-bar').innerText();
+  check('传位提示写明下一代收益', bar.includes('下一代收入 +20%') && bar.includes('开局 13,000 金') && !bar.includes('先封郡'), bar.replace(/\n/g, ' '));
+  await king.context().close();
+  // 传位后择主：继承了任务与封地，但不弹「清空进度」
+  const heir = await open(save({ screen: 'lordSelect', lastScreen: 'lordSelect', selectedLordId: null, generation: 2, legacyPoints: 2, farmLevel: 3, claimedQuestIds: ['farm-first'], fiefs: { nanyang: 'farming' } }));
+  let dialogs = 0;
+  heir.on('dialog', (d) => { dialogs += 1; d.accept(); });
+  await heir.getByRole('button', { name: '继续家业' }).click();
+  await heir.getByRole('button', { name: '确认选择' }).click();
+  await heir.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  check('传位后择主不弹清空进度确认', dialogs === 0, `dialogs=${dialogs}`);
+  await heir.context().close();
 });
 
 await scenario('斗地主难度随场次', async () => {

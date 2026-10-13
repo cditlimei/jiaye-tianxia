@@ -36,7 +36,7 @@ export const ambitions: Ambition[] = [
     progress: (state) => state.gold,
     unit: '金',
     describe: (target) => `传位时府库存金达 ${target.toLocaleString()} 金`,
-    hint: (_state, target) => `约 ${Math.floor(target / 100000)} 点家业点的钱，难度中`
+    hint: (_state, target) => `约 ${Math.floor(target / 100000)} 点家业点的钱，难度${target >= 500000 ? '高' : '中'}`
   },
   {
     id: 'might',
@@ -58,7 +58,7 @@ export const ambitions: Ambition[] = [
     describe: (target) => `本代新开拓 ${target} 郡封地`,
     hint: (state) => {
       const next = nextFief(state.fiefs);
-      return next ? `需侯府，${next.name} ${next.cost.toLocaleString()} 金，难度${next.cost >= 1000000 ? '高' : '中'}` : '六郡已满';
+      return next ? `${state.homeLevel < 5 ? '需侯府，' : ''}${next.name} ${next.cost.toLocaleString()} 金，难度${next.cost >= 250000 ? '高' : '中'}` : '六郡已满';
     }
   }
 ];

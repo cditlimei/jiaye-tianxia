@@ -84,7 +84,8 @@ export function App() {
     if (transitioning) return;
     // 选主公会重置存档；导入存档后从选伴侣页返回时也会走到这里，有进度就先确认
     const current = game.state;
-    const hasProgress = game.hasSave && (
+    // 传位或开新朝后还没定主公：屯田封地家业点都会保留，不是「清空进度」，不弹确认
+    const hasProgress = game.hasSave && Boolean(current.selectedLordId) && (
       current.day > 1 ||
       current.homeLevel > 1 ||
       current.battleWins + current.battleLosses > 0 ||
