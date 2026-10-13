@@ -1283,6 +1283,15 @@ await scenario('斗地主倍数与记牌器', async () => {
   // 记牌器总数 = 54 − 自己 20 张 = 34
   const total = cells.reduce((sum, t) => sum + Number(t.split('\n')[1] ?? 0), 0);
   check('记牌器显示另外两家共 34 张', cells.length === 15 && total === 34, `${cells.length} 格 共 ${total}`);
+  // 滑动选牌：按住从第 1 张划到第 4 张，四张全选中
+  const boxes = await page.locator('.player-hand .poker-card').evaluateAll((els) => els.slice(0, 4).map((el) => { const r = el.getBoundingClientRect(); return { x: r.left + 8, y: r.top + 24 }; }));
+  await page.mouse.move(boxes[0].x, boxes[0].y);
+  await page.mouse.down();
+  for (const b of boxes.slice(1)) await page.mouse.move(b.x, b.y, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const pressed = await page.locator('.player-hand .poker-card[aria-pressed="true"]').count();
+  check('滑动连选四张', pressed === 4, `选中 ${pressed} 张`);
   await page.context().close();
 });
 

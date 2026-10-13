@@ -182,6 +182,19 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     onResolved(win, win ? rewardGold * finalMultiplier : 0, lossGold * finalMultiplier, false, finalMultiplier);
   }, [finalMultiplier, lossGold, onResolved, onSfx, rewardGold, table.winner]);
 
+  // 出牌音效：任何一家出牌都响，炸弹/王炸换成爆炸声
+  const playedCountRef = useRef(0);
+  useEffect(() => {
+    if (table.played.length <= playedCountRef.current) {
+      playedCountRef.current = table.played.length;
+      return;
+    }
+    playedCountRef.current = table.played.length;
+    const type = table.lastPlay?.combo.type;
+    if (type === 'bomb' || type === 'rocket') onSfx('audio/sfx/sfx_bomb.mp3', 0.55);
+    else onSfx('audio/sfx/sfx_card_play.mp3', 0.45);
+  }, [onSfx, table.lastPlay, table.played.length]);
+
   const toggleCard = (cardId: string) => {
     if (table.currentPlayer !== 0 || table.winner !== null) return;
     setTable((prev) => ({
@@ -194,7 +207,6 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
 
   const playSelected = () => {
     if (!canPlay || !selectedCombo) return;
-    onSfx('audio/sfx/sfx_button.mp3', 0.32);
     setTable((prev) => applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`));
   };
 
@@ -226,22 +238,35 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     setTable((prev) => ({ ...prev, selectedIds: [] }));
   };
 
+  // 命中手牌：先看手指下露出的那张，落空再按横向位置推算
+  const cardUnderPointer = (target: HTMLElement, clientX: number, clientY: number) => {
+    const visibleCardId = cardIdFromPointer(target, clientX, clientY);
+    if (visibleCardId && playerHand.some((card) => card.id === visibleCardId)) return visibleCardId;
+    const index = handIndexFromPointer(target.getBoundingClientRect(), clientX, clientY, displayedHand.length, twoRows);
+    return displayedHand[index]?.id ?? null;
+  };
+
+  // 滑动选牌：按下开始一次手势，划过的每张牌翻转一次（主流斗地主的连选方式）
+  const swipeRef = useRef<Set<string> | null>(null);
   const selectCardFromHand = (event: PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || table.currentPlayer !== 0 || table.winner !== null || playerHand.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
-
-    const visibleCardId = cardIdFromPointer(event.currentTarget, event.clientX, event.clientY);
-    if (visibleCardId && playerHand.some((card) => card.id === visibleCardId)) {
-      toggleCard(visibleCardId);
-      return;
-    }
-
-    const index = handIndexFromPointer(event.currentTarget.getBoundingClientRect(), event.clientX, event.clientY, displayedHand.length, twoRows);
-    const card = displayedHand[index];
-    if (card) {
-      toggleCard(card.id);
-    }
+    const cardId = cardUnderPointer(event.currentTarget, event.clientX, event.clientY);
+    swipeRef.current = new Set(cardId ? [cardId] : []);
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 部分环境不支持 */ }
+    if (cardId) toggleCard(cardId);
+  };
+  const swipeOverHand = (event: PointerEvent<HTMLElement>) => {
+    const touched = swipeRef.current;
+    if (!touched || table.currentPlayer !== 0 || table.winner !== null) return;
+    const cardId = cardUnderPointer(event.currentTarget, event.clientX, event.clientY);
+    if (!cardId || touched.has(cardId)) return;
+    touched.add(cardId);
+    toggleCard(cardId);
+  };
+  const endSwipe = () => {
+    swipeRef.current = null;
   };
 
   return (
@@ -333,7 +358,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
         )}
       </section>
 
-      <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''} ${table.winner !== null && playerHand.length === 0 ? 'is-empty' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
+      <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''} ${table.winner !== null && playerHand.length === 0 ? 'is-empty' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand} onPointerMove={swipeOverHand} onPointerUp={endSwipe} onPointerCancel={endSwipe}>
         {displayedHand.map((card, index) => {
           const selected = table.selectedIds.includes(card.id);
           const joker = isJoker(card);
