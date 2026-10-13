@@ -137,7 +137,7 @@ try {
   await assertPlayerHandFits(page);
   await assertThreeSeatActions(page);
   await assertVisibleCardCornerSelection(page);
-  await page.locator('.player-hand').click({ position: { x: 32, y: 72 } });
+  await clickHand(page, { x: 32, y: 72 });
   await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
   await expectText(page, '19 张');
@@ -234,6 +234,24 @@ async function assertPlayerHandFits(page) {
   }
 }
 
+/**
+ * CI 上三次偶发「点手牌超时」，本地降速 4~8 倍都复现不了：
+ * 先等手牌里真有牌再点；仍超时就把当时的牌桌文字与手牌状态写进报错，方便从 CI 注解里看现场。
+ */
+async function clickHand(page, position) {
+  try {
+    await page.locator('.player-hand .poker-card').first().waitFor({ state: 'visible', timeout: 15000 });
+    await page.locator('.player-hand').click({ position, timeout: 15000 });
+  } catch (error) {
+    const scene = await page.evaluate(() => ({
+      hand: document.querySelector('.player-hand')?.className ?? 'missing',
+      cards: document.querySelectorAll('.player-hand .poker-card').length,
+      text: (document.querySelector('main')?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300)
+    })).catch(() => null);
+    throw new Error(`smoke_click_hand_failed ${JSON.stringify(scene)} ${String(error?.message ?? error).split('\n')[0]}`);
+  }
+}
+
 async function assertThreeSeatActions(page) {
   const seats = await page.$$eval('.ddz-seat', (items) => items.map((seat) => ({
     name: seat.querySelector('.ddz-seat__name')?.textContent?.trim(),
@@ -286,7 +304,7 @@ async function clickCardCorner(page, index) {
       y: cardBox.top - handBox.top + 22
     };
   });
-  await page.locator('.player-hand').click({ position: { x: data.x, y: data.y } });
+  await clickHand(page, { x: data.x, y: data.y });
   return data.id;
 }
 
