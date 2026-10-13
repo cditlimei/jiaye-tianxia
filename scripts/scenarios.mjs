@@ -1168,6 +1168,15 @@ await scenario('四十日试玩修复', async () => {
   await rich.context().close();
 });
 
+await scenario('朝代家声与侯府价', async () => {
+  const page = await open(save({ homeLevel: 4, gold: 30000, realm: 'wu', realms: { wei: 1, shu: 1, wu: 1 }, pastDynasties: [{ dynasty: 1, realm: null, generations: 2, days: 80, wins: 40, ambitions: 1 }, { dynasty: 2, realm: 'wei', generations: 2, days: 70, wins: 30, ambitions: 0 }, { dynasty: 3, realm: 'shu', generations: 1, days: 50, wins: 20, ambitions: 0 }] }));
+  check('侯府升级价 30,000', (await page.getByRole('button', { name: /升级宅邸/ }).innerText()).includes('30,000'));
+  await page.getByRole('button', { name: '主公' }).click();
+  const text = await page.getByRole('dialog', { name: '主公' }).innerText();
+  check('朝代家声：再造山河、三朝元老、三分归一', ['再造山河', '三朝元老', '三分归一'].every((name) => text.includes(`「${name}」`)) && !/「三分归一」\s*魏、蜀、吴/.test(text), text.match(/「三分归一」[^\n]*\n?[^\n]*/)?.[0]);
+  await page.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

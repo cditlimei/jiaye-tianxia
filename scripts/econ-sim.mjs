@@ -4,7 +4,10 @@ import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from 'node:fs'; i
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..'); const require = createRequire(join(ROOT, 'package.json')); const ts = require('typescript');
 const D = mkdtempSync(join(tmpdir(), 'jiaye-econ-')); mkdirSync(D + '/data', { recursive: true }); mkdirSync(D + '/lib', { recursive: true });
 const tr = (src, dst) => writeFileSync(dst, ts.transpileModule(readFileSync(src, 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/from '(\.\.?\/[^']+)'/g, "from '$1.mjs'"));
-for (const f of ['types', 'data/fiefs', 'data/gameData', 'data/progression', 'data/partnerEvents', 'lib/battle', 'lib/frontier']) tr(join(ROOT, `src/${f}.ts`), `${D}/${f}.mjs`);
+// 整个 data/ 与 lib/ 都转译，新增模块不用回来改清单（曾因清单写死、新模块缺失整条命令跑不起来）
+const { readdirSync } = await import('node:fs');
+const modules = ['types', ...['data', 'lib'].flatMap((dir) => readdirSync(join(ROOT, 'src', dir)).filter((name) => name.endsWith('.ts')).map((name) => `${dir}/${name.slice(0, -3)}`))];
+for (const f of modules) tr(join(ROOT, `src/${f}.ts`), `${D}/${f}.mjs`);
 const g = await import(pathToFileURL(D + '/data/gameData.mjs').href), pr = await import(pathToFileURL(D + '/data/progression.mjs').href), b = await import(pathToFileURL(D + '/lib/battle.mjs').href), fr = await import(pathToFileURL(D + '/lib/frontier.mjs').href), ff = await import(pathToFileURL(D + '/data/fiefs.mjs').href);
 const RW = Number(process.env.RW ?? 1), CM = Number(process.env.CM ?? 1);
 function run(lordId, clicksPerDay) {
@@ -51,5 +54,5 @@ for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
   const k = (key) => { const v = R.map((r) => r.ms[key]).filter(Boolean); return v.length === R.length ? med(v) : v.length ? `${med(v)}(${v.length}%)` : '-'; };
   const inc = R.map((r) => r.income); const tot = inc.map((i) => i.battle + i.work + i.quest);
   const share = (f) => Math.round(100 * med(inc.map((i, j) => i[f] / tot[j])));
-  console.log(`RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 战斗收入占比 ${share('battle')}%`);
+  console.log(`RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 战斗收入占比 ${share('battle')}%`);
 }

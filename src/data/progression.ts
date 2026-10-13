@@ -162,6 +162,9 @@ export const titles: Title[] = [
   { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true },
   { id: 'marquis', name: '裂土封侯', requirement: '封地三郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 3, lineage: true },
   { id: 'six-commanderies', name: '六郡之主', requirement: '六郡尽归府下', isEarned: (s) => ownedFiefCount(s.fiefs) >= 6, lineage: true },
+  { id: 'restorer', name: '再造山河', requirement: '开创第二朝', isEarned: (s) => s.pastDynasties.length >= 1, lineage: true },
+  { id: 'three-dynasties', name: '三朝元老', requirement: '历经三朝（开创第三朝）', isEarned: (s) => s.pastDynasties.length >= 2, lineage: true },
+  { id: 'three-realms', name: '三分归一', requirement: '魏、蜀、吴三个国号都立过', isEarned: (s) => s.realms.wei > 0 && s.realms.shu > 0 && s.realms.wu > 0, lineage: true },
   { id: 'unifier', name: '天下归心', requirement: '六郡尽归、王城、家业点满', isEarned: (s) => isEndingReached(s), lineage: true },
   { id: 'tradition', name: '家风传世', requirement: '连续两代达成同一志向', isEarned: (s) => traditionOf(s.chronicle) !== null, lineage: true },
   { id: 'scholarly', name: '家学渊源', requirement: `三代志向达成`, isEarned: (s) => ambitionsAchieved(s) >= AMBITION_TITLE_COUNT, lineage: true }
