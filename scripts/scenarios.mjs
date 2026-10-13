@@ -1267,7 +1267,7 @@ await scenario('斗地主难度随场次', async () => {
   await page.getByRole('button', { name: /初级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
-  const badges = await page.locator('.table-seat--opponent-left .seat-turn-badge, .table-seat--opponent-right .seat-turn-badge').allInnerTexts();
+  const badges = await page.locator('.ddz-seat--left .ddz-seat__badge, .ddz-seat--right .ddz-seat__badge').allInnerTexts();
   check('初级场对手标注生手', badges.some((b) => b.includes('生手')), badges.join('/'));
   await page.context().close();
 });
@@ -1280,7 +1280,7 @@ await scenario('斗地主', async () => {
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
   // 对手座位显示性格标签，且两局对手不同
-  const names1 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
+  const names1 = await page.locator('.ddz-seat--left .ddz-seat__name, .ddz-seat--right .ddz-seat__name').allInnerTexts();
   const g0 = (await read(page)).gold;
   let accept = false;
   page.on('dialog', (d) => (accept ? d.accept() : d.dismiss()));
@@ -1298,10 +1298,10 @@ await scenario('斗地主', async () => {
   const before = await read(page);
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
-  const badges = await page.locator('.table-seat--opponent-left .seat-turn-badge, .table-seat--opponent-right .seat-turn-badge').allInnerTexts();
+  const badges = await page.locator('.ddz-seat--left .ddz-seat__badge, .ddz-seat--right .ddz-seat__badge').allInnerTexts();
   check('对手座位标注性格', badges.some((b) => /激进|稳健|均衡/.test(b)), badges.join('/'));
   check('中级场对手标注老手', badges.some((b) => b.includes('老手')), badges.join('/'));
-  const names2 = await page.locator('.table-seat--opponent-left .table-seat__copy strong, .table-seat--opponent-right .table-seat__copy strong').allInnerTexts();
+  const names2 = await page.locator('.ddz-seat--left .ddz-seat__name, .ddz-seat--right .ddz-seat__name').allInnerTexts();
   check('下一局换对手', names1.join() !== names2.join(), `${names1.join('+')} → ${names2.join('+')}`);
   const t0 = Date.now();
   let stuck = 0;

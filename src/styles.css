@@ -5303,7 +5303,7 @@ small.stat-legend {
 .ddz-center {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 36%;
   transform: translate(-50%, -50%);
   display: grid;
   justify-items: center;

@@ -126,9 +126,9 @@ try {
   await expectText(page, '本场胜缴获 8,000 金');
   await page.getByRole('button', { name: '进入斗地主' }).click();
   await expectText(page, '斗地主牌局', 9000);
-  await expectText(page, '三人同桌');
-  await page.locator('.table-seat--opponent-left .table-seat__copy strong').waitFor({ state: 'visible', timeout: 5000 });
-  await page.locator('.table-seat--opponent-right .table-seat__copy strong').waitFor({ state: 'visible', timeout: 5000 });
+  await expectText(page, '底牌');
+  await page.locator('.ddz-seat--left .ddz-seat__name').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('.ddz-seat--right .ddz-seat__name').waitFor({ state: 'visible', timeout: 5000 });
   await assertPortraitDoudizhuFits(page);
   await page.setViewportSize({ width: 844, height: 390 });
   await assertLandscapeTable(page);
@@ -138,7 +138,7 @@ try {
   await page.locator('.player-hand').click({ position: { x: 32, y: 72 } });
   await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
-  await expectText(page, '19 张手牌');
+  await expectText(page, '19 张');
   await page.getByRole('button', { name: /^认输/ }).click();
   await expectText(page, '主城经营');
   assertOptimizedImages(imageRequests);
@@ -233,10 +233,10 @@ async function assertPlayerHandFits(page) {
 }
 
 async function assertThreeSeatActions(page) {
-  const seats = await page.$$eval('.table-seat', (items) => items.map((seat) => ({
-    name: seat.querySelector('.table-seat__copy strong')?.textContent?.trim(),
-    action: seat.querySelector('.seat-action')?.textContent?.trim(),
-    badge: seat.querySelector('.seat-turn-badge')?.textContent?.trim()
+  const seats = await page.$$eval('.ddz-seat', (items) => items.map((seat) => ({
+    name: seat.querySelector('.ddz-seat__name')?.textContent?.trim(),
+    action: seat.querySelector('.ddz-seat__action')?.textContent?.trim(),
+    badge: seat.querySelector('.ddz-seat__badge')?.textContent?.trim()
   })));
 
   if (seats.length !== 3 || seats.some((seat) => !seat.name || !seat.action || !seat.badge)) {
@@ -299,7 +299,7 @@ async function assertLandscapeTable(page) {
     };
   });
 
-  if (layout.shellWidth <= layout.shellHeight || layout.tipDisplay !== 'none') {
+  if (layout.shellWidth <= layout.shellHeight || (layout.tipDisplay !== 'none' && layout.tipDisplay !== '')) {
     throw new Error(`smoke_doudizhu_landscape_layout_failed ${JSON.stringify(layout)}`);
   }
 }
@@ -308,13 +308,13 @@ async function assertPortraitDoudizhuFits(page) {
   const layout = await page.evaluate(() => {
     const shell = document.querySelector('.phone-shell')?.getBoundingClientRect();
     const hand = document.querySelector('.player-hand')?.getBoundingClientRect();
-    const actions = document.querySelector('.doudizhu-actions')?.getBoundingClientRect();
-    const seats = [...document.querySelectorAll('.table-seat')].map((seat) => {
+    const actions = document.querySelector('.ddz-actions')?.getBoundingClientRect();
+    const seats = [...document.querySelectorAll('.ddz-seat')].map((seat) => {
       const box = seat.getBoundingClientRect();
       return {
         top: box.top,
         bottom: box.bottom,
-        action: seat.querySelector('.seat-action')?.textContent?.trim() ?? ''
+        action: seat.querySelector('.ddz-seat__action')?.textContent?.trim() ?? ''
       };
     });
 
