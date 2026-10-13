@@ -149,6 +149,33 @@ export function HomeScreen({
           ? 'income'
           : currentOrder.target;
   const guided = (target: typeof guidedTarget) => (guidedTarget === target ? 'is-guided' : '');
+  // 引导卡里直接给一个能点的按钮：钱够就去做这一步；不够先领任务奖励，再不够就「过一天」攒钱
+  const claimableQuests = questStatuses.filter((quest) => quest.complete && !quest.claimed);
+  const claimableGold = claimableQuests.reduce((sum, quest) => sum + quest.rewardGold, 0);
+  const stepCost = currentOrder?.target === 'upgrade' ? nextHome?.upgradeCost ?? 0 : currentOrder?.target === 'partner' ? cheapestPartner : currentOrder?.target === 'weapon' ? 1500 : 0;
+  const shortOf = Math.max(0, stepCost - state.gold);
+  const guideReason = !currentOrder
+    ? ''
+    : currentOrder.target === 'upgrade'
+      ? `${currentHome.name}升成${nextHome?.name ?? ''}，每次政务收入从 ${currentHome.dailyIncome} 金涨到 ${nextHome?.dailyIncome ?? ''} 金。`
+      : currentOrder.target === 'partner'
+        ? '伴侣入府直接加武力、智谋或声望，最便宜的一位 ' + (Number.isFinite(cheapestPartner) ? cheapestPartner.toLocaleString() : '') + ' 金。'
+        : currentOrder.target === 'weapon'
+          ? '换一把好兵器，武力立刻上涨，出征胜率更高。青釭剑或双股剑 1,500 金。'
+          : '去官道挑「推荐」的对手打一场，赢了缴获远多于政务收入。';
+  const guideAction: { label: string; run: () => void } | null = !currentOrder
+    ? null
+    : shortOf > 0 && claimableGold > 0
+      ? { label: `先领任务奖励 +${claimableGold.toLocaleString()} 金`, run: () => claimableQuests.forEach((quest) => onClaimQuest(quest.id)) }
+      : shortOf > 0
+        ? { label: `过一天 · +${dailyIncome.toLocaleString()} 金（还差 ${shortOf.toLocaleString()}）`, run: () => handleCollectIncome() }
+        : currentOrder.target === 'upgrade'
+          ? { label: `立即升级 · ${(nextHome?.upgradeCost ?? 0).toLocaleString()} 金`, run: () => handleUpgrade() }
+          : currentOrder.target === 'partner'
+            ? { label: '去招募伴侣 →', run: onOpenPartner }
+            : currentOrder.target === 'weapon'
+              ? { label: '去兵器库 →', run: onOpenWeapon }
+              : { label: '去出征 →', run: onBattle };
   const completedStarterOrders = starterOrders.filter((order) => order.done).length;
   useEffect(() => {
     if (!state.tutorialDone && completedStarterOrders === starterOrders.length) {
@@ -264,28 +291,33 @@ export function HomeScreen({
       )}
 
       {!state.tutorialDone && currentOrder && (
-        <>
-          {!state.tutorialDone && currentOrder && (
-            <section className="starter-panel" aria-label="开局引导">
-              <div className="section-title">
-                <span>开局引导 · 第 {starterOrders.indexOf(currentOrder) + 1} 步 / {starterOrders.length}</span>
-                <strong>{currentOrder.label}</strong>
-              </div>
-              <p className="starter-hint">{currentOrder.hint}</p>
-              <div className="starter-list">
-                {starterOrders.map((order) => (
-                  <span key={order.label} className={order.done ? 'is-done' : order === currentOrder ? 'is-current' : ''}>
-                    {order.done ? '已成' : order === currentOrder ? '进行中' : '待办'} · {order.label}
-                  </span>
-                ))}
-              </div>
-              <div className="starter-actions">
-                <button type="button" className="starter-go" onClick={() => actionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>去做这一步 ↓</button>
-                <button type="button" onClick={onCompleteTutorial}>跳过引导</button>
-              </div>
-            </section>
+        <section className="starter-panel" aria-label="开局引导">
+          <div className="section-title">
+            <span>开局引导 · 第 {starterOrders.indexOf(currentOrder) + 1} 步 / {starterOrders.length}</span>
+            <button type="button" className="starter-skip" onClick={onCompleteTutorial}>跳过引导</button>
+          </div>
+          {starterOrders.indexOf(currentOrder) < 2 && (
+            <ol className="starter-howto" aria-label="怎么玩">
+              <li><b>赚钱</b>：点「处理政务」过一天，宅邸给你收入。</li>
+              <li><b>变强</b>：用金币升宅邸、招伴侣、买兵器。</li>
+              <li><b>出征</b>：战力够了去打仗，缴获比政务多得多。</li>
+            </ol>
           )}
-        </>
+          <div className="starter-step">
+            <strong>这一步：{currentOrder.label}</strong>
+            <p>{guideReason}</p>
+            {guideAction && (
+              <button type="button" className="starter-do" onClick={guideAction.run}>{guideAction.label}</button>
+            )}
+          </div>
+          <div className="starter-progress" aria-label="引导进度">
+            {starterOrders.map((order) => (
+              <span key={order.label} className={order.done ? 'is-done' : order === currentOrder ? 'is-current' : ''}>
+                {order.done ? '✓' : order === currentOrder ? '●' : '○'} {order.label}
+              </span>
+            ))}
+          </div>
+        </section>
       )}
 
       {state.pendingChoice && (() => {
@@ -339,7 +371,7 @@ export function HomeScreen({
         </section>
       )}
 
-      {chances.length > 0 && (
+      {state.tutorialDone && chances.length > 0 && (
         <nav className="chance-bar" aria-label="可做的事">
           {chances.map((item) => (
             <button key={item.key} type="button" onClick={item.onClick} disabled={!item.onClick}>
@@ -380,12 +412,12 @@ export function HomeScreen({
             <strong>已招募 {ownedPartners.length} 位</strong>
             <small>{partnerNames === '尚未招募' ? '尚未招募伴侣，当前内庭寂静。' : partnerNames}</small>
           </div>
-          <div className="home-support-grid__fief">
+          {state.homeLevel >= 3 && <div className="home-support-grid__fief">
             <span>封地</span>
             <strong>{ownedFiefCount(state.fiefs) > 0 ? `已开拓 ${ownedFiefCount(state.fiefs)}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '尚未封郡' : '侯府后开放'}</strong>
             <small>{ownedFiefCount(state.fiefs) > 0 ? `劝农 +${fiefIncomePercent(state.fiefs)}% · 军令上限 ${orderCap} · 教化 +${fiefStatBonus(state.fiefs)}` : '六郡依次开拓，每郡定一条方略。'}{state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim && state.gold < nextFiefCost ? ` 下一郡${nextFiefToClaim.name} ${nextFiefCost.toLocaleString()} 金，还差 ${(nextFiefCost - state.gold).toLocaleString()}。` : ''}</small>
             <button type="button" className="home-support-grid__link" onClick={onOpenFief}>经略封地</button>
-          </div>
+          </div>}
         </div>
       </section>
 

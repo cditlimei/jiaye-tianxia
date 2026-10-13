@@ -167,7 +167,7 @@ await scenario('兵器与经济', async () => {
 
   // 声望折扣：显示与实扣一致
   const market = await open(save({ selectedLordId: 'guanyu', ownedPartnerIds: ['mifuren', 'daqiao'], gold: 99999 }));
-  await market.getByRole('button', { name: '招募伴侣' }).click();
+  await market.getByRole('button', { name: '招募伴侣', exact: true }).click();
   await market.getByText('伴侣招募').first().waitFor();
   const disc = Number((await market.locator('.partner-market__summary').innerText()).match(/-(\d+)%/)?.[1] ?? -1);
   const firstCard = market.locator('.partner-card').filter({ has: market.getByRole('button', { name: /召集/ }) }).first();
@@ -579,13 +579,19 @@ await scenario('开局引导', async () => {
   check('开局引导在首屏顶部且指向升级宅邸', (await panel.innerText()).includes('第 1 步') && (await page.getByRole('button', { name: /升级宅邸/ }).getAttribute('class')).includes('is-guided'));
   await page.getByRole('button', { name: /升级宅邸/ }).click();
   await page.waitForTimeout(2500);
-  const partnerBtn = page.getByRole('button', { name: '招募伴侣' });
+  const partnerBtn = page.getByRole('button', { name: '招募伴侣', exact: true });
   const incomeBtn = page.getByRole('button', { name: /^处理政务/ });
   check('第 2 步：钱不够时高亮处理政务', (await panel.innerText()).includes('第 2 步') && (await incomeBtn.getAttribute('class')).includes('is-guided') && !(await partnerBtn.getAttribute('class')).includes('is-guided'));
   await page.evaluate(([k]) => { const s = JSON.parse(localStorage.getItem(k)); s.gold = 5000; localStorage.setItem(k, JSON.stringify(s)); }, [KEY]);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await incomeBtn.waitFor();
   check('钱够了高亮招募伴侣', (await partnerBtn.getAttribute('class')).includes('is-guided'));
+  // 引导卡里有怎么玩说明，按钮能直接执行这一步
+  check('引导卡写明怎么玩', (await panel.innerText()).includes('赚钱') && (await panel.innerText()).includes('出征'));
+  await page.locator('.starter-do').click();
+  await page.waitForTimeout(300);
+  check('引导卡按钮直接打开招募', await page.getByRole('dialog').isVisible().catch(() => false));
+  await page.getByRole('button', { name: '关闭' }).click();
   await page.getByRole('button', { name: '跳过引导' }).click();
   await page.waitForTimeout(300);
   check('跳过后引导消失', !(await panel.isVisible().catch(() => false)) && (await read(page)).tutorialDone === true);
@@ -665,7 +671,7 @@ await scenario('离线保留事件与升阶画面', async () => {
 
 await scenario('品级定价与中途离阵', async () => {
   const page = await open(save({ gold: 99999, ownedPartnerIds: [] }));
-  await page.getByRole('button', { name: '招募伴侣' }).click();
+  await page.getByRole('button', { name: '招募伴侣', exact: true }).click();
   await page.getByText('伴侣招募').first().waitFor();
   const priceOf = async (name) => Number((await page.locator('.partner-card').filter({ hasText: name }).getByRole('button').innerText()).replace(/[^\d]/g, ''));
   const d = await priceOf('貂蝉'), c = await priceOf('蔡文姬'), z = await priceOf('甄姬');

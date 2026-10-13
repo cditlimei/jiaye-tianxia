@@ -230,60 +230,31 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   };
 
   return (
-    <main className="screen doudizhu-screen">
-      <aside className="orientation-tip" aria-hidden="true">
-        <strong>横屏牌桌</strong>
-        <span>把手机横过来，手牌和对局信息会更清楚。</span>
-      </aside>
-
-      <header className="screen-header doudizhu-header">
-        <div>
-          <span className="eyebrow">荆州 · 斗地主</span>
-          <h2>斗地主牌局</h2>
+    <main className="screen ddz-screen">
+      <header className="ddz-topbar">
+        {table.winner === null ? (
+          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>认输 −{lossGold.toLocaleString()}</button>
+        ) : (
+          <span className="ddz-topbar__quit is-idle">牌局结束</span>
+        )}
+        <div className="ddz-topbar__kitty" aria-label="地主底牌">
+          <span>底牌</span>
+          <MiniCardStrip cards={table.landlordCards} emptyLabel="未亮" center />
         </div>
-        <div className="doudizhu-header__side">
-          <span className="battle-record">胜 {wins} · 负 {losses}</span>
-          {table.winner === null && (
-            <GameButton variant="ghost" onClick={leaveTable}>
-              认输 −{lossGold.toLocaleString()}金
-            </GameButton>
-          )}
+        <div className="ddz-topbar__stake">
+          <h2>斗地主牌局</h2>
+          <span>胜 {wins} · 负 {losses}</span>
         </div>
       </header>
 
-      <section className="doudizhu-status" aria-live="polite">
-        <div>
-          <span>三人同桌 · {lord.name}坐庄</span>
-          <strong>{statusCopy}</strong>
-        </div>
-        <div>
-          <span>地主底牌</span>
-          <strong>{formatCards(table.landlordCards)}</strong>
-        </div>
-        {table.winner === null && (
-          <div className="doudizhu-selection-status">
-            <span>已选牌</span>
-            <strong>{selectedCopy}</strong>
-          </div>
-        )}
-      </section>
-
-      <section className="doudizhu-tabletop" aria-label="三人斗地主牌桌">
-        <div className="table-felt-lines" aria-hidden="true" />
-        <div className="table-dealer-mark" aria-hidden="true">
-          庄
-        </div>
-        <div className="landlord-kitty" aria-label="地主底牌">
-          <span>地主底牌</span>
-          <MiniCardStrip cards={table.landlordCards} emptyLabel="底牌未亮" center />
-        </div>
+      <section className="ddz-table" aria-label="三人斗地主牌桌">
         <PlayerSeat
           profile={profiles[1]}
           handCount={table.hands[1].length}
           recentCards={table.recentMoves[1]}
           recentAction={table.recentActions[1]}
           active={table.winner === null && table.currentPlayer === 1}
-          seat="opponent-left"
+          seat="left"
         />
         <PlayerSeat
           profile={profiles[2]}
@@ -291,20 +262,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
           recentCards={table.recentMoves[2]}
           recentAction={table.recentActions[2]}
           active={table.winner === null && table.currentPlayer === 2}
-          seat="opponent-right"
+          seat="right"
         />
-        <div className="table-center">
-          <div className="last-play-panel">
-            <span>当前牌型</span>
-            <strong>{table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</strong>
-            <MiniCardStrip cards={table.lastPlay?.cards ?? []} emptyLabel="桌面等待首轮出牌" center />
-            <p>{table.lastPlay ? formatCards(table.lastPlay.cards) : '无人压牌，任意合法牌型可出。'}</p>
-          </div>
-          <div className="history-panel">
-            {table.history.slice(0, 4).map((item, index) => (
-              <p key={`${index}-${item}`}>{item}</p>
-            ))}
-          </div>
+        <div className="ddz-center" aria-live="polite">
+          <span>{table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</span>
+          <strong>{statusCopy}</strong>
         </div>
         <PlayerSeat
           profile={profiles[0]}
@@ -324,9 +286,22 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
         </div>
       )}
 
-      <section className={`hand-readout ${canPlay ? 'is-playable' : ''}`} aria-live="polite">
-        <span>{table.winner !== null ? '牌局结束' : table.currentPlayer === 0 ? '你的回合' : '等待出牌'}</span>
-        <strong>{table.winner !== null ? statusCopy : selectedCopy}</strong>
+      <section className="ddz-actions" aria-live="polite">
+        {table.winner === null ? (
+          <>
+            <p className="ddz-readout">{table.currentPlayer === 0 ? selectedCopy : `等待 ${playerNames[table.currentPlayer]} 出牌`}</p>
+            <div className="ddz-actions__row">
+              <button type="button" className="ddz-btn ddz-btn--pass" onClick={pass} disabled={!canPass}>不要</button>
+              <button type="button" className="ddz-btn ddz-btn--hint" onClick={selectHint} disabled={!canHint}>提示</button>
+              <button type="button" className="ddz-btn ddz-btn--play" onClick={playSelected} disabled={!canPlay}>出牌</button>
+              <button type="button" className="ddz-btn ddz-btn--reset" onClick={resetSelection} disabled={table.selectedIds.length === 0}>重选</button>
+            </div>
+          </>
+        ) : (
+          <div className="ddz-actions__row">
+            <button type="button" className="ddz-btn ddz-btn--play" onClick={onReturnHome}>返回家业</button>
+          </div>
+        )}
       </section>
 
       <section className={`player-hand ${twoRows ? 'player-hand--two-rows' : ''} ${table.winner !== null && playerHand.length === 0 ? 'is-empty' : ''}`} aria-label="你的手牌" onPointerDownCapture={selectCardFromHand}>
@@ -380,29 +355,6 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
         })}
       </section>
 
-      <section className="doudizhu-actions">
-        {table.winner === null ? (
-          <>
-            <p className="doudizhu-action-readout">{selectedCopy}</p>
-            <GameButton variant="ghost" onClick={selectHint} disabled={!canHint}>
-              提示
-            </GameButton>
-            <GameButton onClick={playSelected} disabled={!canPlay}>
-              出牌
-            </GameButton>
-            <GameButton variant="secondary" onClick={pass} disabled={!canPass}>
-              不要
-            </GameButton>
-            <GameButton variant="ghost" onClick={resetSelection} disabled={table.selectedIds.length === 0}>
-              重选
-            </GameButton>
-          </>
-        ) : (
-          <GameButton block onClick={onReturnHome}>
-            返回家业
-          </GameButton>
-        )}
-      </section>
     </main>
   );
 }
@@ -421,20 +373,24 @@ function PlayerSeat({
   recentCards: Card[];
   recentAction: SeatAction;
   active: boolean;
-  seat: 'opponent-left' | 'opponent-right' | 'self';
+  seat: 'left' | 'right' | 'self';
   self?: boolean;
 }) {
   return (
-    <article className={`table-seat table-seat--${seat} ${active ? 'is-active' : ''} ${self ? 'is-self' : ''}`}>
-      <span className="seat-turn-badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? `${AI_STYLE_LABEL[profile.style]}${profile.skill ? AI_SKILL_LABEL[profile.skill] : ''}` : profile.role}</span>
-      <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} className="table-seat__avatar" />
-      <div className="table-seat__copy">
-        <strong>{profile.name}</strong>
-        <span>{profile.role} · {profile.title}</span>
-        <em>{handCount} 张手牌</em>
+    <article className={`ddz-seat ddz-seat--${seat} ${active ? 'is-active' : ''}`}>
+      <div className="ddz-seat__avatar">
+        <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} />
+        <span className={`ddz-seat__role ${profile.role === '地主' ? 'is-landlord' : ''}`}>{profile.role}</span>
       </div>
-      <MiniCardStrip cards={recentCards} emptyLabel="静待出牌" />
-      <SeatActionLine action={recentAction} active={active} self={self} hasCards={recentCards.length > 0} />
+      <div className="ddz-seat__info">
+        <strong className="ddz-seat__name">{profile.name}</strong>
+        <span className="ddz-seat__count">{handCount} 张</span>
+        <span className="ddz-seat__badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? `${AI_STYLE_LABEL[profile.style]}${profile.skill ? AI_SKILL_LABEL[profile.skill] : ''}` : profile.title}</span>
+      </div>
+      <div className="ddz-seat__play">
+        {recentCards.length > 0 && <MiniCardStrip cards={recentCards} emptyLabel="" />}
+        <SeatActionLine action={recentAction} active={active} self={self} hasCards={recentCards.length > 0} />
+      </div>
     </article>
   );
 }
@@ -461,7 +417,7 @@ function SeatActionLine({
         ? action.label
         : '等待出牌';
 
-  return <div className={`seat-action seat-action--${kind}`}>{label}</div>;
+  return <div className={`ddz-seat__action ddz-seat__action--${kind}`}>{label}</div>;
 }
 
 function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; emptyLabel: string; center?: boolean }) {

@@ -35,7 +35,7 @@ try {
   await expectText(page, '良缘入府', 7000);
   await page.getByRole('button', { name: '携美人，共创家业' }).click();
   await expectText(page, '升级宅邸', 7000);
-  await page.getByRole('button', { name: '招募伴侣' }).click();
+  await page.getByRole('button', { name: '招募伴侣', exact: true }).click();
   await expectText(page, '伴侣招募');
   await expectEnabled(page.getByRole('button', { name: /召集/ }).first());
   await page.getByRole('button', { name: '关闭' }).click();
@@ -87,7 +87,7 @@ try {
   await page.getByRole('button', { name: '导入存档' }).click();
   await expectText(page, '已导入第 12 日存档。');
   await page.getByRole('button', { name: '关闭' }).click();
-  await page.getByRole('button', { name: '招募伴侣' }).click();
+  await page.getByRole('button', { name: '招募伴侣', exact: true }).click();
   await expectText(page, '伴侣招募');
   await page.getByRole('button', { name: /召集/ }).first().click();
   await expectText(page, '已招募');

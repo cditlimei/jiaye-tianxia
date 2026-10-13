@@ -5017,3 +5017,415 @@ small.stat-legend {
 .home-footer span {
   white-space: normal;
 }
+
+/* 开局引导卡：怎么玩 + 这一步 + 直接能点的按钮 */
+.starter-panel .starter-skip {
+  padding: 2px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.35);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 12px;
+}
+
+.starter-howto {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: 12px;
+  background: rgba(13, 13, 26, 0.55);
+  color: rgba(245, 230, 200, 0.85);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.starter-howto b {
+  color: var(--gold-light);
+}
+
+.starter-step {
+  display: grid;
+  gap: 6px;
+}
+
+.starter-step strong {
+  color: var(--gold-light);
+  font-size: 16px;
+}
+
+.starter-step p {
+  margin: 0;
+  color: rgba(245, 230, 200, 0.82);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.starter-panel .starter-do {
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffe99d, #d4a843);
+  color: #241303;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.starter-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: rgba(245, 230, 200, 0.5);
+  font-size: 12px;
+}
+
+.starter-progress .is-done {
+  color: rgba(212, 168, 67, 0.75);
+}
+
+.starter-progress .is-current {
+  color: var(--gold-light);
+  font-weight: 700;
+}
+
+/* ===== 斗地主牌桌 v2：参照主流斗地主——角落头像、出牌落在各自一侧、按钮条贴在手牌上方 ===== */
+.ddz-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  height: 100%;
+  padding: 8px 8px 4px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 40%, #1f6b4a 0%, #134a33 55%, #0b2c1f 100%);
+}
+
+.ddz-topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.ddz-topbar__quit {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  color: rgba(255, 245, 220, 0.85);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ddz-topbar__quit.is-idle {
+  opacity: 0.6;
+}
+
+.ddz-topbar__kitty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ddz-topbar__kitty > span {
+  color: rgba(255, 245, 220, 0.7);
+  font-size: 11px;
+}
+
+.ddz-topbar__stake {
+  display: grid;
+  justify-items: end;
+  line-height: 1.2;
+}
+
+.ddz-topbar__stake h2 {
+  margin: 0;
+  color: #f3d58a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ddz-topbar__stake span {
+  color: rgba(255, 245, 220, 0.7);
+  font-size: 11px;
+}
+
+.ddz-table {
+  position: relative;
+  min-height: 150px;
+  border: 2px solid rgba(243, 213, 138, 0.25);
+  border-radius: 22px;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.07), transparent 60%),
+    radial-gradient(ellipse at 50% 50%, #237a54 0%, #17583c 70%, #104330 100%);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45);
+}
+
+/* 座位：头像 + 角色徽标 + 名字/张数 + 本轮出的牌 */
+.ddz-seat {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ddz-seat--left {
+  top: 8px;
+  left: 8px;
+}
+
+.ddz-seat--right {
+  top: 8px;
+  right: 8px;
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.ddz-seat--self {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  align-items: flex-end;
+}
+
+.ddz-seat__avatar {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 48px;
+}
+
+.ddz-seat__avatar img {
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(243, 213, 138, 0.7);
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top;
+  background: #f4ead2;
+}
+
+.ddz-seat.is-active .ddz-seat__avatar img {
+  border-color: #ffe27a;
+  box-shadow: 0 0 0 3px rgba(255, 226, 122, 0.45), 0 0 16px rgba(255, 226, 122, 0.6);
+}
+
+.ddz-seat__role {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #3b6fb6;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.ddz-seat__role.is-landlord {
+  background: #c8392b;
+}
+
+.ddz-seat__info {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ddz-seat__name {
+  color: #fff4d6;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ddz-seat__count {
+  justify-self: start;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffe27a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ddz-seat--right .ddz-seat__count {
+  justify-self: end;
+}
+
+.ddz-seat__badge {
+  color: rgba(255, 245, 220, 0.65);
+  font-size: 10px;
+}
+
+.ddz-seat__play {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  margin-top: 4px;
+}
+
+.ddz-seat--right .ddz-seat__play {
+  justify-items: end;
+}
+
+/* 自己出的牌放在桌面下方正中，靠近按钮条 */
+.ddz-seat--self .ddz-seat__play {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  justify-items: center;
+}
+
+.ddz-seat__action {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 245, 220, 0.85);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ddz-seat__action--pass {
+  color: #9fd3ff;
+}
+
+.ddz-seat__action--active {
+  background: #ffe27a;
+  color: #3a2400;
+  font-weight: 700;
+}
+
+.ddz-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  max-width: 46%;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ddz-center span {
+  color: rgba(255, 245, 220, 0.6);
+  font-size: 11px;
+}
+
+.ddz-center strong {
+  color: #fff4d6;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* 按钮条：紧贴手牌上方，居中一排 */
+.ddz-actions {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+}
+
+.ddz-readout {
+  margin: 0;
+  color: rgba(255, 245, 220, 0.75);
+  font-size: 11px;
+  min-height: 14px;
+}
+
+.ddz-actions__row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ddz-btn {
+  min-width: 72px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.ddz-btn:disabled {
+  opacity: 0.35;
+  box-shadow: none;
+}
+
+.ddz-btn--pass {
+  background: linear-gradient(180deg, #5b9bea, #2f6cc0);
+}
+
+.ddz-btn--hint {
+  background: linear-gradient(180deg, #f2a64a, #d47a12);
+}
+
+.ddz-btn--play {
+  background: linear-gradient(180deg, #6fd06b, #2f9a3a);
+}
+
+.ddz-btn--reset {
+  min-width: 56px;
+  padding: 7px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+.ddz-screen .player-hand {
+  margin: 0 -4px;
+}
+
+/* 竖屏：牌桌高度让给手牌两行；自己的出牌放桌面下方正中 */
+@media (orientation: portrait) {
+  .ddz-btn {
+    min-width: 64px;
+    padding: 8px 12px;
+  }
+}
+
+/* 横屏矮屏：压缩上下间距 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .ddz-screen {
+    gap: 4px;
+    padding: 6px 10px 2px;
+  }
+
+  .ddz-seat__avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .ddz-btn {
+    padding: 5px 14px;
+    font-size: 14px;
+  }
+}
+
+/* 旧横屏规则给手牌设了 grid-area: 3 / 2，会把新牌桌撑成两列，这里改回单列 */
+body.is-doudizhu-table .ddz-screen .player-hand {
+  grid-area: auto;
+  grid-column: 1 / -1;
+}
+
+/* 竖屏：对手各占半边，出的牌放在头像下方，不在中间相撞 */
+@media (orientation: portrait) {
+  .ddz-seat--left,
+  .ddz-seat--right {
+    flex-wrap: wrap;
+    max-width: calc(50% - 12px);
+  }
+
+  .ddz-seat--left .ddz-seat__play,
+  .ddz-seat--right .ddz-seat__play {
+    flex-basis: 100%;
+    margin-top: 6px;
+  }
+}
