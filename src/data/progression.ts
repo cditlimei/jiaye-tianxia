@@ -122,7 +122,7 @@ export const quests: Quest[] = [
   {
     id: 'fief-first',
     title: '初封一郡',
-    description: '开拓第一块封地（宅邸升至侯府后）。',
+    description: '开拓第一块封地。',
     rewardGold: 8000,
     isComplete: (state) => ownedFiefCount(state.fiefs) >= 1
   },
@@ -151,6 +151,7 @@ export const titles: Title[] = [
   { id: 'gentry', name: '乡绅', requirement: '宅邸升至砖瓦宅', isEarned: (s) => s.homeLevel >= 3 },
   { id: 'warlord', name: '一方豪强', requirement: '累计 10 场胜利', isEarned: (s) => s.battleWins >= 10 },
   { id: 'magnate', name: '府邸之主', requirement: '宅邸升至府邸', isEarned: (s) => s.homeLevel >= 4 },
+  { id: 'marquis-house', name: '侯门显贵', requirement: '宅邸升至侯府', isEarned: (s) => s.homeLevel >= 5 },
   { id: 'river-tiger', name: '江表虎臣', requirement: '赢得 5 场水战', isEarned: (s) => s.navalWins >= 5 },
   { id: 'court-star', name: '朝堂新贵', requirement: '赢得 5 场朝议', isEarned: (s) => s.courtWins >= 5 },
   { id: 'north-general', name: '镇北将军', requirement: '击退 3 次边患', isEarned: (s) => s.frontierWins >= 3 },

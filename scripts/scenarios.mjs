@@ -1177,6 +1177,30 @@ await scenario('朝代家声与侯府价', async () => {
   await page.context().close();
 });
 
+await scenario('整合复测修复', async () => {
+  // 曹操持专属青釭剑：方天画戟只多 1 点，不该提示；屯田够钱时提示并直达西蜀
+  const cao = await open(save({ selectedLordId: 'caocao', homeLevel: 3, gold: 6500, equippedWeaponId: 'qinggang', ownedWeaponIds: ['xuanjian', 'qinggang'] }));
+  const bar = await cao.locator('.chance-bar').innerText();
+  check('小幅提升的兵器不进机会栏', !bar.includes('可购入'), bar.replace(/\n/g, ' '));
+  await cao.getByRole('button', { name: /可升西蜀屯田/ }).click();
+  await cao.getByText('九州征途').first().waitFor();
+  check('屯田提示直达西蜀面板', await cao.getByRole('button', { name: /投入 6,000 金/ }).isVisible());
+  await cao.context().close();
+  // 侯府后机会栏显示下一目标与差额；称号「侯门显贵」
+  const hou = await open(save({ homeLevel: 5, gold: 20000 }));
+  check('侯府后显示下一目标差额', /下一目标 · 王城[\s\S]*还差 100,000 金/.test(await hou.locator('.chance-bar').innerText()));
+  check('侯府称号侯门显贵', (await hou.locator('.home-hud').innerText()).includes('侯门显贵'));
+  await hou.context().close();
+  // 新手首战：官道推荐档胜率不低于 80%
+  const fresh = await open(save({ tutorialDone: false, battleWins: 0, homeLevel: 2, gold: 1000 }));
+  await fresh.getByRole('button', { name: /出征讨伐/ }).first().click();
+  await fresh.getByText('九州征途').first().waitFor();
+  await fresh.getByRole('button', { name: /官道/ }).click();
+  const rec = await fresh.locator('.tier-card').filter({ hasText: '推荐' }).first().innerText();
+  check('新手首战推荐高胜率档', Number(rec.match(/胜率约 (\d+)%/)?.[1] ?? 0) >= 80, rec.replace(/\n/g, ' '));
+  await fresh.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();

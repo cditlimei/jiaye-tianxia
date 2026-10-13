@@ -3,7 +3,7 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import type { AiSkill } from '../lib/doudizhu';
-import { effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
+import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, type BattleMode } from '../types';
 import { imageUrl } from '../lib/assets';
@@ -12,6 +12,10 @@ import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
 interface BattleScreenProps {
+  /** 新手还没赢过第一场：官道推荐档改用高胜率档 */
+  firstBattle?: boolean;
+  /** 进地图时预选的区域（如从「可升屯田」进来直接选西蜀） */
+  initialRegion?: RegionId;
   lord: Lord;
   weapon: Weapon;
   totalPower: number;
@@ -39,7 +43,7 @@ interface BattleScreenProps {
 
 type BattlePhase = 'intro' | 'battle' | 'result';
 type VenueId = 'beginner' | 'middle' | 'high';
-type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
+export type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
 type RegionMode = 'doudizhu' | BattleMode | 'farm' | 'locked';
 interface Venue {
   id: VenueId;
@@ -150,6 +154,8 @@ let introPlayedThisSession = false;
 const SPEED_KEY = 'jiaye-tianxia-battle-speed';
 
 export function BattleScreen({
+  firstBattle = false,
+  initialRegion,
   lord,
   weapon,
   totalPower,
@@ -177,7 +183,7 @@ export function BattleScreen({
   const startedRef = useRef(false);
   const [mapOpen, setMapOpen] = useState(true);
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
-  const [selectedRegionId, setSelectedRegionId] = useState<RegionId>('jingzhou');
+  const [selectedRegionId, setSelectedRegionId] = useState<RegionId>(initialRegion ?? 'jingzhou');
   // 默认选能进的最高场
   const [venueId, setVenueId] = useState<VenueId>(() => [...VENUES].reverse().find((venue) => totalPower >= venue.requiredPower)?.id ?? 'beginner');
   // 每个战场自选的对手档位；null = 推荐档。边患不可选
@@ -193,7 +199,7 @@ export function BattleScreen({
     regionMode === 'farm' ? homeLevel < FARM_UNLOCK_HOME_LEVEL : regionMode !== 'doudizhu' && regionMode !== 'locked' && homeLevel < MODE_CONFIG[regionMode].unlockHomeLevel;
   const modeLocked = isModeLocked(selectedRegion.mode);
   const roster = ROSTERS[mode];
-  const recommendedTier = mode === 'frontier' ? recommendedTierIndex(roster, attackPower) : bestValueTierIndex(roster, attackPower);
+  const recommendedTier = mode === 'frontier' ? recommendedTierIndex(roster, attackPower) : firstBattle && mode === 'land' ? safeTierIndex(roster, attackPower) : bestValueTierIndex(roster, attackPower);
   const pickedTier = tierByMode[mode];
   // 之前选的档如果现在已经打不过（胜率不到 5%），退回推荐档
   const selectedTier = mode === 'frontier' || pickedTier == null || tierOddsFor(roster, pickedTier, attackPower) < 0.05 ? recommendedTier : pickedTier;

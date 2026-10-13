@@ -152,6 +152,15 @@ export function expectedTierGold(rewardGold: number, odds: number) {
 }
 
 /** 期望得失最高的档位，作为「推荐」 */
+/** 胜率不低于 minOdds 的最强一档（新手首战用，别让「初战告捷」变成抛硬币） */
+export function safeTierIndex(list: Enemy[], power: number, minOdds = 0.8) {
+  let best = 0;
+  list.forEach((_tier, index) => {
+    if (tierOddsFor(list, index, power) >= minOdds) best = index;
+  });
+  return best;
+}
+
 export function bestValueTierIndex(list: Enemy[], power: number) {
   let best = 0;
   let bestValue = -Infinity;

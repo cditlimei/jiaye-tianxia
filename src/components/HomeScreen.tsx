@@ -41,6 +41,7 @@ interface HomeScreenProps {
   onOpenPartnerTalk: () => void;
   onOpenWeapon: () => void;
   onBattle: () => void;
+  onOpenFarm: () => void;
   onClaimQuest: (questId: string) => void;
   onCompleteTutorial: () => void;
   onOpenSettings: () => void;
@@ -88,6 +89,7 @@ export function HomeScreen({
   onOpenPartnerTalk,
   onOpenWeapon,
   onBattle,
+  onOpenFarm,
   onClaimQuest,
   onCompleteTutorial,
   onOpenSettings,
@@ -193,14 +195,22 @@ export function HomeScreen({
   const claimable = questStatuses.filter((quest) => quest.complete && !quest.claimed).length;
   // 钱够就亮：比手上更强、买得起的兵器里最强的一把；屯田下一级
   const betterWeapon = weapons
-    .filter((item) => !state.ownedWeaponIds.includes(item.id) && state.gold >= item.price && weaponBonusForLord(item, lord.id) > weaponBonusForLord(weapon, lord.id))
+    // 提升至少 8 点或一成才值得提示（曾推过 5,000 金只加 1 点武力的方天画戟）
+    .filter((item) => !state.ownedWeaponIds.includes(item.id) && state.gold >= item.price && weaponBonusForLord(item, lord.id) - weaponBonusForLord(weapon, lord.id) >= Math.max(8, Math.round(weaponBonusForLord(weapon, lord.id) * 0.1)))
     .sort((a, b) => weaponBonusForLord(b, lord.id) - weaponBonusForLord(a, lord.id))[0] ?? null;
   const nextFarmLevel = farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null;
+  // 侯府以后的长线目标：王城与下一郡里更近的一个，显示还差多少（不可点，只是进度）
+  const longGoals = [
+    ...(state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextHome ? [{ name: nextHome.name, cost: nextHome.upgradeCost }] : []),
+    ...(state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim ? [{ name: nextFiefToClaim.name, cost: nextFiefCost }] : [])
+  ].filter((goal) => state.gold < goal.cost).sort((a, b) => a.cost - b.cost);
+  const goalChip = longGoals.length > 0 ? [{ key: 'goal', label: `下一目标 · ${longGoals[0].name}`, detail: `还差 ${(longGoals[0].cost - state.gold).toLocaleString()} 金，约 ${Math.ceil((longGoals[0].cost - state.gold) / Math.max(1, dailyIncome))} 次政务`, onClick: undefined }] : [];
   const nextFarmCost = state.homeLevel >= 3 && nextFarmLevel ? realmFarmCost(state.realms, nextFarmLevel.cost) : null;
   const chances = [
+    ...(state.tutorialDone && nextFarmCost !== null && state.gold >= nextFarmCost ? [{ key: 'farm', label: '可升西蜀屯田', detail: `${nextFarmCost.toLocaleString()} 金`, onClick: onOpenFarm }] : []),
     ...(state.tutorialDone && betterWeapon ? [{ key: 'weapon', label: `可购入${betterWeapon.name}`, detail: `${betterWeapon.price.toLocaleString()} 金，武力 +${weaponBonusForLord(betterWeapon, lord.id) - weaponBonusForLord(weapon, lord.id)}`, onClick: onOpenWeapon }] : []),
-    ...(state.tutorialDone && nextFarmCost !== null && state.gold >= nextFarmCost ? [{ key: 'farm', label: '可升西蜀屯田', detail: `${nextFarmCost.toLocaleString()} 金`, onClick: onBattle }] : []),
     ...(state.tutorialDone && Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10 ? [{ key: 'partner', label: '可再招一位伴侣', detail: `最便宜 ${cheapestPartner.toLocaleString()} 金`, onClick: onOpenPartner }] : []),
+    ...goalChip,
     ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => questRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }] : []),
     ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可开拓${nextFiefToClaim.name}`, detail: `${nextFiefCost.toLocaleString()} 金，余 ${(state.gold - nextFiefCost).toLocaleString()}`, onClick: onOpenFief }] : []),
     ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
@@ -248,7 +258,7 @@ export function HomeScreen({
 
       {state.frontierRaid && (
         <div className="frontier-alert" role="status">
-          <span>北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金。</span>
+          <span>北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金（最多 5,000）。</span>
           <button type="button" onClick={onBattle}>去迎战 →</button>
         </div>
       )}
@@ -373,7 +383,7 @@ export function HomeScreen({
           <div className="home-support-grid__fief">
             <span>封地</span>
             <strong>{ownedFiefCount(state.fiefs) > 0 ? `已开拓 ${ownedFiefCount(state.fiefs)}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '尚未封郡' : '侯府后开放'}</strong>
-            <small>{ownedFiefCount(state.fiefs) > 0 ? `劝农 +${fiefIncomePercent(state.fiefs)}% · 军令上限 ${orderCap} · 教化 +${fiefStatBonus(state.fiefs)}` : '六郡依次开拓，每郡定一条方略。'}</small>
+            <small>{ownedFiefCount(state.fiefs) > 0 ? `劝农 +${fiefIncomePercent(state.fiefs)}% · 军令上限 ${orderCap} · 教化 +${fiefStatBonus(state.fiefs)}` : '六郡依次开拓，每郡定一条方略。'}{state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim && state.gold < nextFiefCost ? ` 下一郡${nextFiefToClaim.name} ${nextFiefCost.toLocaleString()} 金，还差 ${(nextFiefCost - state.gold).toLocaleString()}。` : ''}</small>
             <button type="button" className="home-support-grid__link" onClick={onOpenFief}>经略封地</button>
           </div>
         </div>

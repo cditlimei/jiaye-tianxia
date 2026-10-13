@@ -163,10 +163,12 @@ export function App() {
     });
   };
 
-  const handleBattle = () => {
+  const [battleEntry, setBattleEntry] = useState<'xishu' | undefined>(undefined);
+  const handleBattle = (region?: 'xishu') => {
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
     setModal(null);
+    setBattleEntry(region);
     game.setScreen('battle');
   };
 
@@ -262,6 +264,8 @@ export function App() {
     if (game.state.screen === 'battle' && game.selectedLord) {
       return (
         <BattleScreen
+          firstBattle={!game.state.tutorialDone && game.state.battleWins === 0}
+          initialRegion={battleEntry}
           lord={game.selectedLord}
           weapon={game.equippedWeapon}
           totalPower={game.totalPower}
@@ -324,7 +328,8 @@ export function App() {
           onOpenPartner={() => setModal('partner')}
           onOpenPartnerTalk={() => setModal('partnerTalk')}
           onOpenWeapon={() => setModal('weapon')}
-          onBattle={handleBattle}
+          onBattle={() => handleBattle()}
+          onOpenFarm={() => handleBattle('xishu')}
           onClaimQuest={(questId) => {
             game.claimQuest(questId);
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.36);
