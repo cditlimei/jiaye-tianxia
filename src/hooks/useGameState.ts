@@ -8,7 +8,7 @@ import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, pars
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
-import { DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
+import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
 import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type FiefPolicyId } from '../data/fiefs';
@@ -388,7 +388,7 @@ function reducer(state: GameState, action: Action): GameState {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
       // 国号专属：魏加朝议、吴加水战
-      const rewardGold = Math.round(action.rewardGold * bonus * (action.doudizhu ? 1 : realmRewardScale(state.realms, action.mode)));
+      const rewardGold = Math.round(action.rewardGold * bonus * (action.doudizhu ? 1 : realmRewardScale(state.realms, action.mode) * bountyScale(state.day, action.mode)));
       const frontierSettled = action.mode === 'frontier' && !action.retreat;
       // 非北疆战场：战败/认输损失约定的军资（北疆走失守扣金）
       const lossGold = !action.win && action.mode !== 'frontier' ? Math.min(state.gold, Math.max(0, Math.round(action.lossGold ?? 0))) : 0;

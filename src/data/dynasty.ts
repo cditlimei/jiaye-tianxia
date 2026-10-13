@@ -52,6 +52,16 @@ export function realmRewardScale(realms: RealmCounts, mode: string) {
   if (mode === 'naval') return 1 + Math.min(3, realms.wu) * REALM_BATTLE_BONUS;
   return 1;
 }
+/** 今日军功：官道/江东/许都按日轮换，当日该战场缴获 +30%，让后期不只盯着一个战场 */
+export const BOUNTY_MODES = ['land', 'naval', 'court'] as const;
+export const BOUNTY_BONUS = 0.3;
+export function bountyMode(day: number) {
+  return BOUNTY_MODES[day % BOUNTY_MODES.length];
+}
+export function bountyScale(day: number, mode: string) {
+  return bountyMode(day) === mode ? 1 + BOUNTY_BONUS : 1;
+}
+
 export function realmFarmCost(realms: RealmCounts, cost: number) {
   return Math.round(cost * (1 - Math.min(3, realms.shu) * REALM_FARM_DISCOUNT));
 }

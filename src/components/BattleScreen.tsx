@@ -3,6 +3,7 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import type { AiSkill } from '../lib/doudizhu';
+import { bountyMode } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, type BattleMode } from '../types';
@@ -291,7 +292,7 @@ export function BattleScreen({
     let result: BattleRuntime['result'] = null;
     if (nextEnemyHp <= 0) {
       result = 'win';
-      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${Math.round(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${battleBonus && battleBonus > 1 ? '（练兵之策翻倍）' : realmScale(mode) > 1 ? '（国号加成）' : ''}。`);
+      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${Math.round(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${battleBonus && battleBonus > 1 ? '（练兵之策翻倍）' : realmScale(mode) > 1 ? '（军功/国号加成）' : ''}。`);
     } else {
       const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
       nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
@@ -407,7 +408,7 @@ export function BattleScreen({
             const available = region.mode !== 'locked' && !lockedByHome;
             const stateLabel = lockedByHome
               ? region.mode === 'farm' ? '砖瓦宅后开放' : region.mode !== 'doudizhu' && region.mode !== 'locked' ? `${MODE_CONFIG[region.mode].unlockHomeName}后开放` : region.state
-              : region.mode === 'farm' && farm.current.level > 0 ? `屯田 ${farm.current.level} 级` : region.mode === 'frontier' && raidActive ? '边患！' : region.state;
+              : region.mode === 'farm' && farm.current.level > 0 ? `屯田 ${farm.current.level} 级` : region.mode === 'frontier' && raidActive ? '边患！' : region.mode === bountyMode(day) ? `${region.state} · 今日军功` : region.state;
             return (
               <button
                 key={region.id}

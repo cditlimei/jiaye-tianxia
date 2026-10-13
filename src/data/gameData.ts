@@ -54,11 +54,13 @@ export interface Enemy {
   power: number;
   rewardGold: number;
   description: string;
+  /** 复用其他敌将立绘（后期新增档位没有单独出图） */
+  portraitId?: string;
 }
 
 /** 敌将立绘按 id 约定路径 */
-export function enemyImagePath(enemy: Pick<Enemy, 'id'>) {
-  return `assets/enemies/enemy_${enemy.id}.png`;
+export function enemyImagePath(enemy: Pick<Enemy, 'id' | 'portraitId'>) {
+  return `assets/enemies/enemy_${enemy.portraitId ?? enemy.id}.png`;
 }
 
 export const CAMP_META: Record<Camp, { name: string; color: string; softColor: string }> = {
@@ -384,7 +386,10 @@ export const navalEnemies: Enemy[] = [
   { id: 'naval-captain', name: '水军校尉', power: 90, rewardGold: 750, description: '操练有素的巡江水军' },
   { id: 'tower-ship-commander', name: '楼船都督', power: 140, rewardGold: 1875, description: '统领楼船的江防主将' },
   { id: 'grand-admiral', name: '水军大都督', power: 190, rewardGold: 5000, description: '号令三江的水师统帅' },
-  { id: 'legendary-admiral', name: '水师名将', power: 230, rewardGold: 12500, description: '威震长江的一代名将' }
+  { id: 'legendary-admiral', name: '水师名将', power: 230, rewardGold: 12500, description: '威震长江的一代名将' },
+  // 后期两档：实力到顶后奖励继续随实力增长
+  { id: 'river-overlord', name: '江表霸主', power: 280, rewardGold: 26000, description: '坐断东南的一方雄主', portraitId: 'legendary-admiral' },
+  { id: 'fleet-sovereign', name: '万舟之主', power: 340, rewardGold: 52000, description: '楼船蔽江、旌旗千里', portraitId: 'grand-admiral' }
 ];
 
 // 许都朝堂：比声望（主公 + 伴侣声望 + 宅邸），门槛最高，缴获约为同档陆战的 1.5 倍
@@ -393,7 +398,9 @@ export const courtEnemies: Enemy[] = [
   { id: 'prefect', name: '太守', power: 110, rewardGold: 900, description: '一郡之守，门生众多' },
   { id: 'nine-ministers', name: '九卿', power: 160, rewardGold: 2250, description: '朝中重臣，党羽遍布' },
   { id: 'three-dukes', name: '三公', power: 200, rewardGold: 6000, description: '位极人臣，一言九鼎' },
-  { id: 'regent', name: '权臣', power: 240, rewardGold: 15000, description: '挟天子以令诸侯' }
+  { id: 'regent', name: '权臣', power: 240, rewardGold: 15000, description: '挟天子以令诸侯' },
+  { id: 'chancellor', name: '丞相', power: 290, rewardGold: 30000, description: '总揽朝政、开府治事', portraitId: 'regent' },
+  { id: 'usurper-minister', name: '篡位权奸', power: 350, rewardGold: 60000, description: '觊觎神器，只差一步', portraitId: 'three-dukes' }
 ];
 
 // 北疆边患：比武力，限时迎战，缴获约为同档陆战的 2 倍
@@ -449,7 +456,9 @@ export const enemies: Enemy[] = [
   { id: 'rebel-captain', name: '叛军校尉', power: 100, rewardGold: 600, description: '据城叛乱，自封将军' },
   { id: 'enemy-vanguard', name: '敌国先锋', power: 140, rewardGold: 1500, description: '敌国前军，锐气正盛' },
   { id: 'enemy-general', name: '敌国大将', power: 190, rewardGold: 4000, description: '统兵万人的宿将' },
-  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 10000, description: '逐鹿天下的一方霸主' }
+  { id: 'chaos-warlord', name: '乱世枭雄', power: 230, rewardGold: 10000, description: '逐鹿天下的一方霸主' },
+  { id: 'hegemon-king', name: '一方霸王', power: 280, rewardGold: 22000, description: '据有数州、带甲十万', portraitId: 'chaos-warlord' },
+  { id: 'pretender', name: '僭号天子', power: 340, rewardGold: 45000, description: '自立为帝、号令一方', portraitId: 'enemy-general' }
 ];
 
 export function findLord(id: string | null) {

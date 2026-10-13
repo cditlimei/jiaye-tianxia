@@ -189,12 +189,12 @@ await scenario('选择对手', async () => {
   const cards = page.locator('.tier-card');
   const texts = await cards.allInnerTexts();
   const odds = texts.map((t) => Number(t.match(/胜率约 (\d+)%/)?.[1] ?? -1));
-  check('对手列表显示六档与胜率', texts.length === 6 && odds.every((o) => o >= 0), odds.join('/'));
+  check('对手列表显示八档与胜率', texts.length === 8 && odds.every((o) => o >= 0), odds.join('/'));
   // 头像是懒加载，先滚进视口再等它们加载完
   await page.locator('.tier-card').last().scrollIntoViewIfNeeded();
   await page.waitForFunction(() => [...document.querySelectorAll('.tier-card__avatar')].every((e) => e.tagName !== 'IMG' || e.complete), null, { timeout: 8000 }).catch(() => {});
   const avatars = await page.locator('.tier-card__avatar').evaluateAll((els) => els.map((e) => e.tagName === 'IMG' && e.naturalWidth > 0));
-  check('对手卡片带立绘头像', avatars.length === 6 && avatars.every(Boolean), JSON.stringify(avatars));
+  check('对手卡片带立绘头像', avatars.length === 8 && avatars.every(Boolean), JSON.stringify(avatars));
   const recommended = texts.findIndex((t) => t.includes('推荐 ·'));
   // 推荐 = 每道军令期望得失最高的一档（胜率按显示的 5% 档位取，允许并列）
   const ev = texts.map((t, i) => {
@@ -205,7 +205,7 @@ await scenario('选择对手', async () => {
   });
   const bestEv = Math.max(...ev);
   check('推荐档是期望得失最高的一档', recommended >= 0 && ev[recommended] >= bestEv * 0.95, `推荐=${texts[recommended]?.split('\n')[0]} 期望 ${ev.map((x) => Math.round(x)).join('/')}`);
-  check('越往上败损占缴获越重', ev.length === 6 && texts.every((t) => /胜\s\+[\d,]+ · 败\s−[\d,]+|力不能及/.test(t)), texts.map((t) => t.split('\n').pop()).join(' | '));
+  check('越往上败损占缴获越重', ev.length === 8 && texts.every((t) => /胜\s\+[\d,]+ · 败\s−[\d,]+|力不能及/.test(t)), texts.map((t) => t.split('\n').pop()).join(' | '));
   check('更弱档胜率更高、更强档胜率更低且有梯度', odds[0] >= odds[1] && odds[2] < odds[1] && odds[2] >= 20 && odds[3] < odds[2], odds.join('/'));
   await cards.nth(2).click();
   const summary = await page.locator('.venue-summary').innerText();
@@ -1230,6 +1230,27 @@ await scenario('后期试玩修复', async () => {
   await heir.getByText('良缘入府').first().waitFor({ timeout: 8000 });
   check('传位后择主不弹清空进度确认', dialogs === 0, `dialogs=${dialogs}`);
   await heir.context().close();
+});
+
+await scenario('后期档位与今日军功', async () => {
+  // 第 12 日轮到官道（12 % 3 = 0）：地图标注，档位缴获 ×1.3；第 13 日换江东
+  const tierRewards = async (page) => ((await page.locator('main').innerText()).match(/胜\s\+([\d,]+)/g) ?? []).map((t) => Number(t.replace(/[^\d]/g, '')));
+  const d12 = await open(save({ day: 12, homeLevel: 4 }));
+  await d12.getByRole('button', { name: /出征讨伐/ }).first().click();
+  await d12.getByText('九州征途').first().waitFor();
+  check('今日军功标在官道', (await d12.getByRole('button', { name: /官道/ }).innerText()).includes('今日军功'));
+  await d12.getByRole('button', { name: /官道/ }).click();
+  const boosted = await tierRewards(d12);
+  await d12.context().close();
+  const d13 = await open(save({ day: 13, homeLevel: 4 }));
+  await d13.getByRole('button', { name: /出征讨伐/ }).first().click();
+  await d13.getByText('九州征途').first().waitFor();
+  check('第 13 日军功换到江东', (await d13.getByRole('button', { name: /江东/ }).innerText()).includes('今日军功'));
+  await d13.getByRole('button', { name: /官道/ }).click();
+  const plain = await tierRewards(d13);
+  check('军功日官道缴获 ×1.3', plain.length > 0 && boosted[0] === Math.round(plain[0] * 1.3), `${plain[0]} → ${boosted[0]}`);
+  check('官道顶端新增两档', (await d13.locator('main').innerText()).includes('僭号天子'));
+  await d13.context().close();
 });
 
 await scenario('斗地主难度随场次', async () => {

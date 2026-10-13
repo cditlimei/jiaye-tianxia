@@ -6,7 +6,7 @@ import { isOrderDay, ORDER_START } from '../types';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
 import { fiefs as fiefCatalog } from '../data/fiefs';
 import { findAmbition, isAmbitionId, trimChronicle } from '../data/ambitions';
-import { isRealmId, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
+import { bountyScale, isRealmId, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
@@ -264,7 +264,7 @@ function settleAbandonedBattle(state: GameState): GameState {
   if (!doudizhu && mode !== 'frontier' && typeof odds === 'number' && typeof rewardGold === 'number') {
     const win = Math.random() < odds;
     const bonus = win && state.nextBattleBonus ? state.nextBattleBonus : 1;
-    const gained = Math.round(rewardGold * bonus * realmRewardScale(state.realms, mode));
+    const gained = Math.round(rewardGold * bonus * realmRewardScale(state.realms, mode) * bountyScale(state.day, mode));
     const lost = win ? 0 : Math.min(state.gold, lossGold);
     return {
       ...state,
