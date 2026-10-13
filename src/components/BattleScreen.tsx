@@ -382,7 +382,7 @@ export function BattleScreen({
         lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
         // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次
-        onResolved={(win, _shownReward, lossGold, forfeit) => onResolved(win, win ? selectedVenue.rewardGold : 0, 'land', Boolean(forfeit), lossGold, true)}
+        onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1) => onResolved(win, win ? selectedVenue.rewardGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true)}
         onReturnHome={onReturnHome}
       />
     );

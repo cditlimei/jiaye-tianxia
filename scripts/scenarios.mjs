@@ -1272,6 +1272,20 @@ await scenario('斗地主难度随场次', async () => {
   await page.context().close();
 });
 
+await scenario('斗地主倍数与记牌器', async () => {
+  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  check('开局倍数 ×1', (await page.locator('.ddz-multiplier').innerText()).includes('×1'));
+  const cells = await page.locator('.ddz-counter__cell').allInnerTexts();
+  // 记牌器总数 = 54 − 自己 20 张 = 34
+  const total = cells.reduce((sum, t) => sum + Number(t.split('\n')[1] ?? 0), 0);
+  check('记牌器显示另外两家共 34 张', cells.length === 15 && total === 34, `${cells.length} 格 共 ${total}`);
+  await page.context().close();
+});
+
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
@@ -1323,11 +1337,13 @@ await scenario('斗地主', async () => {
   }
   const ended = await page.getByRole('button', { name: '返回家业' }).isVisible().catch(() => false);
   const win = (await page.locator('main').innerText()).includes('胜 +');
+  // 炸弹/王炸/春天会翻倍，按牌桌显示的最终倍数核对
+  const mult = Number((await page.locator('.ddz-multiplier').innerText()).match(/×(\d+)/)?.[1] ?? 1);
   await page.waitForTimeout(400);
   const after = await read(page);
   const delta = after.gold - before.gold;
-  check('斗地主整局可打完且结算一致', ended && (win ? delta === 8000 && after.battleWins === before.battleWins + 1 : delta === -1600 && after.battleLosses === before.battleLosses + 1),
-    `${win ? '胜' : '负'} Δgold=${delta}`);
+  check('斗地主整局可打完且结算一致', ended && (win ? delta === 8000 * mult && after.battleWins === before.battleWins + 1 : delta === -Math.min(before.gold, 1600 * mult) && after.battleLosses === before.battleLosses + 1),
+    `${win ? '胜' : '负'} ×${mult} Δgold=${delta}`);
   await page.context().close();
 });
 

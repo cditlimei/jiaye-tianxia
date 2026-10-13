@@ -4,7 +4,7 @@ import { lords } from '../data/gameData';
 import type { Lord } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import type { Card, Combo, PlayerIndex } from '../lib/doudizhu';
-import { AI_SKILL_LABEL, AI_STYLE_LABEL, LORD_AI_STYLE, type AiSkill, canBeat, chooseAiPlay, comboLabel, createDoudizhuDeal, evaluateCards, findPlayableCombos, formatCards, sortCards, sortCardsDescending } from '../lib/doudizhu';
+import { AI_SKILL_LABEL, AI_STYLE_LABEL, LORD_AI_STYLE, type AiSkill, type ComboType, canBeat, chooseAiPlay, comboLabel, createDoudizhuDeal, evaluateCards, findPlayableCombos, formatCards, sortCards, sortCardsDescending } from '../lib/doudizhu';
 import type { AiStyle } from '../lib/doudizhu';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
@@ -18,7 +18,7 @@ interface DouDizhuGameProps {
   aiSkill: AiSkill;
   lossGold: number;
   onSfx: (path: string, volume?: number) => void;
-  onResolved: (win: boolean, rewardGold: number, lossGold: number, forfeit?: boolean) => void;
+  onResolved: (win: boolean, rewardGold: number, lossGold: number, forfeit?: boolean, multiplier?: number) => void;
   onReturnHome: () => void;
 }
 
@@ -39,6 +39,14 @@ interface TableState {
   recentActions: Record<PlayerIndex, SeatAction>;
   history: string[];
   winner: PlayerIndex | null;
+  /** 倍数：炸弹、王炸各翻一倍，封顶 MAX_MULTIPLIER；春天/反春在结算时再翻一倍 */
+  multiplier: number;
+  /** 各家出过几手（判春天用） */
+  plays: Record<PlayerIndex, number>;
+  /** 已打出的所有牌（记牌器用） */
+  played: Card[];
+  /** 桌心大字特效，id 变了就重播动画 */
+  flash: { id: number; text: string; big: boolean } | null;
 }
 
 interface SeatAction {
@@ -111,10 +119,17 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
             ? `${selectedCombo.label} · ${formatCards(selectedCards)}`
             : `${selectedCombo.label} 不够大`
           : '牌型不合法';
+  const spring = springOf(table);
+  const finalMultiplier = Math.min(MAX_MULTIPLIER, table.multiplier * (spring ? 2 : 1));
+  // 记牌器：去掉自己手牌和已出的牌，剩下的就是另外两家手里的
+  const counter = COUNTER_RANKS.map((item) => ({
+    label: item.label,
+    left: item.total - playerHand.filter(item.match).length - table.played.filter(item.match).length
+  }));
   const statusCopy = table.winner !== null
     ? table.winner === 0
-      ? `胜 +${rewardGold.toLocaleString()} 金`
-      : `${playerNames[table.winner]}先走完 −${lossGold.toLocaleString()} 金`
+      ? `胜 +${(rewardGold * finalMultiplier).toLocaleString()} 金${finalMultiplier > 1 ? `（×${finalMultiplier}${spring ? ` · ${spring}` : ''}）` : ''}`
+      : `${playerNames[table.winner]}先走完 −${(lossGold * finalMultiplier).toLocaleString()} 金${finalMultiplier > 1 ? `（×${finalMultiplier}${spring ? ` · ${spring}` : ''}）` : ''}`
     : table.currentPlayer === 0
       ? targetCombo
         ? `请大过 ${playerNames[table.lastPlay!.player]} 的${comboLabel(targetCombo)}`
@@ -164,8 +179,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     settledRef.current = true;
     const win = table.winner === 0;
     onSfx(win ? 'audio/sfx/sfx_victory.mp3' : 'audio/sfx/sfx_defeat.mp3', 0.58);
-    onResolved(win, win ? rewardGold : 0, lossGold);
-  }, [lossGold, onResolved, onSfx, rewardGold, table.winner]);
+    onResolved(win, win ? rewardGold * finalMultiplier : 0, lossGold * finalMultiplier, false, finalMultiplier);
+  }, [finalMultiplier, lossGold, onResolved, onSfx, rewardGold, table.winner]);
 
   const toggleCard = (cardId: string) => {
     if (table.currentPlayer !== 0 || table.winner !== null) return;
@@ -197,12 +212,12 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   };
 
   const leaveTable = () => {
-    if (table.winner === null && !window.confirm(`认输将损失 ${lossGold.toLocaleString()} 金，确定回府？`)) {
+    if (table.winner === null && !window.confirm(`认输将损失 ${(lossGold * table.multiplier).toLocaleString()} 金（当前 ×${table.multiplier}），确定回府？`)) {
       return;
     }
     if (table.winner === null && !settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0, lossGold, true);
+      onResolved(false, 0, lossGold * table.multiplier, true, table.multiplier);
     }
     onReturnHome();
   };
@@ -233,7 +248,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     <main className="screen ddz-screen">
       <header className="ddz-topbar">
         {table.winner === null ? (
-          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>认输 −{lossGold.toLocaleString()}</button>
+          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>认输 −{(lossGold * table.multiplier).toLocaleString()}</button>
         ) : (
           <span className="ddz-topbar__quit is-idle">牌局结束</span>
         )}
@@ -243,9 +258,20 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
         </div>
         <div className="ddz-topbar__stake">
           <h2>斗地主牌局</h2>
+          <span className="ddz-multiplier">倍数 ×{finalMultiplier}</span>
           <span>胜 {wins} · 负 {losses}</span>
         </div>
       </header>
+
+      <div className="ddz-counter" aria-label="记牌器">
+        <span className="ddz-counter__label">记牌器</span>
+        {counter.map((item) => (
+          <span key={item.label} className={`ddz-counter__cell ${item.left === 0 ? 'is-gone' : ''}`}>
+            <b>{item.label}</b>
+            <i>{item.left}</i>
+          </span>
+        ))}
+      </div>
 
       <section className="ddz-table" aria-label="三人斗地主牌桌">
         <PlayerSeat
@@ -264,6 +290,9 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
           active={table.winner === null && table.currentPlayer === 2}
           seat="right"
         />
+        {table.flash && (
+          <div key={table.flash.id} className={`ddz-flash ${table.flash.big ? 'is-big' : ''}`} aria-hidden="true">{table.flash.text}</div>
+        )}
         <div className="ddz-center" aria-live="polite">
           <span>{table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</span>
           <strong>{statusCopy}</strong>
@@ -388,7 +417,7 @@ function PlayerSeat({
         <span className="ddz-seat__badge">{active ? (self ? '出牌中' : '思考中') : profile.style ? `${AI_STYLE_LABEL[profile.style]}${profile.skill ? AI_SKILL_LABEL[profile.skill] : ''}` : profile.title}</span>
       </div>
       <div className="ddz-seat__play">
-        {recentCards.length > 0 && <MiniCardStrip cards={recentCards} emptyLabel="" />}
+        {recentCards.length > 0 && <MiniCardStrip key={recentCards.map((card) => card.id).join()} cards={recentCards} emptyLabel="" />}
         <SeatActionLine action={recentAction} active={active} self={self} hasCards={recentCards.length > 0} />
       </div>
     </article>
@@ -496,6 +525,30 @@ function cardIdFromPointer(hand: EventTarget & HTMLElement, clientX: number, cli
   return cardElement?.dataset.cardId ?? null;
 }
 
+const MAX_MULTIPLIER = 8;
+const FLASH_TEXT: Partial<Record<ComboType, string>> = {
+  bomb: '炸弹',
+  rocket: '王炸',
+  straight: '顺子',
+  'pair-straight': '连对',
+  airplane: '飞机',
+  'airplane-one': '飞机',
+  'airplane-pair': '飞机'
+};
+/** 记牌器显示的点数（从大到小） */
+const COUNTER_RANKS: Array<{ label: string; match: (card: Card) => boolean; total: number }> = [
+  { label: '大', match: (card) => card.value === 17, total: 1 },
+  { label: '小', match: (card) => card.value === 16, total: 1 },
+  ...['2', 'A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3'].map((rank) => ({ label: rank, match: (card: Card) => card.rank === rank, total: 4 }))
+];
+
+/** 春天：地主一手走完、农民一张没出；反春：农民赢且地主只出过一手 */
+function springOf(table: TableState) {
+  if (table.winner === 0 && table.plays[1] + table.plays[2] === 0) return '春天';
+  if (table.winner !== null && table.winner !== 0 && table.plays[0] <= 1) return '反春';
+  return null;
+}
+
 function createInitialTable(): TableState {
   const deal = createDoudizhuDeal();
   return {
@@ -508,7 +561,11 @@ function createInitialTable(): TableState {
     recentMoves: { 0: [], 1: [], 2: [] },
     recentActions: createSeatActions(),
     history: ['你成为地主，获得三张底牌。'],
-    winner: null
+    winner: null,
+    multiplier: 1,
+    plays: { 0: 0, 1: 0, 2: 0 },
+    played: [],
+    flash: null
   };
 }
 
@@ -556,9 +613,16 @@ function applyPlay(table: TableState, player: PlayerIndex, cards: Card[], combo:
     [player]: hand
   };
   const winner = hand.length === 0 ? player : null;
+  const isBomb = combo.type === 'bomb' || combo.type === 'rocket';
+  const multiplier = isBomb ? Math.min(MAX_MULTIPLIER, table.multiplier * 2) : table.multiplier;
+  const flashText = FLASH_TEXT[combo.type];
 
   return {
     ...table,
+    multiplier,
+    plays: { ...table.plays, [player]: table.plays[player] + 1 },
+    played: [...table.played, ...cards],
+    flash: flashText ? { id: (table.flash?.id ?? 0) + 1, text: isBomb ? `${flashText} ×2` : flashText, big: isBomb } : table.flash,
     hands: nextHands,
     selectedIds: [],
     currentPlayer: nextPlayer(player),

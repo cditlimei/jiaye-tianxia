@@ -5090,7 +5090,7 @@ small.stat-legend {
 /* ===== 斗地主牌桌 v2：参照主流斗地主——角落头像、出牌落在各自一侧、按钮条贴在手牌上方 ===== */
 .ddz-screen {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 6px;
   height: 100%;
   padding: 8px 8px 4px;
@@ -5427,5 +5427,122 @@ body.is-doudizhu-table .ddz-screen .player-hand {
   .ddz-seat--right .ddz-seat__play {
     flex-basis: 100%;
     margin-top: 6px;
+  }
+}
+
+/* 倍数、记牌器、牌型特效、出牌飞入 */
+.ddz-multiplier {
+  color: #ffcf5a !important;
+  font-size: 13px !important;
+  font-weight: 800;
+}
+
+.ddz-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ddz-counter__label {
+  margin-right: 4px;
+  color: rgba(255, 245, 220, 0.6);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.ddz-counter__cell {
+  display: grid;
+  justify-items: center;
+  min-width: 22px;
+  padding: 1px 2px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
+  line-height: 1.1;
+}
+
+.ddz-counter__cell b {
+  color: #fff4d6;
+  font-size: 10px;
+}
+
+.ddz-counter__cell i {
+  color: #ffe27a;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.ddz-counter__cell.is-gone {
+  opacity: 0.35;
+}
+
+.ddz-flash {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 6;
+  color: #fff1b8;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-shadow: 0 0 12px rgba(255, 190, 60, 0.9), 0 3px 0 rgba(120, 50, 0, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: ddz-flash 1.1s ease-out forwards;
+}
+
+.ddz-flash.is-big {
+  color: #ffd2c2;
+  font-size: 42px;
+  text-shadow: 0 0 18px rgba(255, 80, 40, 0.95), 0 4px 0 rgba(110, 10, 0, 0.9);
+}
+
+@keyframes ddz-flash {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+}
+
+.ddz-seat__play .mini-card {
+  animation: ddz-card-in 0.28s ease-out both;
+}
+
+.ddz-seat--left .ddz-seat__play .mini-card {
+  --from-x: -40px;
+  --from-y: -10px;
+}
+
+.ddz-seat--right .ddz-seat__play .mini-card {
+  --from-x: 40px;
+  --from-y: -10px;
+}
+
+.ddz-seat--self .ddz-seat__play .mini-card {
+  --from-x: 0px;
+  --from-y: 60px;
+}
+
+@keyframes ddz-card-in {
+  from { opacity: 0; transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.7); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (orientation: portrait) {
+  .ddz-counter {
+    gap: 1px;
+  }
+
+  .ddz-counter__label {
+    display: none;
+  }
+
+  .ddz-counter__cell {
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 1px 0;
   }
 }
