@@ -22,7 +22,10 @@ const save = (extra = {}) => ({
 const browser = await chromium.launch({ headless: true });
 
 async function open(state, contextOptions = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...contextOptions });
+  const { bidding = false, ...rest } = contextOptions;
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...rest });
+  // 旧用例按「玩家当地主」写，默认跳过叫地主；叫地主流程单独测（bidding: true）
+  if (!bidding) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-ddz-skip-bid', '1'); } catch { /* 存储被禁用的用例 */ } });
   const page = await ctx.newPage();
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   if (state) {
@@ -1269,6 +1272,30 @@ await scenario('斗地主难度随场次', async () => {
   await page.getByText('斗地主牌局').first().waitFor();
   const badges = await page.locator('.ddz-seat--left .ddz-seat__badge, .ddz-seat--right .ddz-seat__badge').allInnerTexts();
   check('初级场对手标注生手', badges.some((b) => b.includes('生手')), badges.join('/'));
+  await page.context().close();
+});
+
+await scenario('叫地主与抢地主', async () => {
+  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 }, bidding: true });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  const handBefore = await page.locator('.player-hand .poker-card').count();
+  check('开局每人 17 张、底牌未亮、先由你叫', handBefore === 17 && (await page.getByRole('button', { name: '叫地主' }).isEnabled()) && (await page.locator('.ddz-topbar__kitty').innerText()).includes('叫完地主后亮出'), `hand=${handBefore}`);
+  await page.getByRole('button', { name: '叫地主' }).click();
+  // 等叫抢结束（AI 可能抢，你可能还有一次回抢机会，这里一律不抢）
+  for (let i = 0; i < 20; i += 1) {
+    const noRob = page.getByRole('button', { name: '不抢' });
+    if ((await noRob.count()) > 0 && (await noRob.isEnabled())) await noRob.click();
+    if (!(await page.locator('.ddz-seat__role').first().innerText()).includes('叫牌')) break;
+    await page.waitForTimeout(400);
+  }
+  const roles = await page.locator('.ddz-seat__role').allInnerTexts();
+  const hands = await page.locator('.ddz-seat__count').allInnerTexts();
+  const landlordSeat = roles.findIndex((r) => r === '地主');
+  check('叫抢结束恰好一位地主且拿到 20 张', roles.filter((r) => r === '地主').length === 1 && roles.filter((r) => r === '农民').length === 2 && hands[landlordSeat]?.startsWith('20'), `${roles.join('/')} ${hands.join('/')}`);
+  check('叫完后亮出底牌', (await page.locator('.ddz-topbar__kitty .mini-card').count()) === 3);
   await page.context().close();
 });
 

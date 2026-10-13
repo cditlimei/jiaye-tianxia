@@ -8,6 +8,8 @@ const context = await browser.newContext({
   viewport: { width: 390, height: 844 },
   colorScheme: 'dark'
 });
+// 冒烟按「玩家当地主」写，跳过叫地主；叫地主流程在 scenarios 里单独测
+await context.addInitScript(() => { try { localStorage.setItem('jiaye-ddz-skip-bid', '1'); } catch { /* ignore */ } });
 const page = await context.newPage();
 // 本地模拟 CI 慢机器：JIAYE_CPU_THROTTLE=4 表示 CPU 降到 1/4
 const cpuThrottle = Number(process.env.JIAYE_CPU_THROTTLE || 0);

@@ -47,6 +47,23 @@ interface TableState {
   played: Card[];
   /** 桌心大字特效，id 变了就重播动画 */
   flash: { id: number; text: string; big: boolean } | null;
+  /** 叫地主阶段 → 出牌阶段 */
+  phase: 'bidding' | 'playing';
+  landlord: PlayerIndex;
+  bid: BidState;
+}
+
+type BidWord = '叫地主' | '不叫' | '抢地主' | '不抢';
+
+interface BidState {
+  turn: PlayerIndex;
+  /** 当前叫到地主的人（还没人叫为 null） */
+  candidate: PlayerIndex | null;
+  firstCaller: PlayerIndex | null;
+  /** 一圈里已表态的人数；第一个叫的人在别人抢过之后还有一次回抢机会 */
+  acted: number;
+  rebidUsed: boolean;
+  words: Record<PlayerIndex, BidWord | null>;
 }
 
 interface SeatAction {
@@ -103,9 +120,9 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   const targetCombo = table.lastPlay?.player === 0 ? null : table.lastPlay?.combo ?? null;
   const playableHints = useMemo(() => findPlayableCombos(playerHand, targetCombo), [playerHand, targetCombo]);
   const suggestedCards = playableHints.length > 0 ? playableHints[hintIndex % playableHints.length] : null;
-  const canPlay = table.currentPlayer === 0 && canBeat(selectedCombo, targetCombo);
+  const canPlay = table.phase === 'playing' && table.currentPlayer === 0 && canBeat(selectedCombo, targetCombo);
   const canPass = table.currentPlayer === 0 && Boolean(table.lastPlay && table.lastPlay.player !== 0);
-  const canHint = table.currentPlayer === 0 && table.winner === null && playableHints.length > 0;
+  const canHint = table.phase === 'playing' && table.currentPlayer === 0 && table.winner === null && playableHints.length > 0;
   const selectedCopy = table.winner !== null
     ? '牌局已结束'
     : table.currentPlayer !== 0
@@ -119,17 +136,30 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
             ? `${selectedCombo.label} · ${formatCards(selectedCards)}`
             : `${selectedCombo.label} 不够大`
           : '牌型不合法';
+  const bidding = table.phase === 'bidding';
+  const roleOf = (index: PlayerIndex) => (bidding ? '叫牌' : index === table.landlord ? '地主' : '农民');
+  // 玩家赢：自己是地主就要自己先走完；自己是农民则任一农民先走完即可
+  const playerWins = table.winner !== null && (table.landlord === 0 ? table.winner === 0 : table.winner !== table.landlord);
+  // 农民输赢按地主的一半结算（主流规则里地主一打二、输赢翻倍）
+  const share = !bidding && table.landlord !== 0 ? 0.5 : 1;
   const spring = springOf(table);
   const finalMultiplier = Math.min(MAX_MULTIPLIER, table.multiplier * (spring ? 2 : 1));
+  const winGold = Math.round(rewardGold * finalMultiplier * share);
+  const loseGold = Math.round(lossGold * finalMultiplier * share);
   // 记牌器：去掉自己手牌和已出的牌，剩下的就是另外两家手里的
   const counter = COUNTER_RANKS.map((item) => ({
     label: item.label,
     left: item.total - playerHand.filter(item.match).length - table.played.filter(item.match).length
   }));
+  const multTag = finalMultiplier > 1 || share < 1 ? `（×${finalMultiplier}${share < 1 ? ' · 农民半份' : ''}${spring ? ` · ${spring}` : ''}）` : '';
   const statusCopy = table.winner !== null
-    ? table.winner === 0
-      ? `胜 +${(rewardGold * finalMultiplier).toLocaleString()} 金${finalMultiplier > 1 ? `（×${finalMultiplier}${spring ? ` · ${spring}` : ''}）` : ''}`
-      : `${playerNames[table.winner]}先走完 −${(lossGold * finalMultiplier).toLocaleString()} 金${finalMultiplier > 1 ? `（×${finalMultiplier}${spring ? ` · ${spring}` : ''}）` : ''}`
+    ? playerWins
+      ? `胜 +${winGold.toLocaleString()} 金${multTag}`
+      : `${playerNames[table.winner]}先走完 −${loseGold.toLocaleString()} 金${multTag}`
+    : bidding
+      ? table.bid.turn === 0
+        ? table.bid.candidate === null ? '看看手牌，叫不叫地主？' : `${playerNames[table.bid.candidate]}叫了地主，抢不抢？`
+        : `${playerNames[table.bid.turn]}正在叫牌`
     : table.currentPlayer === 0
       ? targetCombo
         ? `请大过 ${playerNames[table.lastPlay!.player]} 的${comboLabel(targetCombo)}`
@@ -151,7 +181,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       aiTimerRef.current = null;
     }
 
-    if (table.winner !== null || table.currentPlayer === 0) {
+    if (table.phase !== 'playing' || table.winner !== null || table.currentPlayer === 0) {
       return undefined;
     }
 
@@ -177,10 +207,20 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       return;
     }
     settledRef.current = true;
-    const win = table.winner === 0;
+    const win = playerWins;
     onSfx(win ? 'audio/sfx/sfx_victory.mp3' : 'audio/sfx/sfx_defeat.mp3', 0.58);
-    onResolved(win, win ? rewardGold * finalMultiplier : 0, lossGold * finalMultiplier, false, finalMultiplier);
-  }, [finalMultiplier, lossGold, onResolved, onSfx, rewardGold, table.winner]);
+    onResolved(win, win ? winGold : 0, loseGold, false, finalMultiplier * share);
+  }, [finalMultiplier, loseGold, onResolved, onSfx, playerWins, share, table.winner, winGold]);
+
+  // AI 叫抢：轮到 AI 表态时停顿一下再叫，像真人在看牌
+  useEffect(() => {
+    if (table.phase !== 'bidding' || table.bid.turn === 0) return undefined;
+    const turn = table.bid.turn;
+    const timer = window.setTimeout(() => {
+      setTable((prev) => (prev.phase === 'bidding' && prev.bid.turn === turn ? applyBid(prev, turn, aiWantsLandlord(prev.hands[turn], aiSkill, prev.bid.candidate !== null)) : prev));
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [aiSkill, table.bid.turn, table.phase, table.bid.acted]);
 
   // 出牌音效：任何一家出牌都响，炸弹/王炸换成爆炸声
   const playedCountRef = useRef(0);
@@ -224,12 +264,13 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   };
 
   const leaveTable = () => {
-    if (table.winner === null && !window.confirm(`认输将损失 ${(lossGold * table.multiplier).toLocaleString()} 金（当前 ×${table.multiplier}），确定回府？`)) {
+    const forfeitGold = Math.round(lossGold * table.multiplier * share);
+    if (table.winner === null && !window.confirm(`认输将损失 ${forfeitGold.toLocaleString()} 金（当前 ×${table.multiplier}），确定回府？`)) {
       return;
     }
     if (table.winner === null && !settledRef.current) {
       settledRef.current = true;
-      onResolved(false, 0, lossGold * table.multiplier, true, table.multiplier);
+      onResolved(false, 0, forfeitGold, true, table.multiplier * share);
     }
     onReturnHome();
   };
@@ -249,7 +290,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   // 滑动选牌：按下开始一次手势，划过的每张牌翻转一次（主流斗地主的连选方式）
   const swipeRef = useRef<Set<string> | null>(null);
   const selectCardFromHand = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || table.currentPlayer !== 0 || table.winner !== null || playerHand.length === 0) return;
+    if (event.button !== 0 || table.phase !== 'playing' || table.currentPlayer !== 0 || table.winner !== null || playerHand.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     const cardId = cardUnderPointer(event.currentTarget, event.clientX, event.clientY);
@@ -273,13 +314,13 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     <main className="screen ddz-screen">
       <header className="ddz-topbar">
         {table.winner === null ? (
-          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>认输 −{(lossGold * table.multiplier).toLocaleString()}</button>
+          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>认输 −{Math.round(lossGold * table.multiplier * share).toLocaleString()}</button>
         ) : (
           <span className="ddz-topbar__quit is-idle">牌局结束</span>
         )}
         <div className="ddz-topbar__kitty" aria-label="地主底牌">
           <span>底牌</span>
-          <MiniCardStrip cards={table.landlordCards} emptyLabel="未亮" center />
+          <MiniCardStrip cards={bidding ? [] : table.landlordCards} emptyLabel="叫完地主后亮出" center />
         </div>
         <div className="ddz-topbar__stake">
           <h2>斗地主牌局</h2>
@@ -301,47 +342,58 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       <section className="ddz-table" aria-label="三人斗地主牌桌">
         <PlayerSeat
           profile={profiles[1]}
+          roleLabel={roleOf(1)}
           handCount={table.hands[1].length}
           recentCards={table.recentMoves[1]}
           recentAction={table.recentActions[1]}
-          active={table.winner === null && table.currentPlayer === 1}
+          active={table.winner === null && (bidding ? table.bid.turn === 1 : table.currentPlayer === 1)}
           seat="left"
         />
         <PlayerSeat
           profile={profiles[2]}
+          roleLabel={roleOf(2)}
           handCount={table.hands[2].length}
           recentCards={table.recentMoves[2]}
           recentAction={table.recentActions[2]}
-          active={table.winner === null && table.currentPlayer === 2}
+          active={table.winner === null && (bidding ? table.bid.turn === 2 : table.currentPlayer === 2)}
           seat="right"
         />
         {table.flash && (
           <div key={table.flash.id} className={`ddz-flash ${table.flash.big ? 'is-big' : ''}`} aria-hidden="true">{table.flash.text}</div>
         )}
         <div className="ddz-center" aria-live="polite">
-          <span>{table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</span>
+          <span>{bidding ? `叫地主 · 倍数 ×${table.multiplier}` : table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</span>
           <strong>{statusCopy}</strong>
         </div>
         <PlayerSeat
           profile={profiles[0]}
+          roleLabel={roleOf(0)}
           handCount={table.hands[0].length}
           recentCards={table.recentMoves[0]}
           recentAction={table.recentActions[0]}
-          active={table.winner === null && table.currentPlayer === 0}
+          active={table.winner === null && (bidding ? table.bid.turn === 0 : table.currentPlayer === 0)}
           seat="self"
           self
         />
       </section>
 
       {table.winner !== null && (
-        <div className={`doudizhu-result-banner ${table.winner === 0 ? 'is-win' : 'is-loss'}`} role="status">
-          <strong>{table.winner === 0 ? '牌局得胜' : '下局再战'}</strong>
+        <div className={`doudizhu-result-banner ${playerWins ? 'is-win' : 'is-loss'}`} role="status">
+          <strong>{playerWins ? '牌局得胜' : '下局再战'}</strong>
           <span>{statusCopy}</span>
         </div>
       )}
 
       <section className="ddz-actions" aria-live="polite">
-        {table.winner === null ? (
+        {bidding ? (
+          <>
+            <p className="ddz-readout">{table.bid.turn === 0 ? '地主拿三张底牌、一打二，输赢翻倍；农民和队友联手，输赢各半' : `等待 ${playerNames[table.bid.turn]} 表态`}</p>
+            <div className="ddz-actions__row">
+              <button type="button" className="ddz-btn ddz-btn--pass" disabled={table.bid.turn !== 0} onClick={() => setTable((prev) => applyBid(prev, 0, false))}>{table.bid.candidate === null ? '不叫' : '不抢'}</button>
+              <button type="button" className="ddz-btn ddz-btn--hint" disabled={table.bid.turn !== 0} onClick={() => setTable((prev) => applyBid(prev, 0, true))}>{table.bid.candidate === null ? '叫地主' : '抢地主'}</button>
+            </div>
+          </>
+        ) : table.winner === null ? (
           <>
             <p className="ddz-readout">{table.currentPlayer === 0 ? selectedCopy : `等待 ${playerNames[table.currentPlayer]} 出牌`}</p>
             <div className="ddz-actions__row">
@@ -420,7 +472,8 @@ function PlayerSeat({
   recentAction,
   active,
   seat,
-  self = false
+  self = false,
+  roleLabel
 }: {
   profile: PlayerProfile;
   handCount: number;
@@ -429,12 +482,14 @@ function PlayerSeat({
   active: boolean;
   seat: 'left' | 'right' | 'self';
   self?: boolean;
+  /** 叫地主前显示「叫牌」，之后按实际身份 */
+  roleLabel: string;
 }) {
   return (
     <article className={`ddz-seat ddz-seat--${seat} ${active ? 'is-active' : ''}`}>
       <div className="ddz-seat__avatar">
         <ImageWithFallback src={imageUrl(profile.imagePath, 160)} alt={profile.name} />
-        <span className={`ddz-seat__role ${profile.role === '地主' ? 'is-landlord' : ''}`}>{profile.role}</span>
+        <span className={`ddz-seat__role ${roleLabel === '地主' ? 'is-landlord' : ''}`}>{roleLabel}</span>
       </div>
       <div className="ddz-seat__info">
         <strong className="ddz-seat__name">{profile.name}</strong>
@@ -443,7 +498,7 @@ function PlayerSeat({
       </div>
       <div className="ddz-seat__play">
         {recentCards.length > 0 && <MiniCardStrip key={recentCards.map((card) => card.id).join()} cards={recentCards} emptyLabel="" />}
-        <SeatActionLine action={recentAction} active={active} self={self} hasCards={recentCards.length > 0} />
+        <SeatActionLine action={recentAction} active={active} self={self} hasCards={recentCards.length > 0} bidding={roleLabel === '叫牌'} />
       </div>
     </article>
   );
@@ -453,14 +508,20 @@ function SeatActionLine({
   action,
   active,
   self,
-  hasCards
+  hasCards,
+  bidding = false
 }: {
   action: SeatAction;
   active: boolean;
   self: boolean;
   hasCards: boolean;
+  bidding?: boolean;
 }) {
   const kind = active ? 'active' : action.kind;
+  if (bidding) {
+    const bidLabel = active ? (self ? '轮到你叫牌' : '正在叫牌') : action.kind === 'idle' ? '等待叫牌' : action.label;
+    return <div className={`ddz-seat__action ddz-seat__action--${kind}`}>{bidLabel}</div>;
+  }
   const label = active
     ? self
       ? '轮到你出牌'
@@ -569,15 +630,28 @@ const COUNTER_RANKS: Array<{ label: string; match: (card: Card) => boolean; tota
 
 /** 春天：地主一手走完、农民一张没出；反春：农民赢且地主只出过一手 */
 function springOf(table: TableState) {
-  if (table.winner === 0 && table.plays[1] + table.plays[2] === 0) return '春天';
-  if (table.winner !== null && table.winner !== 0 && table.plays[0] <= 1) return '反春';
+  const farmers = ([0, 1, 2] as PlayerIndex[]).filter((index) => index !== table.landlord);
+  if (table.winner === table.landlord && farmers.every((index) => table.plays[index] === 0)) return '春天';
+  if (table.winner !== null && table.winner !== table.landlord && table.plays[table.landlord] <= 1) return '反春';
   return null;
+}
+
+/** 测试与旧存档回归用：设了这个开关就跳过叫地主，玩家直接当地主 */
+const SKIP_BID_KEY = 'jiaye-ddz-skip-bid';
+function skipBidding() {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem(SKIP_BID_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function createInitialTable(): TableState {
   const deal = createDoudizhuDeal();
-  return {
-    hands: deal.hands,
+  const kittyIds = new Set(deal.landlordCards.map((card) => card.id));
+  const base: TableState = {
+    // 发牌：每人 17 张，三张底牌留给叫到地主的人
+    hands: { 0: deal.hands[0].filter((card) => !kittyIds.has(card.id)), 1: deal.hands[1], 2: deal.hands[2] },
     landlordCards: deal.landlordCards,
     selectedIds: [],
     currentPlayer: 0,
@@ -585,13 +659,67 @@ function createInitialTable(): TableState {
     lastPlay: null,
     recentMoves: { 0: [], 1: [], 2: [] },
     recentActions: createSeatActions(),
-    history: ['你成为地主，获得三张底牌。'],
+    history: ['发牌完毕，由你先叫地主。'],
     winner: null,
     multiplier: 1,
     plays: { 0: 0, 1: 0, 2: 0 },
     played: [],
-    flash: null
+    flash: null,
+    phase: 'bidding',
+    landlord: 0,
+    bid: { turn: 0, candidate: null, firstCaller: null, acted: 0, rebidUsed: false, words: { 0: null, 1: null, 2: null } }
   };
+  return skipBidding() ? finishBidding({ ...base, bid: { ...base.bid, candidate: 0 } }) : base;
+}
+
+/** 叫抢结束：地主拿底牌、先出牌 */
+function finishBidding(table: TableState): TableState {
+  const landlord = table.bid.candidate ?? 0;
+  return {
+    ...table,
+    phase: 'playing',
+    landlord,
+    currentPlayer: landlord,
+    hands: { ...table.hands, [landlord]: sortCards([...table.hands[landlord], ...table.landlordCards]) },
+    recentActions: createSeatActions(),
+    history: [`${landlord === 0 ? '你' : '对手'}成为地主，获得三张底牌。`, ...table.history].slice(0, 12)
+  };
+}
+
+/** 表态一次：叫/抢翻倍，一圈后若首叫者被抢过还能回抢一次；无人叫则重发 */
+function applyBid(table: TableState, player: PlayerIndex, want: boolean): TableState {
+  const { bid } = table;
+  const isCall = bid.candidate === null;
+  const word: BidWord = isCall ? (want ? '叫地主' : '不叫') : want ? '抢地主' : '不抢';
+  const candidate = want ? player : bid.candidate;
+  const firstCaller = bid.firstCaller ?? (want && isCall ? player : null);
+  const multiplier = want && !isCall ? Math.min(MAX_MULTIPLIER, table.multiplier * 2) : table.multiplier;
+  const isRebid = bid.acted >= 3;
+  const acted = bid.acted + 1;
+  const next: TableState = {
+    ...table,
+    multiplier,
+    bid: { ...bid, candidate, firstCaller, acted, rebidUsed: bid.rebidUsed || isRebid, words: { ...bid.words, [player]: word }, turn: nextPlayer(player) },
+    recentActions: { ...table.recentActions, [player]: { kind: want ? 'play' : 'pass', label: word } }
+  };
+  if (isRebid) return finishBidding(next);
+  if (acted < 3) return next;
+  // 一圈结束
+  if (candidate === null) return { ...createInitialTable(), history: ['三家都不叫，重新发牌。'] };
+  if (firstCaller !== null && firstCaller !== candidate && !next.bid.rebidUsed) {
+    return { ...next, bid: { ...next.bid, turn: firstCaller } };
+  }
+  return finishBidding(next);
+}
+
+/** AI 叫抢：按大牌与炸弹估牌力，高手档门槛略低（更敢叫） */
+function aiWantsLandlord(hand: Card[], skill: AiSkill, contested: boolean) {
+  const counts = new Map<number, number>();
+  for (const card of hand) counts.set(card.value, (counts.get(card.value) ?? 0) + 1);
+  const bombs = [...counts.values()].filter((n) => n === 4).length;
+  const score = (counts.get(17) ? 3 : 0) + (counts.get(16) ? 2 : 0) + (counts.get(15) ?? 0) * 2 + (counts.get(14) ?? 0) + bombs * 4;
+  const threshold = (skill === 'master' ? 7 : skill === 'novice' ? 9 : 8) + (contested ? 2 : 0);
+  return score >= threshold;
 }
 
 function createSeatActions(): Record<PlayerIndex, SeatAction> {
@@ -619,8 +747,14 @@ function createPlayerProfiles(lord: Lord, gamesPlayed: number, skill: AiSkill): 
 function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex, string>, styles: Record<PlayerIndex, AiStyle | null>, skill: AiSkill): TableState {
   const player = table.currentPlayer;
   const target = table.lastPlay && table.lastPlay.player !== player ? table.lastPlay.combo : null;
-  const teammateLeads = Boolean(table.lastPlay && table.lastPlay.player !== player && table.lastPlay.player !== 0);
-  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: table.hands[0].length, teammateLeads, skill, unseen: [...table.hands[0], ...table.hands[player === 1 ? 2 : 1]] });
+  // 身份按牌局实际地主算：地主没有队友，农民的队友是另一位农民
+  const landlord = table.landlord;
+  const others = ([0, 1, 2] as PlayerIndex[]).filter((index) => index !== player);
+  const isLandlord = player === landlord;
+  const teammate = isLandlord ? null : others.find((index) => index !== landlord) ?? null;
+  const teammateLeads = Boolean(table.lastPlay && teammate !== null && table.lastPlay.player === teammate);
+  const pressure = isLandlord ? Math.min(...others.map((index) => table.hands[index].length)) : table.hands[landlord].length;
+  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: pressure, teammateLeads, skill, unseen: others.flatMap((index) => table.hands[index]) });
   const combo = cards ? evaluateCards(cards) : null;
 
   if (cards && combo && canBeat(combo, target)) {
