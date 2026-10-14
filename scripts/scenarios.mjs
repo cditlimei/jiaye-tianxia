@@ -36,15 +36,34 @@ async function open(state, contextOptions = {}) {
   }
   return page;
 }
+// 首页 v2：家业目标、称号提示、志向进度收在「家业目标」弹层里
+async function openGoals(page) {
+  const sheet = page.getByRole('dialog', { name: '家业目标' });
+  if ((await sheet.count()) === 0) await page.locator('.home-tiles button').first().click();
+  await sheet.waitFor();
+}
+async function closeGoals(page) {
+  const sheet = page.getByRole('dialog', { name: '家业目标' });
+  if ((await sheet.count()) > 0) await sheet.getByRole('button', { name: '关闭' }).click();
+}
 const read = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), KEY);
 const income = (text) => Number(text.match(/\+([\d,]+)金/)[1].replace(/,/g, ''));
 
 async function scenario(name, fn) {
+  // ONLY=关键字 只跑名字含该关键字的场景（本地排查用）
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
   try {
     await fn();
   } catch (error) {
-    check(`${name}（脚本异常）`, false, error.message.split('\n')[0]);
+    const lines = error.message.split('\n');
+    check(`${name}（脚本异常）`, false, [lines[0], ...lines.filter((line) => /waiting for|intercepts|not stable|not visible/.test(line)).slice(0, 3)].join(' | '));
   }
+}
+// 首页「下一步」之外的可做事项收在「还有 N 件」里，点之前先展开
+async function chance(page, name) {
+  const target = page.locator('.chance-bar').getByRole('button', { name });
+  if (!(await target.first().isVisible().catch(() => false))) await page.locator('.next-step__more').click();
+  await target.first().click();
 }
 
 await scenario('存档安全', async () => {
@@ -116,9 +135,11 @@ await scenario('任务与门槛', async () => {
   // 吕布满配 238：威震一郡(180) 可领、高级场(190) 可进
   const page = await open(save({ equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4,
     claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third'] }));
+  await openGoals(page);
   const text = await page.locator('main').innerText();
   check('威震一郡门槛 180 且可领赏', text.includes('武力达到 180') && (await page.getByRole('button', { name: '领赏' }).first().isEnabled()));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await closeGoals(page);
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   check('高级场在战力 238 时开放', await page.getByRole('button', { name: /高级场/ }).isEnabled());
   await page.context().close();
@@ -142,8 +163,8 @@ await scenario('兵器与经济', async () => {
   await migrated.context().close();
 
   const page = await open(save({ selectedLordId: 'guanyu', ownedPartnerIds: [] }));
-  await page.getByRole('button', { name: '兵器库' }).click();
-  await page.getByText('兵器库').nth(1).waitFor();
+  await page.getByRole('button', { name: '兵器', exact: true }).click();
+  await page.getByRole('dialog', { name: '兵器库' }).waitFor();
   await page.getByRole('button', { name: /购入 · 5,000 金/ }).first().click();
   await page.waitForTimeout(600);
   let s = await read(page);
@@ -155,7 +176,7 @@ await scenario('兵器与经济', async () => {
   await page.getByRole('button', { name: /^装备$/ }).first().click();
   await page.waitForTimeout(400);
   check('已拥有兵器免费换装', (await read(page)).equippedWeaponId === 'xuanjian');
-  check('主页兵器加成含专属', /武力 \+(\d+)/.test(await page.locator('.home-support-grid').innerText()));
+  check('兵器库标出兵器加成', /武力 \+(\d+)/.test(await page.getByRole('dialog', { name: '兵器库' }).innerText()));
   await page.context().close();
 
   // 智谋提高收入（第 11 天推进到 12 天，不触发府中事件）
@@ -172,7 +193,7 @@ await scenario('兵器与经济', async () => {
 
   // 声望折扣：显示与实扣一致
   const market = await open(save({ selectedLordId: 'guanyu', ownedPartnerIds: ['mifuren', 'daqiao'], gold: 99999 }));
-  await market.getByRole('button', { name: '招募伴侣', exact: true }).click();
+  await market.getByRole('button', { name: '伴侣', exact: true }).click();
   await market.getByText('伴侣招募').first().waitFor();
   const disc = Number((await market.locator('.partner-market__summary').innerText()).match(/-(\d+)%/)?.[1] ?? -1);
   const firstCard = market.locator('.partner-card').filter({ has: market.getByRole('button', { name: /召集/ }) }).first();
@@ -188,7 +209,7 @@ await scenario('兵器与经济', async () => {
 await scenario('选择对手', async () => {
   // 诸葛亮开局战力约 81：推荐山贼头目；可自选更强的叛军校尉，胜率更低、缴获更高；弱档几乎必胜
   const page = await open(save({ selectedLordId: 'zhugeliang', ownedPartnerIds: [], homeLevel: 1 }));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /官道/ }).click();
   const cards = page.locator('.tier-card');
@@ -224,7 +245,7 @@ await scenario('选择对手', async () => {
 await scenario('江东水战', async () => {
   // 宅邸 2 级：江东不可进，提示解锁条件
   const locked = await open(save({ homeLevel: 2 }));
-  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByRole('button', { name: '出征', exact: true }).click();
   await locked.getByText('九州征途').first().waitFor();
   const node = locked.getByRole('button', { name: /江东/ });
   check('宅邸 2 级时江东未开放', await node.isDisabled() && (await node.innerText()).includes('砖瓦宅后开放'));
@@ -232,7 +253,7 @@ await scenario('江东水战', async () => {
 
   // 宅邸 3 级：诸葛亮（智谋 100）出战，打完一场，胜负与金币、水战胜场、任务一致
   const page = await open(save({ selectedLordId: 'zhugeliang', homeLevel: 3, ownedPartnerIds: ['huangyueying'], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /江东/ }).click();
   const panel = await page.locator('[aria-label="水战说明"]').innerText();
@@ -250,8 +271,9 @@ await scenario('江东水战', async () => {
     ? after.gold - before.gold === reward && after.navalWins === before.navalWins + 1 && after.battleWins === before.battleWins + 1
     : before.gold - after.gold === loss && after.navalWins === before.navalWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
-  await page.getByText('主城经营').first().waitFor();
+  await page.locator('.home-v2').waitFor();
   if (win) {
+    await openGoals(page);
     const quest = page.locator('.quest-item').filter({ hasText: '江东扬帆' }).first();
     check('胜后任务「江东扬帆」可领赏', await quest.isVisible().catch(() => false) && (await quest.getByRole('button', { name: '领赏' }).isEnabled().catch(() => false)));
   }
@@ -260,7 +282,7 @@ await scenario('江东水战', async () => {
 
 await scenario('许都朝堂', async () => {
   const locked = await open(save({ homeLevel: 3 }));
-  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByRole('button', { name: '出征', exact: true }).click();
   await locked.getByText('九州征途').first().waitFor();
   const node = locked.getByRole('button', { name: /许都/ });
   check('宅邸 3 级时许都未开放', await node.isDisabled() && (await node.innerText()).includes('府邸后开放'));
@@ -268,7 +290,7 @@ await scenario('许都朝堂', async () => {
 
   // 刘备（声望 96）+ 糜夫人（良缘 · 声望 16×1.3）+ 4 级府邸
   const page = await open(save({ selectedLordId: 'liubei', homeLevel: 4, ownedPartnerIds: ['mifuren'], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /许都/ }).click();
   const panel = await page.locator('[aria-label="朝堂说明"]').innerText();
@@ -286,14 +308,15 @@ await scenario('许都朝堂', async () => {
     ? after.gold - before.gold === reward && after.courtWins === before.courtWins + 1 && after.navalWins === before.navalWins
     : before.gold - after.gold === loss && after.courtWins === before.courtWins && after.battleLosses === before.battleLosses + 1, `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
   await page.getByRole('button', { name: '返回家业' }).click();
-  await page.getByText('主城经营').first().waitFor();
+  await page.locator('.home-v2').waitFor();
+  await openGoals(page);
   check('主城显示分战场战绩', /官道与牌局 \d+ · 水战 \d+ · 朝议 \d+ · 靖边 \d+ · 负 \d+/.test(await page.locator('main').innerText()));
   await page.context().close();
 });
 
 await scenario('西蜀屯田', async () => {
   const locked = await open(save({ homeLevel: 2 }));
-  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByRole('button', { name: '出征', exact: true }).click();
   await locked.getByText('九州征途').first().waitFor();
   const node = locked.getByRole('button', { name: /西蜀/ });
   check('宅邸 2 级时西蜀未开放', await node.isDisabled() && (await node.innerText()).includes('砖瓦宅后开放'));
@@ -301,7 +324,7 @@ await scenario('西蜀屯田', async () => {
 
   const page = await open(save({ homeLevel: 3, gold: 7000, ownedPartnerIds: [], claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third'] }));
   const n0 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /西蜀/ }).click();
   await page.getByRole('button', { name: /投入 6,000 金/ }).click();
@@ -314,9 +337,10 @@ await scenario('西蜀屯田', async () => {
   s = await read(page);
   check('金不足不能升级', s.farmLevel === 1 && (await page.locator('.partner-market__notice').innerText()).includes('金不足'));
   await page.getByRole('button', { name: '回府' }).click();
-  await page.getByText('主城经营').first().waitFor();
+  await page.locator('.home-v2').waitFor();
   const n1 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
   check('屯田后政务收入按比例提高', n1 > n0, `${n0} → ${n1}`);
+  await openGoals(page);
   check('任务「西蜀屯田」可领赏', await page.locator('.quest-item').filter({ hasText: '西蜀屯田' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
 });
@@ -324,7 +348,7 @@ await scenario('西蜀屯田', async () => {
 await scenario('北疆边患', async () => {
   // 宅邸 3 级：北疆未开放
   const locked = await open(save({ homeLevel: 3 }));
-  await locked.getByRole('button', { name: '出征讨伐' }).click();
+  await locked.getByRole('button', { name: '出征', exact: true }).click();
   await locked.getByText('九州征途').first().waitFor();
   check('宅邸 3 级时北疆未开放', await locked.getByRole('button', { name: /北疆/ }).isDisabled());
   await locked.context().close();
@@ -337,7 +361,7 @@ await scenario('北疆边患', async () => {
   const win24 = s.frontierRaid ? s.frontierRaid.dueAt - s.frontierRaid.startedAt : 0;
   check('第 10 日起边患并给 24 小时窗口', s.frontierRaid?.startDay === 10 && win24 === 24 * 3600 * 1000, JSON.stringify(s.frontierRaid));
   check('主城显示边患提醒', await start.locator('.frontier-alert').isVisible());
-  await start.getByRole('button', { name: '出征讨伐' }).click();
+  await start.getByRole('button', { name: '出征', exact: true }).click();
   await start.getByText('九州征途').first().waitFor();
   check('地图北疆显示边患', (await start.getByRole('button', { name: /北疆/ }).innerText()).includes('边患'));
   await start.context().close();
@@ -363,7 +387,7 @@ await scenario('北疆边患', async () => {
 
   // 无边患时不能出关
   const calm = await open(save({ homeLevel: 4, frontierRaid: null, nextRaidDay: 30 }));
-  await calm.getByRole('button', { name: '出征讨伐' }).click();
+  await calm.getByRole('button', { name: '出征', exact: true }).click();
   await calm.getByText('九州征途').first().waitFor();
   await calm.getByRole('button', { name: /北疆/ }).click();
   check('边境安宁时出关按钮禁用', await calm.getByRole('button', { name: /^出关迎战/ }).isDisabled());
@@ -371,7 +395,7 @@ await scenario('北疆边患', async () => {
 
   // 退守关内：不扣金、边患保留
   const retreat = await open(save({ homeLevel: 4, day: 11, gold: 20000, frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10 }));
-  await retreat.getByRole('button', { name: '出征讨伐' }).click();
+  await retreat.getByRole('button', { name: '出征', exact: true }).click();
   await retreat.getByText('九州征途').first().waitFor();
   await retreat.getByRole('button', { name: /北疆/ }).click();
   await retreat.getByRole('button', { name: /^出关迎战/ }).click();
@@ -386,7 +410,7 @@ await scenario('北疆边患', async () => {
   // 迎战：胜则缴获 + 靖边 +1 + 解除；败则扣 5% + 解除
   const fight = await open(save({ homeLevel: 4, day: 11, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10,
     claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third', 'first-win'] }));
-  await fight.getByRole('button', { name: '出征讨伐' }).click();
+  await fight.getByRole('button', { name: '出征', exact: true }).click();
   await fight.getByText('九州征途').first().waitFor();
   await fight.getByRole('button', { name: /北疆/ }).click();
   const panel = await fight.locator('[aria-label="边患说明"]').innerText();
@@ -432,6 +456,7 @@ await scenario('传位', async () => {
   const nextIncome = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
   check('新一代保留家业点且收入提高', s.generation === 2 && s.legacyPoints === 2 && nextIncome > baseIncome, `${baseIncome} → ${nextIncome}`);
   check('主城显示第 2 代', (await page.locator('.home-hud').innerText()).includes('第 2 代'));
+  await openGoals(page);
   check('任务「传承家业」可领', await page.locator('.quest-item').filter({ hasText: '传承家业' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
 });
@@ -467,7 +492,7 @@ await scenario('府中事件二选一', async () => {
   await adv.waitForTimeout(300);
   s = await read(adv);
   check('练兵之策：挂上翻倍', s.nextBattleBonus === 2 && s.pendingChoice === null);
-  await adv.getByRole('button', { name: '出征讨伐' }).click();
+  await adv.getByRole('button', { name: '出征', exact: true }).click();
   await adv.getByText('九州征途').first().waitFor();
   await adv.getByRole('button', { name: /官道/ }).click();
   await adv.locator('.tier-card').first().click();   // 最弱档，几乎必胜
@@ -500,16 +525,19 @@ await scenario('府中事件二选一', async () => {
 await scenario('称号', async () => {
   const fresh = await open(save({ homeLevel: 1, battleWins: 0, ownedPartnerIds: [] }));
   const hud = await fresh.locator('.home-hud').innerText();
+  await openGoals(fresh);
   check('开局称号为白身并提示下一称号', hud.includes('「白身」') && (await fresh.locator('.honor-hint').innerText()).includes('乡绅'));
   await fresh.context().close();
   const vet = await open(save({ homeLevel: 6, battleWins: 31, navalWins: 5, courtWins: 1, frontierWins: 0, farmLevel: 2, generation: 1, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military' } }));
   const hud2 = await vet.locator('.home-hud').innerText();
+  await openGoals(vet);
   const hint2 = await vet.locator('.honor-hint').innerText();
   check('显示档位最高的称号，并提示还有几个未集齐', hud2.includes('「一代枭雄」') && hint2.includes('另有 5 个称号待集齐'), hint2);
   await vet.context().close();
   // 第二代：开国元勋是家声，不盖住本代称号；提示指向更高的本代称号
   const heir = await open(save({ homeLevel: 3, battleWins: 2, generation: 2, legacyPoints: 2 }));
   const hud3 = await heir.locator('.home-hud').innerText();
+  await openGoals(heir);
   const hint3 = await heir.locator('.honor-hint').innerText();
   check('第二代显示本代称号而非开国元勋', hud3.includes('「乡绅」') && !hud3.includes('「开国元勋」') && hint3.includes('一方豪强'), `${hud3.replace(/\n/g, ' ').slice(0, 60)} | ${hint3}`);
   await heir.context().close();
@@ -529,6 +557,7 @@ await scenario('伴侣心事', async () => {
   s = await read(page);
   const inc1 = income(await page.getByRole('button', { name: /^处理政务/ }).innerText());
   check('选项落为永久加成并记录', s.resolvedPartnerEvents.zhenji === 'b' && s.partnerBoosts.zhenji?.intelligence === 6 && inc1 >= inc0, `${inc0} → ${inc1}`);
+  await openGoals(page);
   check('任务「良缘佳话」可领', await page.locator('.quest-item').filter({ hasText: '良缘佳话' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
   // 第 24 → 25 日：轮到下一位（大乔），已解决的不重复
@@ -584,7 +613,7 @@ await scenario('开局引导', async () => {
   check('开局引导在首屏顶部且指向升级宅邸', (await panel.innerText()).includes('第 1 步') && (await page.getByRole('button', { name: /升级宅邸/ }).getAttribute('class')).includes('is-guided'));
   await page.getByRole('button', { name: /升级宅邸/ }).click();
   await page.waitForTimeout(2500);
-  const partnerBtn = page.getByRole('button', { name: '招募伴侣', exact: true });
+  const partnerBtn = page.getByRole('button', { name: '伴侣', exact: true });
   const incomeBtn = page.getByRole('button', { name: /^处理政务/ });
   check('第 2 步：钱不够时高亮处理政务', (await panel.innerText()).includes('第 2 步') && (await incomeBtn.getAttribute('class')).includes('is-guided') && !(await partnerBtn.getAttribute('class')).includes('is-guided'));
   await page.evaluate(([k]) => { const s = JSON.parse(localStorage.getItem(k)); s.gold = 5000; localStorage.setItem(k, JSON.stringify(s)); }, [KEY]);
@@ -612,13 +641,14 @@ await scenario('主公与称号页', async () => {
   check('主公页列出全部称号并标出已获得', rows >= 11 && earned >= 4 && (await page.locator('.lord-sheet').innerText()).includes('吕布'), `rows=${rows} earned=${earned}`);
   await page.getByRole('button', { name: '关闭' }).click();
   await page.getByRole('button', { name: '伴侣', exact: true }).click();
+  await page.getByRole('button', { name: /闲话家常/ }).click();
   check('伴侣互动注明纯剧情', (await page.locator('.modal-note').innerText()).includes('不改数值'));
   await page.context().close();
 });
 
 await scenario('竖屏两行手牌', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -639,7 +669,7 @@ await scenario('竖屏两行手牌', async () => {
 await scenario('战斗加速与押注上限', async () => {
   // 金 500：败损按余额封顶，付不起全额也照样能打
   const poor = await open(save({ gold: 500, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
-  await poor.getByRole('button', { name: '出征讨伐' }).click();
+  await poor.getByRole('button', { name: '出征', exact: true }).click();
   await poor.getByText('九州征途').first().waitFor();
   await poor.getByRole('button', { name: /官道/ }).click();
   const cap = poor.locator('.tier-card').filter({ hasText: /败\s−500(?!\d)/ });
@@ -647,7 +677,7 @@ await scenario('战斗加速与押注上限', async () => {
   await poor.context().close();
   // 直接结算：几秒内出结果
   const page = await open(save({ gold: 5000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   await page.getByRole('button', { name: /官道/ }).click();
   await page.getByRole('button', { name: /^出征讨伐 ·/ }).click();
@@ -676,7 +706,7 @@ await scenario('离线保留事件与升阶画面', async () => {
 
 await scenario('品级定价与中途离阵', async () => {
   const page = await open(save({ gold: 99999, ownedPartnerIds: [] }));
-  await page.getByRole('button', { name: '招募伴侣', exact: true }).click();
+  await page.getByRole('button', { name: '伴侣', exact: true }).click();
   await page.getByText('伴侣招募').first().waitFor();
   const priceOf = async (name) => Number((await page.locator('.partner-card').filter({ hasText: name }).getByRole('button').innerText()).replace(/[^\d]/g, ''));
   const d = await priceOf('貂蝉'), c = await priceOf('蔡文姬'), z = await priceOf('甄姬');
@@ -685,7 +715,7 @@ await scenario('品级定价与中途离阵', async () => {
   await page.context().close();
   // 出征后刷新：将士按显示的胜率替玩家打完，胜得缴获、败扣折损
   const fight = await open(save({ gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
-  await fight.getByRole('button', { name: '出征讨伐' }).click();
+  await fight.getByRole('button', { name: '出征', exact: true }).click();
   await fight.getByText('九州征途').first().waitFor();
   await fight.getByRole('button', { name: /官道/ }).click();
   const fightSummary = await fight.locator('.venue-summary').innerText();
@@ -704,7 +734,7 @@ await scenario('品级定价与中途离阵', async () => {
 await scenario('军令', async () => {
   // 0 道军令：出征按钮禁用并写明几日后回复；北疆边患不受限
   const page = await open(save({ day: 10, orders: 0, homeLevel: 4, frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10 }));
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByText('九州征途').first().waitFor();
   check('地图标题显示军令', (await page.locator('.screen-header').first().innerText()).includes('军令 0/6'));
   await page.getByRole('button', { name: /官道/ }).click();
@@ -715,7 +745,7 @@ await scenario('军令', async () => {
   await page.context().close();
   // 出征扣 1 道；处理政务到 3 的倍数日回 1 道
   const p2 = await open(save({ day: 11, orders: 2, gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
-  await p2.getByRole('button', { name: '出征讨伐' }).click();
+  await p2.getByRole('button', { name: '出征', exact: true }).click();
   await p2.getByText('九州征途').first().waitFor();
   await p2.getByRole('button', { name: /官道/ }).click();
   await p2.getByRole('button', { name: /出征讨伐 · 耗 1 军令/ }).click();
@@ -756,7 +786,7 @@ await scenario('流民归附', async () => {
 await scenario('第五轮修复', async () => {
   // 传位点数封顶：已有 18 点、手上 234 万金，只能再换 2 点
   const rich = await open(save({ homeLevel: 6, gold: 2345678, legacyPoints: 18, generation: 3 }));
-  const hintText = await rich.locator('.chance-bar').innerText();
+  const hintText = await rich.locator('.chance-bar').textContent();
   check('主城传位提示按上限封顶', hintText.includes('换 2 点'), hintText.replace(/\n/g, ' ').slice(0, 80));
   const gold = await rich.locator('.home-hud__chips strong').first().innerText();
   check('百万以上金币用「万」显示', gold === '234.6万', gold);
@@ -815,8 +845,8 @@ await scenario('第五轮修复（离线与兵器）', async () => {
 
   // 买比手上弱的兵器：收进兵器库，不换装
   const armory = await open(save({ gold: 5000, selectedLordId: 'zhaoyun', equippedWeaponId: 'qinggang', ownedWeaponIds: ['xuanjian', 'qinggang'] }));
-  await armory.getByRole('button', { name: '兵器库' }).click();
-  await armory.getByText('兵器库').nth(1).waitFor();
+  await armory.getByRole('button', { name: '兵器', exact: true }).click();
+  await armory.getByRole('dialog', { name: '兵器库' }).waitFor();
   await armory.locator('.weapon-card').filter({ hasText: '双股剑' }).getByRole('button', { name: /购入/ }).click();
   await armory.waitForTimeout(300);
   const w = await read(armory);
@@ -849,7 +879,7 @@ await scenario('封地经略', async () => {
   // 府邸 4 级：封地未开放
   const locked = await open(save({ homeLevel: 4, gold: 200000 }));
   check('侯府前主城不提示封地', !(await locked.locator('main').innerText()).includes('裂土封郡'));
-  await locked.getByRole('button', { name: '经略封地' }).click();
+  await locked.getByRole('button', { name: /^封地/ }).click();
   check('侯府前封地页只说明门槛', (await locked.locator('.fief-sheet').innerText()).includes('侯府后方可') && !(await locked.getByRole('button', { name: /开拓南阳郡/ }).isVisible().catch(() => false)));
   await locked.getByRole('button', { name: '关闭' }).click();
   await locked.context().close();
@@ -860,8 +890,8 @@ await scenario('封地经略', async () => {
   const n0 = income(await base.getByRole('button', { name: /^处理政务/ }).innerText());
   const p0 = await power(base);
   await base.context().close();
-  check('侯府且金够时机会栏提示封郡', (await page.locator('.chance-bar').innerText()).includes('可开拓南阳郡'));
-  await page.getByRole('button', { name: /可开拓南阳郡/ }).click();
+  check('侯府且金够时机会栏提示封郡', (await page.locator('.chance-bar').textContent()).includes('可开拓南阳郡'));
+  await chance(page, /可开拓南阳郡/);
   await page.getByRole('radio', { name: /整军/ }).click();
   await page.getByRole('button', { name: /开拓南阳郡 · 行整军之策/ }).click();
   await page.waitForTimeout(400);
@@ -870,6 +900,7 @@ await scenario('封地经略', async () => {
   check('下一郡显示差额', (await page.getByRole('button', { name: /差 240,000 金/ }).isVisible()));
   await page.getByRole('button', { name: '关闭' }).click();
   check('整军后军令上限 7', (await page.locator('.home-hud__chips').innerText()).includes('/7'));
+  await openGoals(page);
   check('任务「初封一郡」可领赏', await page.locator('.quest-item').filter({ hasText: '初封一郡' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await page.context().close();
 
@@ -884,7 +915,7 @@ await scenario('封地经略', async () => {
 
   // 改方略：整军 → 劝农收一成费，超出上限的军令收回
   const change = await open(save({ homeLevel: 5, gold: 20000, orders: 7, fiefs: { nanyang: 'military' } }));
-  await change.getByRole('button', { name: '经略封地' }).click();
+  await change.getByRole('button', { name: /^封地/ }).click();
   await change.getByRole('button', { name: /改方略 15,000 金/ }).click();
   await change.getByRole('button', { name: '改为劝农' }).click();
   await change.waitForTimeout(400);
@@ -924,6 +955,7 @@ await scenario('本代志向与家谱', async () => {
   await page.waitForTimeout(300);
   let s = await read(page);
   check('选强兵后存档记录目标 30 胜', s.ambition?.id === 'might' && s.ambition?.target === 30, JSON.stringify(s.ambition));
+  await openGoals(page);
   check('志向卡消失且显示进度', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.ambition-progress').innerText()).includes('现 5 胜'));
   await page.context().close();
 
@@ -934,7 +966,9 @@ await scenario('本代志向与家谱', async () => {
 
   // 达成富国后传位：家谱记一笔达成，下一代开局多 10,000 金；家谱在主公页可见
   const heir = await open(save({ generation: 2, legacyPoints: 2, homeLevel: 6, gold: 600000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
+  await openGoals(heir);
   check('达成志向后进度行提示', (await heir.locator('.ambition-progress').innerText()).includes('已达成'));
+  await closeGoals(heir);
   await heir.getByRole('button', { name: '设置与存档' }).click();
   await heir.getByText('当前存档').first().waitFor();
   heir.on('dialog', (d) => d.accept());
@@ -971,8 +1005,8 @@ await scenario('伴侣心事第二段', async () => {
 await scenario('志向审查修复', async () => {
   const page = await open(save({ generation: 2, legacyPoints: 2 }));
   await page.getByRole('button', { name: '稍后再定' }).click();
-  check('稍后再定后折叠成一行', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.chance-bar').innerText()).includes('志向未定'));
-  await page.getByRole('button', { name: /本代志向未定/ }).click();
+  check('稍后再定后折叠成一行', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.chance-bar').textContent()).includes('志向未定'));
+  await chance(page, /本代志向未定/);
   check('可重新展开选择', await page.locator('.ambition-card').isVisible());
   await page.context().close();
 
@@ -988,7 +1022,7 @@ await scenario('志向审查修复', async () => {
   await gen1.context().close();
 
   const undone = await open(save({ generation: 2, homeLevel: 6, gold: 150000, battleWins: 9, ambition: { id: 'might', target: 30, baseFiefs: 0 } }));
-  check('机会栏传位项提示志向未竟', (await undone.locator('.chance-bar').innerText()).includes('还差 21 胜'));
+  check('机会栏传位项提示志向未竟', (await undone.locator('.chance-bar').textContent()).includes('还差 21 胜'));
   await undone.getByRole('button', { name: '设置与存档' }).click();
   await undone.getByText('当前存档').first().waitFor();
   check('传位面板写明志向未竟', (await undone.locator('.succession-panel').innerText()).includes('未竟'));
@@ -1039,7 +1073,7 @@ await scenario('新朝审查修复', async () => {
   check('终局时不再出志向卡', !(await end.locator('.ambition-card').isVisible().catch(() => false)));
   await end.getByRole('button', { name: '展开卷轴 →' }).click();
   await end.getByRole('button', { name: '再经营些时日' }).click();
-  check('关闭卷轴后终局卡折叠进机会栏', (await end.locator('.chance-bar').innerText()).includes('天下归心') && !(await end.locator('.ending-hint').isVisible().catch(() => false)));
+  check('关闭卷轴后终局卡折叠进机会栏', (await end.locator('.chance-bar').textContent()).includes('天下归心') && !(await end.locator('.ending-hint').isVisible().catch(() => false)));
   await end.context().close();
 
   // 新朝后择主前刷新：标题页仍是「继续家业」且显示第 2 朝
@@ -1123,8 +1157,8 @@ await scenario('家风', async () => {
   await wealth.context().close();
   // 开疆家风：封地九折
   const exp = await open(save({ generation: 3, homeLevel: 5, gold: 135000, chronicle: two('expansion') }));
-  check('开疆家风九折后机会栏报折后价', (await exp.locator('.chance-bar').innerText()).includes('135,000 金'));
-  await exp.getByRole('button', { name: /可开拓南阳郡/ }).click();
+  check('开疆家风九折后机会栏报折后价', (await exp.locator('.chance-bar').textContent()).includes('135,000 金'));
+  await chance(exp, /可开拓南阳郡/);
   await exp.getByRole('button', { name: /^开拓南阳郡/ }).click();
   await exp.waitForTimeout(300);
   check('九折开拓扣 135,000', (await read(exp)).gold === 0 && (await read(exp)).fiefs?.nanyang === 'farming');
@@ -1166,7 +1200,7 @@ await scenario('家风', async () => {
 await scenario('府中小事与领赏角标', async () => {
   // 第 7 → 8 日：轮到貂蝉的「寿宴」，选大办 → 声望 +2
   const page = await open(save({ day: 7, ownedPartnerIds: ['diaochan'], claimedQuestIds: ['upgrade-wood'] }));
-  check('有可领任务时机会栏出现领赏角标', (await page.locator('.chance-bar').innerText()).includes('可领赏'));
+  check('有可领任务时机会栏出现领赏角标', (await page.locator('.chance-bar').textContent()).includes('可领赏'));
   await page.getByRole('button', { name: /^处理政务/ }).click();
   await page.waitForTimeout(400);
   let s = await read(page);
@@ -1191,7 +1225,7 @@ await scenario('府中小事与领赏角标', async () => {
 
 await scenario('国号专属与小事离线结算', async () => {
   // 吴：江东档位显示缴获 ×1.2（无国号时同档对照）
-  const tierText = async (page, region) => { await page.getByRole('button', { name: '出征讨伐' }).click(); await page.getByText('九州征途').first().waitFor(); await page.getByRole('button', { name: region }).click(); return (await page.locator('main').innerText()).match(/胜\s\+([\d,]+)/g) ?? []; };
+  const tierText = async (page, region) => { await page.getByRole('button', { name: '出征', exact: true }).click(); await page.getByText('九州征途').first().waitFor(); await page.getByRole('button', { name: region }).click(); return (await page.locator('main').innerText()).match(/胜\s\+([\d,]+)/g) ?? []; };
   const plain = await open(save({ homeLevel: 4 }));
   const base = await tierText(plain, /江东/);
   await plain.context().close();
@@ -1202,7 +1236,7 @@ await scenario('国号专属与小事离线结算', async () => {
   await wu.context().close();
   // 蜀：屯田九折
   const shu = await open(save({ homeLevel: 3, gold: 7000, realms: { wei: 0, shu: 1, wu: 0 }, realm: 'shu' }));
-  await shu.getByRole('button', { name: '出征讨伐' }).click();
+  await shu.getByRole('button', { name: '出征', exact: true }).click();
   await shu.getByText('九州征途').first().waitFor();
   await shu.getByRole('button', { name: /西蜀/ }).click();
   await shu.getByRole('button', { name: /投入 5,400 金/ }).click();
@@ -1220,7 +1254,7 @@ await scenario('国号专属与小事离线结算', async () => {
 await scenario('四十日试玩修复', async () => {
   // 新手期败损封顶三成：砖瓦宅、1,000 金
   const poor = await open(save({ homeLevel: 3, gold: 1000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
-  await poor.getByRole('button', { name: '出征讨伐' }).click();
+  await poor.getByRole('button', { name: '出征', exact: true }).click();
   await poor.getByText('九州征途').first().waitFor();
   await poor.getByRole('button', { name: /官道/ }).click();
   const losses = ((await poor.locator('main').innerText()).match(/败\s−([\d,]+)/g) ?? []).map((t) => Number(t.replace(/[^\d]/g, '')));
@@ -1229,7 +1263,8 @@ await scenario('四十日试玩修复', async () => {
   // 军令 0：主城出征按钮写明几日后回复；威震一郡显示进度
   // 前置任务都领过，「威震一郡」才排进面板前四条
   const zero = await open(save({ orders: 0, day: 11, claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third'] }));
-  check('军令为 0 时出征按钮写明回复', (await zero.getByRole('button', { name: /出征讨伐/ }).innerText()).includes('1 日后 +1'));
+  check('军令为 0 时顶栏写明回复', (await zero.locator('.home-hud__chips').innerText()).includes('1 日后 +1'));
+  await openGoals(zero);
   check('武力任务显示进度', /\d+\/180/.test(await zero.locator('.quest-item').filter({ hasText: '威震一郡' }).innerText()));
   check('顶栏日期标签为「日」', (await zero.locator('.home-hud__chips').innerText()).includes('\n日'));
   await zero.context().close();
@@ -1242,7 +1277,7 @@ await scenario('四十日试玩修复', async () => {
   await up.context().close();
   // 钱够时机会栏提示兵器
   const rich = await open(save({ gold: 6000 }));
-  check('钱够时机会栏提示更强兵器', (await rich.locator('.chance-bar').innerText()).includes('可购入'));
+  check('钱够时机会栏提示更强兵器', (await rich.locator('.chance-bar').textContent()).includes('可购入'));
   await rich.context().close();
 });
 
@@ -1258,20 +1293,20 @@ await scenario('朝代家声与侯府价', async () => {
 await scenario('整合复测修复', async () => {
   // 曹操持专属青釭剑：方天画戟只多 1 点，不该提示；屯田够钱时提示并直达西蜀
   const cao = await open(save({ selectedLordId: 'caocao', homeLevel: 3, gold: 6500, equippedWeaponId: 'qinggang', ownedWeaponIds: ['xuanjian', 'qinggang'] }));
-  const bar = await cao.locator('.chance-bar').innerText();
+  const bar = await cao.locator('.chance-bar').textContent();
   check('小幅提升的兵器不进机会栏', !bar.includes('可购入'), bar.replace(/\n/g, ' '));
-  await cao.getByRole('button', { name: /可升西蜀屯田/ }).click();
+  await chance(cao, /可升西蜀屯田/);
   await cao.getByText('九州征途').first().waitFor();
   check('屯田提示直达西蜀面板', await cao.getByRole('button', { name: /投入 6,000 金/ }).isVisible());
   await cao.context().close();
   // 侯府后机会栏显示下一目标与差额；称号「侯门显贵」
   const hou = await open(save({ homeLevel: 5, gold: 20000 }));
-  check('侯府后显示下一目标差额', /下一目标 · 王城[\s\S]*还差 100,000 金/.test(await hou.locator('.chance-bar').innerText()));
+  check('侯府后显示下一目标差额', /下一目标 · 王城[\s\S]*还差 100,000 金/.test(await hou.locator('.chance-bar').textContent()));
   check('侯府称号侯门显贵', (await hou.locator('.home-hud').innerText()).includes('侯门显贵'));
   await hou.context().close();
   // 新手首战：官道推荐档胜率不低于 80%
   const fresh = await open(save({ tutorialDone: false, battleWins: 0, homeLevel: 2, gold: 1000 }));
-  await fresh.getByRole('button', { name: /出征讨伐/ }).first().click();
+  await fresh.getByRole('button', { name: '出征', exact: true }).click();
   await fresh.getByText('九州征途').first().waitFor();
   await fresh.getByRole('button', { name: /官道/ }).click();
   const rec = await fresh.locator('.tier-card').filter({ hasText: '推荐' }).first().innerText();
@@ -1296,7 +1331,7 @@ await scenario('府邸前军令每日回复', async () => {
 await scenario('后期试玩修复', async () => {
   // 传位 chip 写明下一代收益，不再给「先封郡」建议
   const king = await open(save({ homeLevel: 6, gold: 250000, legacyPoints: 2, generation: 2, fiefs: {} }));
-  const bar = await king.locator('.chance-bar').innerText();
+  const bar = await king.locator('.chance-bar').textContent();
   check('传位提示写明下一代收益', bar.includes('下一代收入 +20%') && bar.includes('开局 13,000 金') && !bar.includes('先封郡'), bar.replace(/\n/g, ' '));
   await king.context().close();
   // 传位后择主：继承了任务与封地，但不弹「清空进度」
@@ -1314,14 +1349,14 @@ await scenario('后期档位与今日军功', async () => {
   // 第 12 日轮到官道（12 % 3 = 0）：地图标注，档位缴获 ×1.3；第 13 日换江东
   const tierRewards = async (page) => ((await page.locator('main').innerText()).match(/胜\s\+([\d,]+)/g) ?? []).map((t) => Number(t.replace(/[^\d]/g, '')));
   const d12 = await open(save({ day: 12, homeLevel: 4 }));
-  await d12.getByRole('button', { name: /出征讨伐/ }).first().click();
+  await d12.getByRole('button', { name: '出征', exact: true }).click();
   await d12.getByText('九州征途').first().waitFor();
   check('今日军功标在官道', (await d12.getByRole('button', { name: /官道/ }).innerText()).includes('今日军功'));
   await d12.getByRole('button', { name: /官道/ }).click();
   const boosted = await tierRewards(d12);
   await d12.context().close();
   const d13 = await open(save({ day: 13, homeLevel: 4 }));
-  await d13.getByRole('button', { name: /出征讨伐/ }).first().click();
+  await d13.getByRole('button', { name: '出征', exact: true }).click();
   await d13.getByText('九州征途').first().waitFor();
   check('第 13 日军功换到江东', (await d13.getByRole('button', { name: /江东/ }).innerText()).includes('今日军功'));
   await d13.getByRole('button', { name: /官道/ }).click();
@@ -1360,7 +1395,7 @@ await scenario('手机横屏与大屏竖屏铺满', async () => {
 
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   const venues = await page.locator('.venue-list, main').first().innerText();
   check('场次列表写明对手牌艺', venues.includes('对手生手') && venues.includes('对手老手') && venues.includes('对手高手'), venues.replace(/\n/g, ' ').slice(0, 120));
   await page.getByRole('button', { name: /初级场/ }).click();
@@ -1373,7 +1408,7 @@ await scenario('斗地主难度随场次', async () => {
 
 await scenario('叫地主与抢地主', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 }, bidding: true });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -1395,10 +1430,32 @@ await scenario('叫地主与抢地主', async () => {
   await page.context().close();
 });
 
+await scenario('首页一屏主城', async () => {
+  const page = await open(save({ homeLevel: 4, gold: 42000, day: 18, battleWins: 6, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], eventLog: [{ id: 'a', day: 17, title: '流民归附', detail: '募为乡勇' }] }));
+  await page.locator('.home-v2').waitFor();
+  const fit = await page.evaluate(() => { const e = document.querySelector('.home-screen'); return { sh: e.scrollHeight, ch: e.clientHeight }; });
+  check('390x844 首页一屏放下不用滚动', fit.sh <= fit.ch + 2, JSON.stringify(fit));
+  const visible = await page.locator('main button:visible').allInnerTexts();
+  check('首页不再重复放招募/兵器库/出征讨伐大按钮', !visible.some((t) => /招募伴侣|兵器库|出征讨伐/.test(t)), visible.join('|'));
+  check('下一步只摆一件，其余收进「还有 N 件」', (await page.locator('.next-step__main').count()) === 1 && (await page.locator('.next-step__list').isHidden()) && /还有 \d+ 件可做/.test(await page.locator('.next-step__more').innerText()));
+  check('可领赏排在下一步第一位', (await page.locator('.next-step__main').innerText()).includes('可领赏'));
+  check('伴侣页签有红点（可再招一位）', (await page.getByRole('button', { name: '伴侣', exact: true }).locator('.home-dot').count()) === 1);
+  await page.locator('.next-step__main').click();
+  await page.getByRole('dialog', { name: '家业目标' }).waitFor();
+  const before = (await read(page)).gold;
+  await page.getByRole('button', { name: /全部领取/ }).click();
+  await page.waitForTimeout(300);
+  check('家业目标弹层一键全部领取', (await read(page)).gold > before && (await page.getByRole('button', { name: '领赏', exact: true }).count()) === 0);
+  await closeGoals(page);
+  await page.getByRole('button', { name: /^府中纪事/ }).click();
+  check('纪事弹层列出近事', (await page.getByRole('dialog', { name: '府中纪事' }).innerText()).includes('流民归附'));
+  await page.context().close();
+});
+
 await scenario('出牌倒计时', async () => {
   // 打满 5 局才算老手：新手局超时不进托管，单独测
   const page = await open(save({ battleWins: 5, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 }, turnSeconds: 2 });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -1417,7 +1474,7 @@ await scenario('出牌倒计时', async () => {
 
 await scenario('手动托管与取消', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 390, height: 844 } });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -1435,7 +1492,7 @@ await scenario('新手局倒计时与托管', async () => {
   const base = { homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] };
   // 不覆盖倒计时：老手叫牌 15 秒，新手（不足 5 局）加倍到 30 秒
   const vet = await open(save({ ...base, battleWins: 5 }), { viewport: { width: 844, height: 390 }, bidding: true, turnSeconds: '' });
-  await vet.getByRole('button', { name: '出征讨伐' }).click();
+  await vet.getByRole('button', { name: '出征', exact: true }).click();
   await vet.getByRole('button', { name: /中级场/ }).click();
   await vet.getByRole('button', { name: /^进入斗地主/ }).click();
   await vet.getByText('斗地主牌局').first().waitFor();
@@ -1443,7 +1500,7 @@ await scenario('新手局倒计时与托管', async () => {
   check('老手叫牌倒计时 15 秒', vetClock >= 14 && vetClock <= 15, `${vetClock}`);
   await vet.context().close();
   const fresh = await open(save(base), { viewport: { width: 844, height: 390 }, bidding: true, turnSeconds: '' });
-  await fresh.getByRole('button', { name: '出征讨伐' }).click();
+  await fresh.getByRole('button', { name: '出征', exact: true }).click();
   await fresh.getByRole('button', { name: /中级场/ }).click();
   await fresh.getByRole('button', { name: /^进入斗地主/ }).click();
   await fresh.getByText('斗地主牌局').first().waitFor();
@@ -1457,7 +1514,7 @@ await scenario('新手局倒计时与托管', async () => {
   await fresh.context().close();
   // 新手局连续超时：只代这一手，不进托管
   const page = await open(save(base), { viewport: { width: 844, height: 390 }, turnSeconds: 1 });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -1473,7 +1530,7 @@ await scenario('斗地主刷新按当前倍数结算', async () => {
   const base = { gold: 50000, battleWins: 5, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] };
   // 固定洗牌：Math.random 恒取 0.9999 时洗牌不动，你拿 3/4/5/6 四个炸弹；开桌后恢复随机
   const enterFixed = async (page) => {
-    await page.getByRole('button', { name: '出征讨伐' }).click();
+    await page.getByRole('button', { name: '出征', exact: true }).click();
     await page.getByRole('button', { name: /中级场/ }).click();
     await page.evaluate(() => { window.__realRandom = Math.random; Math.random = () => 0.9999; });
     await page.getByRole('button', { name: /^进入斗地主/ }).click();
@@ -1523,7 +1580,7 @@ await scenario('斗地主刷新按当前倍数结算', async () => {
 await scenario('练兵之策翻倍横幅', async () => {
   // 固定洗牌（Math.random 恒 0.7，离线模拟笨地主对老手各性格组合 9/9 全胜），用提示打完；横幅金额必须等于实际入账（含练兵之策翻倍）
   const page = await open(save({ gold: 50000, battleWins: 5, nextBattleBonus: 2, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   const before = await read(page);
   await page.evaluate(() => { window.__realRandom = Math.random; Math.random = () => 0.7; });
@@ -1554,7 +1611,7 @@ await scenario('练兵之策翻倍横幅', async () => {
 
 await scenario('斗地主倍数与记牌器', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -1578,7 +1635,7 @@ await scenario('斗地主倍数与记牌器', async () => {
 await scenario('斗地主', async () => {
   // 认输回府记一负
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
   await page.getByText('斗地主牌局').first().waitFor();
@@ -1592,11 +1649,11 @@ await scenario('斗地主', async () => {
   check('认输先弹确认，取消则留在牌局', (await page.getByText('斗地主牌局').first().isVisible()) && (await read(page)).gold === g0);
   accept = true;
   await page.getByRole('button', { name: /^认输/ }).click();
-  await page.getByText('主城经营').first().waitFor();
+  await page.locator('.home-v2').waitFor();
   check('认输记一负并折损 20% 缴获', (await read(page)).battleLosses === 1 && g0 - (await read(page)).gold === 1600, `Δ=${g0 - (await read(page)).gold}`);
 
   // 用提示打完整局：不能卡死，胜负与金币一致
-  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: '出征', exact: true }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   const before = await read(page);
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
@@ -1651,7 +1708,7 @@ await scenario('主城入口与加成文案', async () => {
   // 加成文案按真实来源列出：第 13 日江东今日军功、官道无加成；第 14 日许都今日军功 + 国号魏
   const summaryOf = async (page, region) => { await page.getByRole('button', { name: region }).click(); return page.locator('.venue-summary').innerText(); };
   const d13 = await open(save({ day: 13, homeLevel: 4, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
-  await d13.getByRole('button', { name: '出征讨伐' }).click();
+  await d13.getByRole('button', { name: '出征', exact: true }).click();
   await d13.getByText('九州征途').first().waitFor();
   check('地图有今日军功说明', (await d13.locator('.map-term-note').innerText()).includes('+30%'));
   const land = await summaryOf(d13, /官道/);
@@ -1671,7 +1728,7 @@ await scenario('主城入口与加成文案', async () => {
   check('江东结算与预估一致且标今日军功', wonNaval ? after.gold - before.gold === shown && logText.includes('（今日军功 +30%）') && !logText.includes('国号') : after.battleLosses === before.battleLosses + 1, `${wonNaval ? '胜' : '负'} Δ=${after.gold - before.gold} shown=${shown}`);
   await d13.context().close();
   const wei = await open(save({ day: 14, homeLevel: 4, realms: { wei: 1, shu: 0, wu: 0 }, realm: 'wei' }));
-  await wei.getByRole('button', { name: '出征讨伐' }).click();
+  await wei.getByRole('button', { name: '出征', exact: true }).click();
   await wei.getByText('九州征途').first().waitFor();
   const court = await summaryOf(wei, /许都/);
   check('许都军功日 + 国号魏逐项列出', court.includes('（今日军功 +30%、国号 +20%）'), court.slice(0, 200));

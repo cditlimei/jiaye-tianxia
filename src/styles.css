@@ -5764,3 +5764,439 @@ body.is-doudizhu-table .ddz-screen .player-hand {
     bottom: -14px;
   }
 }
+
+/* ===== 首页 v2：一屏主城（顶栏 → 宅邸横幅 → 下一步 → 政务/升级 → 目标·纪事·封地 → 底部导航） ===== */
+.home-screen.home-v2 {
+  gap: 10px;
+}
+
+.home-v2 .home-hud {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 0;
+  padding: 0;
+}
+
+.home-v2 .home-hud__lord {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-v2 .home-hud__avatar {
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+
+.home-v2 .home-hud__lord strong {
+  display: block;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.home-v2 .home-hud__lord strong .home-hud__honor {
+  display: inline;
+  margin-left: 6px;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.home-v2 .home-hud__lord span {
+  display: block;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-v2 .sound-toggle--inset {
+  position: static;
+  align-self: center;
+}
+
+.home-v2 .home-hud__chips {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 0.8fr;
+  gap: 6px;
+  margin: 0;
+}
+
+.home-v2 .home-hud__chips div {
+  min-width: 0;
+  padding: 6px 4px;
+}
+
+.home-v2 .home-hud__chips strong {
+  font-size: 15px;
+}
+
+/* 宅邸横幅：图只做背景，文字压在下沿，不再占满首屏 */
+.home-banner {
+  position: relative;
+  /* 有空就把图撑高，内容多时缩到 150 */
+  flex: 1 1 168px;
+  min-height: 150px;
+  max-height: 260px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 168, 67, 0.35);
+  border-radius: 16px;
+}
+
+.home-banner__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+}
+
+.home-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 5, 12, 0) 30%, rgba(5, 5, 12, 0.88) 100%);
+  pointer-events: none;
+}
+
+.home-banner__text {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 34px;
+  z-index: 1;
+}
+
+.home-banner__text h2 {
+  margin: 0;
+  color: var(--gold-light);
+  font-size: 24px;
+  line-height: 1.2;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.home-banner__detail summary {
+  color: rgba(255, 245, 220, 0.92);
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.home-banner__detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-banner__detail p {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: rgba(255, 245, 220, 0.88);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.home-banner__detail[open] ~ * {
+  display: none;
+}
+
+.home-banner__stats {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 10px;
+  z-index: 1;
+  display: flex;
+  gap: 14px;
+  color: rgba(255, 245, 220, 0.72);
+  font-size: 12px;
+}
+
+.home-banner__stats b {
+  color: #fff3d0;
+  font-size: 14px;
+}
+
+.home-banner .income-floats {
+  z-index: 2;
+}
+
+/* 下一步：只放一件最该做的事 */
+.home-v2 .next-step {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  overflow: visible;
+}
+
+.home-v2 .next-step button {
+  margin: 0;
+}
+
+.home-v2 .chance-bar .next-step__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(240, 214, 138, 0.55);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(212, 168, 67, 0.22), rgba(120, 70, 20, 0.18));
+  color: inherit;
+  text-align: left;
+}
+
+.home-v2 .chance-bar .next-step__main.is-static {
+  border-color: rgba(212, 168, 67, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-v2 .chance-bar .next-step__tag {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #d4a843;
+  color: #241303;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.home-v2 .chance-bar .next-step__body {
+  display: grid;
+  padding: 0;
+  background: none;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.home-v2 .chance-bar .next-step__body strong {
+  color: var(--gold-light);
+  font-size: 15px;
+}
+
+.home-v2 .chance-bar .next-step__body span {
+  overflow: hidden;
+  color: rgba(245, 230, 200, 0.75);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-v2 .chance-bar .next-step__go {
+  flex: none;
+  color: var(--gold-light);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.home-v2 .chance-bar .next-step__more {
+  justify-self: end;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 12px;
+}
+
+.next-step__list {
+  display: grid;
+  gap: 6px;
+}
+
+.next-step__list[hidden] {
+  display: none;
+}
+
+.home-v2 .chance-bar .next-step__list button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+}
+
+.home-v2 .chance-bar .next-step__list button strong {
+  color: var(--gold-light);
+  font-size: 13px;
+}
+
+.home-v2 .chance-bar .next-step__list button span {
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 12px;
+  text-align: right;
+}
+
+/* 政务 + 升级：两颗主按钮 */
+.home-actions {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 8px;
+}
+
+.home-actions .game-button {
+  min-height: 60px;
+  margin: 0;
+}
+
+.home-actions__main {
+  font-size: 17px;
+}
+
+/* 目标 / 纪事 / 封地：三个小入口 */
+.home-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-tiles button {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+}
+
+.home-tiles span {
+  color: rgba(245, 230, 200, 0.65);
+  font-size: 12px;
+}
+
+.home-tiles strong {
+  overflow: hidden;
+  color: #fff3d0;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 红点：有事可做 */
+.home-dot {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5a3c;
+  box-shadow: 0 0 0 2px rgba(7, 7, 17, 0.9);
+}
+
+.home-v2 .home-tabbar {
+  margin-top: auto;
+}
+
+.home-v2 .home-tabbar button {
+  position: relative;
+}
+
+.home-v2 .home-tabbar button.is-guided {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 0 2px rgba(240, 214, 138, 0.5);
+  animation: home-tab-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes home-tab-pulse {
+  from { box-shadow: 0 0 0 1px rgba(240, 214, 138, 0.35); }
+  to { box-shadow: 0 0 0 4px rgba(240, 214, 138, 0.65); }
+}
+
+.quest-claim-all {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f5d984, #ba7c25);
+  color: #241303;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.home-record {
+  margin: 12px 0 0;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 12px;
+}
+
+.partner-market__talk {
+  justify-self: start;
+  padding: 6px 12px;
+  border: 1px solid rgba(212, 168, 67, 0.4);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gold-light);
+  font-size: 13px;
+}
+
+/* 首页 v2 横屏：左列宅邸横幅，右列下一步/政务/入口，顶栏和导航横跨两列 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .phone-shell:has(.home-v2) {
+    width: min(100%, 930px);
+  }
+
+  .home-screen.home-v2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    align-content: start;
+    gap: 8px 14px;
+    padding: 10px 20px 14px;
+  }
+
+  .home-v2 > * {
+    grid-column: 2;
+  }
+
+  .home-v2 > .home-hud,
+  .home-v2 > .frontier-alert,
+  .home-v2 > .home-tabbar {
+    grid-column: 1 / -1;
+  }
+
+  .home-v2 .home-hud {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .home-v2 .home-hud__chips {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .home-v2 > .home-banner {
+    grid-column: 1;
+    grid-row: span 6;
+    height: 100%;
+    min-height: 190px;
+    max-height: none;
+  }
+
+  .home-v2 .home-actions .game-button {
+    min-height: 50px;
+  }
+
+  .home-v2 .home-tiles button {
+    min-height: 48px;
+  }
+}

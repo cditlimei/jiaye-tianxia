@@ -14,9 +14,11 @@ interface PartnerModalProps {
   discount: number;
   onClose: () => void;
   onRecruit: (partnerId: string) => boolean;
+  /** 已有伴侣时在顶部给「闲话家常」入口（首页伴侣页签直达招募后，互动从这里进） */
+  onTalk?: () => void;
 }
 
-export function PartnerModal({ state, lord, costFor, discount, onClose, onRecruit }: PartnerModalProps) {
+export function PartnerModal({ state, lord, costFor, discount, onClose, onRecruit, onTalk }: PartnerModalProps) {
   const [notice, setNotice] = useState('');
   const sortedPartners = useMemo(
     () =>
@@ -50,6 +52,9 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
             <strong>-{discount}%</strong>
           </div>
         </div>
+        {onTalk && state.ownedPartnerIds.length > 0 && (
+          <button type="button" className="partner-market__talk" onClick={onTalk}>与入府伴侣闲话家常 →</button>
+        )}
         <p className="stat-legend">武力→官道讨伐与北疆边患 · 智谋→政务收入与江东水战 · 声望→招募折扣与许都朝堂</p>
         {notice && (
           <p className="partner-market__notice" role="status">

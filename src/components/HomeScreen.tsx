@@ -17,7 +17,7 @@ import { fiefCostFor, legacyGoldPerPointFor, traditionCandidate, traditionOf } f
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
-import { StatBar } from './common/StatBar';
+import { ModalShell } from './common/ModalShell';
 import type { RegionId } from './BattleScreen';
 
 interface HomeScreenProps {
@@ -89,7 +89,6 @@ export function HomeScreen({
   onResolveChoice,
   onUpgrade,
   onOpenPartner,
-  onOpenPartnerTalk,
   onOpenWeapon,
   onBattle,
   onBattleAt,
@@ -200,7 +199,7 @@ export function HomeScreen({
     const ready = questStatuses.filter((quest) => quest.complete && !quest.claimed);
     const active = questStatuses.filter((quest) => !quest.claimed && !ready.includes(quest));
     const claimed = questStatuses.filter((quest) => quest.claimed);
-    return [...ready, ...active, ...claimed].slice(0, 4);
+    return [...ready, ...active, ...claimed];
   }, [questStatuses]);
 
   const choiceRef = useRef<HTMLElement | null>(null);
@@ -209,6 +208,10 @@ export function HomeScreen({
   useEffect(() => {
     if (state.pendingChoice) choiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [state.pendingChoice]);
+
+  // 首页只留一张「下一步」卡，其余可做的事收进「还有 N 件」；目标与纪事收进底部弹层
+  const [sheet, setSheet] = useState<'goals' | 'log' | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
@@ -252,28 +255,42 @@ export function HomeScreen({
     ...(state.tutorialDone && betterWeapon ? [{ key: 'weapon', label: `可购入${betterWeapon.name}`, detail: `${betterWeapon.price.toLocaleString()} 金，武力 +${weaponBonusForLord(betterWeapon, lord.id) - weaponBonusForLord(weapon, lord.id)}`, onClick: onOpenWeapon }] : []),
     ...(state.tutorialDone && Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10 ? [{ key: 'partner', label: '可再招一位伴侣', detail: `最便宜 ${cheapestPartner.toLocaleString()} 金`, onClick: onOpenPartner }] : []),
     ...goalChip,
-    ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => questRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }] : []),
+    ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => setSheet('goals') }] : []),
     ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可开拓${nextFiefToClaim.name}`, detail: `${nextFiefCost.toLocaleString()} 金，余 ${(state.gold - nextFiefCost).toLocaleString()}`, onClick: onOpenFief }] : []),
     ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
       ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [endingHint(state)?.replace(/。$/, '') ?? `下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state)))) - 1) * 100)}%、开局 ${(1000 + Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))) * 3000).toLocaleString()} 金`, ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
       : []),
     ...(state.generation >= 2 && !state.ambition && ambitionOpen && ambitionDeferred ? [{ key: 'ambition', label: '本代志向未定', detail: '定下志向才有传位结算', onClick: () => setAmbitionDeferred(false) }] : []),
+    // 家业点已满：传位不再加点，首页直接告诉玩家离天下归心还差什么
+    ...(state.tutorialDone && maxedHint ? [{ key: 'maxed', label: '天下归心在望', detail: maxedHint.replace(/。$/, ''), onClick: state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? onOpenFief : undefined }] : []),
     ...(isEndingReached(state) && endingSeen ? [{ key: 'ending', label: '天下归心', detail: '展开卷轴开创新朝', onClick: onOpenEnding }] : [])
   ];
+  // 下一步按轻重排：终局 > 家业点满差几郡 > 领赏 > 传位 > 封郡 > 屯田 > 兵器 > 伴侣 > 志向 > 长线目标（长线目标不可点，只作进度）
+  const CHANCE_ORDER = ['ending', 'maxed', 'claim', 'succeed', 'fief', 'farm', 'weapon', 'partner', 'ambition', 'goal'];
+  const sortedChances = [...chances].sort((a, b) => CHANCE_ORDER.indexOf(a.key) - CHANCE_ORDER.indexOf(b.key));
+  const [topChance, ...moreChances] = sortedChances;
+  const ownedFiefs = ownedFiefCount(state.fiefs);
+  const latestLog = state.eventLog[0];
+  const canRecruit = Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10;
+  const battleDot = Boolean(state.frontierRaid) || state.orders >= orderCap;
+  const incomeDetail = `宅邸 ${currentHome.dailyIncome} 金${farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}${fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}${realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}${state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +${Math.floor(intelligence / 10)}%${state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}% 至第 ${state.incomeBuff.untilDay} 日` : ''}`;
+
   return (
-    <main className="screen home-screen">
+    <main className="screen home-screen home-v2">
       <header className="home-hud">
-        <div className="home-hud__lord">
+        <button type="button" className="home-hud__lord" onClick={onOpenLord} aria-label={`查看${lord.name}`}>
           <ImageWithFallback src={imageUrl(lord.imagePath, 96)} alt={lord.name} className="home-hud__avatar" loading="eager" />
           <div>
-            <strong>{lord.name}</strong>
+            <strong>{lord.name}<em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em></strong>
             <span>{lord.title}{dynastyCount(state.realms) > 0 ? ` · ${state.realm ? `${findRealm(state.realm)?.name} · ` : ''}第 ${dynastyCount(state.realms) + 1} 朝` : ''}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
             {(tradition || (ambition && ambitionOpen)) && (
               <em className="home-hud__ambition" title={tradition?.effect}>{[tradition?.name, ambition && ambitionOpen ? `志向 ${ambition.ambition.name} ${ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}` : null].filter(Boolean).join(' · ')}</em>
             )}
-            <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em>
           </div>
-        </div>
+        </button>
+        <button className="sound-toggle sound-toggle--inset" onClick={onOpenSettings} aria-label="设置与存档" title="设置与存档">
+          设
+        </button>
         <div className="home-hud__chips">
           <div>
             <strong title={`${state.gold.toLocaleString()} 金`}>{compactGold(state.gold)}</strong>
@@ -285,16 +302,13 @@ export function HomeScreen({
           </div>
           <div>
             <strong>{state.orders}/{orderCap}</strong>
-            <span title="每场出征耗 1 道军令（北疆边患除外）；府邸前每日回 1 道，之后每 2 日回 1 道">军令</span>
+            <span title="每场出征耗 1 道军令（北疆边患除外）；府邸前每日回 1 道，之后每 2 日回 1 道">{state.orders < 1 ? `${daysUntilNextOrder(state.day, state.homeLevel)} 日后 +1` : '军令'}</span>
           </div>
           <div>
             <strong>{state.day}</strong>
             <span>日</span>
           </div>
         </div>
-        <button className="sound-toggle sound-toggle--inset" onClick={onOpenSettings} aria-label="打开设置">
-          设
-        </button>
       </header>
 
       {state.frontierRaid && (
@@ -303,6 +317,27 @@ export function HomeScreen({
           <button type="button" onClick={() => onBattleAt('beijiang')}>去迎战 →</button>
         </div>
       )}
+
+      <section className="home-banner" aria-label="主城">
+        <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-banner__image" loading="eager" />
+        <div className="income-floats">
+          {floating.map((item) => (
+            <span key={item.id}>+{item.amount}金</span>
+          ))}
+        </div>
+        <div className="home-banner__text">
+          <h2>Lv.{currentHome.level} {currentHome.name}</h2>
+          <details className="home-banner__detail">
+            <summary>每次政务 +{dailyIncome.toLocaleString()} 金 ⓘ</summary>
+            <p>{incomeDetail}；声望让招募伴侣便宜 {recruitDiscount}%。</p>
+          </details>
+        </div>
+        <div className="home-banner__stats" aria-label="属性">
+          <span>武力 <b>{totalPower}</b></span>
+          <span>智谋 <b>{intelligence}</b></span>
+          <span>声望 <b>{charisma}</b></span>
+        </div>
+      </section>
 
       {!state.tutorialDone && currentOrder && (
         <section className="starter-panel" aria-label="开局引导">
@@ -389,149 +424,137 @@ export function HomeScreen({
         </section>
       )}
 
-      {state.tutorialDone && chances.length > 0 && (
-        <nav className="chance-bar" aria-label="可做的事">
-          {chances.map((item) => (
-            <button key={item.key} type="button" onClick={item.onClick} disabled={!item.onClick}>
-              <strong>{item.label}</strong>
-              {item.detail && <span>{item.detail}</span>}
-            </button>
-          ))}
-        </nav>
+      {state.tutorialDone && topChance && (
+        <section className="chance-bar next-step" aria-label="下一步">
+          <button type="button" className={`next-step__main ${topChance.onClick ? '' : 'is-static'}`} onClick={topChance.onClick} disabled={!topChance.onClick}>
+            <span className="next-step__tag">下一步</span>
+            <span className="next-step__body">
+              <strong>{topChance.label}</strong>
+              {topChance.detail && <span>{topChance.detail}</span>}
+            </span>
+            {topChance.onClick && <span className="next-step__go" aria-hidden="true">›</span>}
+          </button>
+          {moreChances.length > 0 && (
+            <>
+              <button type="button" className="next-step__more" aria-expanded={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
+                {moreOpen ? '收起' : `还有 ${moreChances.length} 件可做 ▾`}
+              </button>
+              <div className="next-step__list" hidden={!moreOpen}>
+                {moreChances.map((item) => (
+                  <button key={item.key} type="button" onClick={item.onClick} disabled={!item.onClick}>
+                    <strong>{item.label}</strong>
+                    {item.detail && <span>{item.detail}</span>}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
       )}
 
-      <section className="home-estate">
-        <div className="home-estate__image-wrap">
-          <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-estate__image" loading="eager" />
-          <div className="income-floats">
-            {floating.map((item) => (
-              <span key={item.id}>+{item.amount}金</span>
-            ))}
-          </div>
-          <div className="home-estate__content">
-            <span className="eyebrow">主城经营</span>
-            <h2>Lv.{currentHome.level} {currentHome.name}</h2>
-            <p>处理政务可推进 1 日并收入 {dailyIncome} 金（宅邸 {currentHome.dailyIncome} 金{farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}{fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}{realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}{state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +{Math.floor(intelligence / 10)}%{state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}% 至第 ${state.incomeBuff.untilDay} 日` : ''}）；声望让招募伴侣便宜 {recruitDiscount}%。战力由主公、伴侣、兵器与宅邸共同构成。</p>
-          </div>
-          <div className="home-estate__stats">
-            <StatBar label="武力" value={totalPower} max={280} tone="red" />
-            <StatBar label="智谋" value={intelligence} max={230} tone="blue" />
-            <StatBar label="声望" value={charisma} max={230} tone="gold" />
-          </div>
-        </div>
-        <div className="home-support-grid">
-          <div>
-            <span>当前兵器</span>
-            <strong>{weapon.name}</strong>
-            <small>武力 +{weaponBonusForLord(weapon, lord.id)}</small>
-          </div>
-          <div>
-            <span>伴侣状态</span>
-            <strong>已招募 {ownedPartners.length} 位</strong>
-            <small>{partnerNames === '尚未招募' ? '尚未招募伴侣，当前内庭寂静。' : partnerNames}</small>
-          </div>
-          {state.homeLevel >= 3 && <div className="home-support-grid__fief">
-            <span>封地</span>
-            <strong>{ownedFiefCount(state.fiefs) > 0 ? `已开拓 ${ownedFiefCount(state.fiefs)}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '尚未封郡' : '侯府后开放'}</strong>
-            <small>{ownedFiefCount(state.fiefs) > 0 ? `劝农 +${fiefIncomePercent(state.fiefs)}% · 军令上限 ${orderCap} · 教化 +${fiefStatBonus(state.fiefs)}` : '六郡依次开拓，每郡定一条方略。'}{state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim && state.gold < nextFiefCost ? ` 下一郡${nextFiefToClaim.name} ${nextFiefCost.toLocaleString()} 金，还差 ${(nextFiefCost - state.gold).toLocaleString()}。` : ''}</small>
-            <button type="button" className="home-support-grid__link" onClick={onOpenFief}>经略封地</button>
-          </div>}
-        </div>
-      </section>
-
-      <section className="action-grid" ref={actionRef}>
-        <GameButton onClick={handleCollectIncome} className={guided('income')} disabled={Boolean(state.pendingChoice)}>
+      <section className="home-actions" ref={actionRef}>
+        <GameButton onClick={handleCollectIncome} className={`home-actions__main ${guided('income')}`} disabled={Boolean(state.pendingChoice)}>
           {state.pendingChoice ? '先决断上方事件' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
         </GameButton>
-        <GameButton onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
-          {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金</small></>) : '宅邸已满'}
-        </GameButton>
-        <GameButton variant="secondary" onClick={onOpenPartner} className={guided('partner')}>
-          招募伴侣
-        </GameButton>
-        <GameButton variant="secondary" onClick={onOpenWeapon} className={guided('weapon')}>
-          兵器库
-        </GameButton>
-        <GameButton variant="danger" onClick={onBattle} className={guided('battle')}>
-          出征讨伐{state.orders < 1 && !state.frontierRaid && <small className="game-button__sub">军令 0 · {daysUntilNextOrder(state.day, state.homeLevel)} 日后 +1</small>}
+        <GameButton variant="secondary" onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
+          {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金{!canUpgrade ? ` · 差 ${(nextHome.upgradeCost - state.gold).toLocaleString()}` : ''}</small></>) : '宅邸已满'}
         </GameButton>
       </section>
+
+      <nav className="home-tiles" aria-label="家业">
+        <button type="button" onClick={() => setSheet('goals')}>
+          <span>家业目标</span>
+          <strong>{claimable > 0 ? `${claimable} 项可领` : `${questStatuses.filter((quest) => quest.claimed).length}/${questStatuses.length}`}</strong>
+          {claimable > 0 && <i className="home-dot" aria-hidden="true" />}
+        </button>
+        <button type="button" onClick={() => setSheet('log')}>
+          <span>府中纪事</span>
+          <strong>{latestLog ? latestLog.title : '暂无'}</strong>
+        </button>
+        {state.homeLevel >= 3 && (
+          <button type="button" onClick={onOpenFief}>
+            <span>封地</span>
+            <strong>{ownedFiefs > 0 ? `${ownedFiefs}/${fiefs.length} 郡` : state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? '可开拓' : '侯府开放'}</strong>
+            {fiefAffordable && <i className="home-dot" aria-hidden="true" />}
+          </button>
+        )}
+      </nav>
 
       <nav className="home-tabbar" aria-label="主城导航">
         <button type="button" className="is-active" aria-current="page">
           <span>家业</span>
         </button>
-        <button type="button" onClick={onBattle}>
+        <button type="button" onClick={onBattle} className={guided('battle')}>
           <span>出征</span>
+          {battleDot && <i className="home-dot" aria-hidden="true" />}
         </button>
-        <button type="button" onClick={onOpenPartnerTalk}>
+        <button type="button" onClick={onOpenPartner} className={guided('partner')}>
           <span>伴侣</span>
+          {state.tutorialDone && canRecruit && <i className="home-dot" aria-hidden="true" />}
         </button>
-        <button type="button" onClick={onOpenWeapon}>
+        <button type="button" onClick={onOpenWeapon} className={guided('weapon')}>
           <span>兵器</span>
+          {state.tutorialDone && betterWeapon && <i className="home-dot" aria-hidden="true" />}
         </button>
         <button type="button" onClick={onOpenLord}>
           <span>主公</span>
         </button>
       </nav>
 
-      <section className="quest-panel" ref={questRef}>
-        <div className="section-title">
-          <span>家业目标</span>
-          <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
-        </div>
-        {ambition && ambitionOpen && (
-          <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.ambition.describe(ambition.target)}，现 {ambition.progress.toLocaleString()} {ambition.ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
-        )}
-        {maxedHint && <p className="ambition-progress legacy-maxed-hint">{maxedHint}</p>}
-        <p className="honor-hint">
-          当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : titleStatus.missing > 0 ? `，已是本代最高称号，另有 ${titleStatus.missing} 个称号待集齐（点头像查看）` : '，本代称号已集齐'}。
-        </p>
-        <div className="section-title" hidden>
-          <span />
-        </div>
-        <div className="quest-list">
-          {visibleQuests.map((quest) => (
-            <article key={quest.id} className={`quest-item ${quest.complete ? 'is-complete' : ''} ${quest.claimed ? 'is-claimed' : ''}`}>
-              <div>
-                <strong>{quest.title}</strong>
-                <span>{quest.description}</span>
-              </div>
-              {quest.claimed ? (
-                <em>已领</em>
-              ) : quest.complete ? (
-                <button onClick={() => onClaimQuest(quest.id)}>领赏</button>
+      {sheet === 'goals' && (
+        <ModalShell title="家业目标" onClose={() => setSheet(null)}>
+          <section className="quest-panel" ref={questRef}>
+            <div className="section-title">
+              <span>已领 {questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</span>
+              {claimable > 1 && <button type="button" className="quest-claim-all" onClick={() => claimableQuests.forEach((quest) => onClaimQuest(quest.id))}>全部领取 +{claimableGold.toLocaleString()} 金</button>}
+            </div>
+            {ambition && ambitionOpen && (
+              <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.ambition.describe(ambition.target)}，现 {ambition.progress.toLocaleString()} {ambition.ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
+            )}
+            {maxedHint && <p className="ambition-progress legacy-maxed-hint">{maxedHint}</p>}
+            <p className="honor-hint">
+              当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : titleStatus.missing > 0 ? `，已是本代最高称号，另有 ${titleStatus.missing} 个称号待集齐（点头像查看）` : '，本代称号已集齐'}。
+            </p>
+            <div className="quest-list">
+              {visibleQuests.map((quest) => (
+                <article key={quest.id} className={`quest-item ${quest.complete ? 'is-complete' : ''} ${quest.claimed ? 'is-claimed' : ''}`}>
+                  <div>
+                    <strong>{quest.title}</strong>
+                    <span>{quest.description}</span>
+                  </div>
+                  {quest.claimed ? (
+                    <em>已领</em>
+                  ) : quest.complete ? (
+                    <button onClick={() => onClaimQuest(quest.id)}>领赏</button>
+                  ) : (
+                    <em>{quest.id === 'power-200' ? `${totalPower}/180 · ` : ''}{quest.rewardGold.toLocaleString()}金</em>
+                  )}
+                </article>
+              ))}
+            </div>
+            <p className="home-record">战绩：官道与牌局 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins} · 负 {state.battleLosses}</p>
+          </section>
+        </ModalShell>
+      )}
+
+      {sheet === 'log' && (
+        <ModalShell title="府中纪事" onClose={() => setSheet(null)}>
+          <section className="event-panel">
+            <div className="event-list">
+              {state.eventLog.length === 0 ? (
+                <p>尚无纪事，经营数日后会有府中回报。</p>
               ) : (
-                <em>{quest.id === 'power-200' ? `${totalPower}/180 · ` : ''}{quest.rewardGold.toLocaleString()}金</em>
+                state.eventLog.slice(0, 12).map((event) => (
+                  <article key={event.id}>
+                    <span>第 {event.day} 日 · {event.title}</span>
+                    <p>{event.detail}{event.goldDelta ? ` ${event.goldDelta > 0 ? '+' : '−'}${Math.abs(event.goldDelta).toLocaleString()}金` : ''}</p>
+                  </article>
+                ))
               )}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="event-panel">
-        <div className="section-title">
-          <span>府中纪事</span>
-          <strong>近事</strong>
-        </div>
-        <div className="event-list">
-          {state.eventLog.length === 0 ? (
-            <p>尚无纪事，经营数日后会有府中回报。</p>
-          ) : (
-            state.eventLog.slice(0, 4).map((event) => (
-              <article key={event.id}>
-                <span>第 {event.day} 日 · {event.title}</span>
-                <p>{event.detail}{event.goldDelta ? ` ${event.goldDelta > 0 ? '+' : '−'}${Math.abs(event.goldDelta).toLocaleString()}金` : ''}</p>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
-
-      <footer className="home-footer">
-        <span>官道与牌局 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins} · 负 {state.battleLosses}</span>
-        <button onClick={onOpenSettings}>设置与存档</button>
-      </footer>
+            </div>
+          </section>
+        </ModalShell>
+      )}
     </main>
   );
 }

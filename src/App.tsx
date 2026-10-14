@@ -351,7 +351,7 @@ export function App() {
           onUpgradeEffect={handleUpgradeEffect}
         />
         {modal === 'partner' && (
-          <PartnerModal state={game.state} lord={game.selectedLord} costFor={game.recruitCostFor} discount={game.recruitDiscount} onClose={() => setModal(null)} onRecruit={handleRecruit} />
+          <PartnerModal state={game.state} lord={game.selectedLord} costFor={game.recruitCostFor} discount={game.recruitDiscount} onClose={() => setModal(null)} onRecruit={handleRecruit} onTalk={() => setModal('partnerTalk')} />
         )}
         {modal === 'partnerTalk' && (
           <PartnerTalkModal lord={game.selectedLord} ownedPartners={game.ownedPartners} onClose={() => setModal(null)} />
