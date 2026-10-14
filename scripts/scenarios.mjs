@@ -1264,6 +1264,33 @@ await scenario('后期档位与今日军功', async () => {
   await d13.context().close();
 });
 
+await scenario('手机横屏与大屏竖屏铺满', async () => {
+  // 横屏手机：外层页面不滚动、开屏「开始游戏」与选主公「确认选择」都在一屏内
+  for (const viewport of [{ width: 844, height: 390 }, { width: 932, height: 430 }]) {
+    const page = await open(null, { viewport, isMobile: true, hasTouch: true });
+    const fit = (name) => page.evaluate((label) => {
+      const btn = [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === label);
+      const r = btn?.getBoundingClientRect();
+      const d = document.documentElement;
+      return { ok: !!r && r.top >= 0 && r.bottom <= innerHeight && d.scrollWidth <= innerWidth && d.scrollHeight <= innerHeight, top: r?.top, bottom: r?.bottom, sh: d.scrollHeight };
+    }, name);
+    await page.getByRole('button', { name: '开始游戏' }).waitFor();
+    const title = await fit('开始游戏');
+    check(`${viewport.width}x${viewport.height} 开屏开始游戏在一屏内`, title.ok, JSON.stringify(title));
+    await page.getByRole('button', { name: '开始游戏' }).click();
+    await page.getByText('乱世择主').first().waitFor();
+    const lord = await fit('确认选择');
+    check(`${viewport.width}x${viewport.height} 选主公确认按钮在一屏内`, lord.ok, JSON.stringify(lord));
+    await page.context().close();
+  }
+  // 430 宽大屏 iPhone 竖屏：外框铺满视口，不再装进 390 小框
+  const big = await open(null, { viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });
+  await big.getByRole('button', { name: '开始游戏' }).waitFor();
+  const shell = await big.locator('.phone-shell').boundingBox();
+  check('430x932 竖屏外框铺满', Math.round(shell.width) === 430 && Math.round(shell.height) === 932, JSON.stringify(shell));
+  await big.context().close();
+});
+
 await scenario('斗地主难度随场次', async () => {
   const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
   await page.getByRole('button', { name: '出征讨伐' }).click();
