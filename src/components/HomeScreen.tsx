@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
-import { legacyIncomeMultiplier, legacyPointsGainable, weaponBonusForLord } from '../lib/battle';
+import { bestValueTierIndex, enemyForTier, legacyIncomeMultiplier, legacyPointsGainable, ROSTERS, safeTierIndex, weaponBonusForLord } from '../lib/battle';
 import { formatRemaining, raidRemainingMs } from '../lib/frontier';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
-import { dynastyCount, endingHint, findRealm, isEndingReached, legacyMaxedHint, realmIncomePercent } from '../data/dynasty';
+import { bountyScale, dynastyCount, endingHint, findRealm, isEndingReached, legacyMaxedHint, realmIncomePercent } from '../data/dynasty';
 import { daysUntilNextOrder } from '../types';
 import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
@@ -18,6 +18,7 @@ import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFi
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { StatBar } from './common/StatBar';
+import type { RegionId } from './BattleScreen';
 
 interface HomeScreenProps {
   state: GameState;
@@ -41,6 +42,8 @@ interface HomeScreenProps {
   onOpenPartnerTalk: () => void;
   onOpenWeapon: () => void;
   onBattle: () => void;
+  /** 带预选区域进出征地图（边患告警进北疆、引导出征进官道） */
+  onBattleAt: (region: RegionId) => void;
   onOpenFarm: () => void;
   onClaimQuest: (questId: string) => void;
   onCompleteTutorial: () => void;
@@ -89,6 +92,7 @@ export function HomeScreen({
   onOpenPartnerTalk,
   onOpenWeapon,
   onBattle,
+  onBattleAt,
   onOpenFarm,
   onClaimQuest,
   onCompleteTutorial,
@@ -142,12 +146,17 @@ export function HomeScreen({
     [cheapestPartner, nextHome, state.battleWins, state.equippedWeaponId, state.gold, state.homeLevel, state.ownedPartnerIds.length]
   );
   const currentOrder = starterOrders.find((order) => !order.done) ?? null;
+  // 官道一场推荐对手的缴获（与出征地图同口径：没赢过用高胜率档，否则用性价比档；含今日军功与练兵之策）
+  const landTier = state.battleWins === 0 ? safeTierIndex(ROSTERS.land, totalPower) : bestValueTierIndex(ROSTERS.land, totalPower);
+  const landFightGold = Math.round(enemyForTier(ROSTERS.land, landTier, totalPower).rewardGold * (state.nextBattleBonus && state.nextBattleBonus > 1 ? state.nextBattleBonus : 1) * bountyScale(state.day, 'land'));
+  // 第 3 步买兵器差钱时，有军令就去官道打一场，别让新人连点二十多天政务干等
+  const weaponViaBattle = currentOrder?.target === 'weapon' && state.gold < 1500 && state.orders >= 1 && landFightGold > 0;
   const guidedTarget: 'income' | 'upgrade' | 'partner' | 'weapon' | 'battle' | null = state.tutorialDone || !currentOrder
     ? null
     : currentOrder.target === 'upgrade' && nextHome && state.gold < nextHome.upgradeCost
       ? 'income'
       : currentOrder.target === 'weapon' && state.gold < 1500
-        ? 'income'
+        ? weaponViaBattle ? 'battle' : 'income'
         : currentOrder.target === 'partner' && state.gold < cheapestPartner
           ? 'income'
           : currentOrder.target;
@@ -164,12 +173,14 @@ export function HomeScreen({
       : currentOrder.target === 'partner'
         ? '伴侣入府直接加武力、智谋或声望，最便宜的一位 ' + (Number.isFinite(cheapestPartner) ? cheapestPartner.toLocaleString() : '') + ' 金。'
         : currentOrder.target === 'weapon'
-          ? '换一把好兵器，武力立刻上涨，出征胜率更高。青釭剑或双股剑 1,500 金。'
+          ? `换一把好兵器，武力立刻上涨，出征胜率更高。青釭剑或双股剑 1,500 金。${weaponViaBattle ? `还差 ${shortOf.toLocaleString()} 金：去官道打一场推荐对手，胜可缴获约 ${landFightGold.toLocaleString()} 金，${landFightGold >= shortOf ? '一场就够' : `约 ${Math.ceil(shortOf / landFightGold)} 场凑齐`}。` : ''}`
           : '去官道挑「推荐」的对手打一场，赢了缴获远多于政务收入。';
   const guideAction: { label: string; run: () => void } | null = !currentOrder
     ? null
     : shortOf > 0 && claimableGold > 0
       ? { label: `先领任务奖励 +${claimableGold.toLocaleString()} 金`, run: () => claimableQuests.forEach((quest) => onClaimQuest(quest.id)) }
+      : weaponViaBattle
+        ? { label: '去出征赚钱 →', run: () => onBattleAt('guandao') }
       : shortOf > 0
         ? { label: `过一天 · +${dailyIncome.toLocaleString()} 金（还差 ${shortOf.toLocaleString()}）`, run: () => handleCollectIncome() }
         : currentOrder.target === 'upgrade'
@@ -178,7 +189,7 @@ export function HomeScreen({
             ? { label: '去招募伴侣 →', run: onOpenPartner }
             : currentOrder.target === 'weapon'
               ? { label: '去兵器库 →', run: onOpenWeapon }
-              : { label: '去出征 →', run: onBattle };
+              : { label: '去出征 →', run: () => onBattleAt('guandao') };
   const completedStarterOrders = starterOrders.filter((order) => order.done).length;
   useEffect(() => {
     if (!state.tutorialDone && completedStarterOrders === starterOrders.length) {
@@ -274,7 +285,7 @@ export function HomeScreen({
           </div>
           <div>
             <strong>{state.orders}/{orderCap}</strong>
-            <span>军令</span>
+            <span title="每场出征耗 1 道军令（北疆边患除外），处理政务时按日回复">军令</span>
           </div>
           <div>
             <strong>{state.day}</strong>
@@ -289,7 +300,7 @@ export function HomeScreen({
       {state.frontierRaid && (
         <div className="frontier-alert" role="status">
           <span>北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金（最多 5,000）。</span>
-          <button type="button" onClick={onBattle}>去迎战 →</button>
+          <button type="button" onClick={() => onBattleAt('beijiang')}>去迎战 →</button>
         </div>
       )}
 
@@ -337,6 +348,10 @@ export function HomeScreen({
                 <button key={option.id} type="button" onClick={() => onResolveChoice(option.id)}>
                   <strong>{option.label}</strong>
                   <small>{option.detail}</small>
+                  {/* 练兵之策不叠加：已有一次翻倍待用时提醒，免得白白放弃现钱 */}
+                  {option.id === 'battleBonus' && state.nextBattleBonus && state.nextBattleBonus > 1 && (
+                    <small className="choice-card__warn" style={{ color: '#ffb38a' }}>已有一次翻倍待用，再选不叠加</small>
+                  )}
                 </button>
               ))}
             </div>

@@ -475,7 +475,7 @@ await scenario('府中事件二选一', async () => {
   const summaryText = await adv.locator('.venue-summary').innerText();
   const reward = Number(summaryText.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
   const bonusLoss = Number(summaryText.match(/败折损 ([\d,]+) 金/)[1].replace(/,/g, ''));
-  check('出征面板标明练兵翻倍', summaryText.includes('练兵之策翻倍'), summaryText.slice(0, 80));
+  check('出征面板标明练兵翻倍', summaryText.includes('练兵之策 ×2'), summaryText.slice(0, 80));
   const before = await read(adv);
   await adv.getByRole('button', { name: /^出征讨伐 ·/ }).click();
   await adv.getByText(/讨伐得胜|败退整军/).first().waitFor({ timeout: 90000 });
@@ -1634,6 +1634,82 @@ await scenario('斗地主', async () => {
   check('斗地主整局可打完且结算一致', ended && (win ? delta === 8000 * mult && after.battleWins === before.battleWins + 1 : delta === -Math.min(before.gold, 1600 * mult) && after.battleLosses === before.battleLosses + 1),
     `${win ? '胜' : '负'} ×${mult} Δgold=${delta}`);
   await page.context().close();
+});
+
+await scenario('主城入口与加成文案', async () => {
+  const raid = { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 };
+  // 边患告警「去迎战」直接选中北疆，主按钮是出关迎战；有练兵之策时预览按翻倍后金额
+  const fr = await open(save({ homeLevel: 4, day: 11, gold: 20000, frontierRaid: raid, nextRaidDay: 10, nextBattleBonus: 2 }));
+  await fr.getByRole('button', { name: '去迎战 →' }).click();
+  await fr.getByText('九州征途').first().waitFor();
+  check('去迎战选中北疆', (await fr.locator('.map-node.is-selected').innerText()).includes('北疆'));
+  check('去迎战主按钮为出关迎战', await fr.getByRole('button', { name: /^出关迎战/ }).isEnabled() && !(await fr.getByRole('button', { name: /进入斗地主/ }).isVisible().catch(() => false)));
+  const frText = await fr.locator('.venue-summary').innerText();
+  check('边患预览含练兵之策翻倍', frText.includes('（练兵之策 ×2）'), frText.slice(0, 120));
+  await fr.context().close();
+
+  // 加成文案按真实来源列出：第 13 日江东今日军功、官道无加成；第 14 日许都今日军功 + 国号魏
+  const summaryOf = async (page, region) => { await page.getByRole('button', { name: region }).click(); return page.locator('.venue-summary').innerText(); };
+  const d13 = await open(save({ day: 13, homeLevel: 4, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
+  await d13.getByRole('button', { name: '出征讨伐' }).click();
+  await d13.getByText('九州征途').first().waitFor();
+  check('地图有今日军功说明', (await d13.locator('.map-term-note').innerText()).includes('+30%'));
+  const land = await summaryOf(d13, /官道/);
+  check('无加成时不写加成', /胜缴获 [\d,]+ 金，败/.test(land), land.slice(0, 120));
+  const naval = await summaryOf(d13, /江东/);
+  check('军功日只写今日军功', naval.includes('（今日军功 +30%）') && !naval.includes('练兵'), naval.slice(0, 160));
+  await d13.locator('.tier-card').first().click();
+  const shown = Number((await d13.locator('.venue-summary').innerText()).match(/胜缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
+  const before = await read(d13);
+  await d13.getByRole('button', { name: /^扬帆出战 ·/ }).click();
+  await d13.getByRole('button', { name: '直接结算' }).click();
+  await d13.getByText(/水战告捷|折戟江上/).first().waitFor({ timeout: 8000 });
+  await d13.waitForTimeout(400);
+  const after = await read(d13);
+  const logText = await d13.locator('.battle-log').innerText();
+  const wonNaval = (await d13.locator('h2').first().innerText()).includes('水战告捷');
+  check('江东结算与预估一致且标今日军功', wonNaval ? after.gold - before.gold === shown && logText.includes('（今日军功 +30%）') && !logText.includes('国号') : after.battleLosses === before.battleLosses + 1, `${wonNaval ? '胜' : '负'} Δ=${after.gold - before.gold} shown=${shown}`);
+  await d13.context().close();
+  const wei = await open(save({ day: 14, homeLevel: 4, realms: { wei: 1, shu: 0, wu: 0 }, realm: 'wei' }));
+  await wei.getByRole('button', { name: '出征讨伐' }).click();
+  await wei.getByText('九州征途').first().waitFor();
+  const court = await summaryOf(wei, /许都/);
+  check('许都军功日 + 国号魏逐项列出', court.includes('（今日军功 +30%、国号 +20%）'), court.slice(0, 200));
+  check('朝议说明声势', court.includes('声势'));
+  await wei.context().close();
+
+  // 练兵之策待用时，门客献策卡提示不叠加
+  const adv = await open(save({ day: 14, gold: 5000, homeLevel: 4, nextBattleBonus: 2 }));
+  await adv.getByRole('button', { name: /^处理政务/ }).click();
+  await adv.waitForTimeout(400);
+  check('已有翻倍时提示再选不叠加', (await adv.locator('.choice-card__options button').nth(1).innerText()).includes('再选不叠加'));
+  await adv.context().close();
+  const adv2 = await open(save({ day: 14, gold: 5000, homeLevel: 4 }));
+  await adv2.getByRole('button', { name: /^处理政务/ }).click();
+  await adv2.waitForTimeout(400);
+  check('无翻倍时不提示不叠加', !(await adv2.locator('.choice-card__options button').nth(1).innerText()).includes('不叠加'));
+  await adv2.context().close();
+
+  // 引导第 3 步差钱：有军令就去出征赚钱（选中官道），没军令才过一天；钱够去兵器库
+  const allQuests = ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third', 'power-200', 'naval-first-win', 'court-first-win', 'farm-first', 'frontier-first-win', 'succession', 'partner-event', 'fief-first', 'three-partners'];
+  const step3 = (extra) => save({ tutorialDone: false, homeLevel: 2, gold: 760, day: 6, ownedPartnerIds: ['diaochan', 'zhurong'], claimedQuestIds: allQuests, ...extra });
+  const g3 = await open(step3({ orders: 2 }));
+  const panel = g3.locator('[aria-label="开局引导"]');
+  await panel.waitFor();
+  check('第 3 步差钱时主按钮去出征赚钱', (await panel.innerText()).includes('第 3 步') && (await g3.locator('.starter-do').innerText()) === '去出征赚钱 →', await g3.locator('.starter-do').innerText());
+  check('第 3 步说明打一场能凑多少', /一场就够|场凑齐/.test(await panel.innerText()));
+  await g3.locator('.starter-do').click();
+  await g3.getByText('九州征途').first().waitFor();
+  check('引导出征选中官道', (await g3.locator('.map-node.is-selected').innerText()).includes('官道') && (await g3.getByRole('button', { name: /^出征讨伐 · 耗 1 军令/ }).isVisible()));
+  await g3.context().close();
+  const g3b = await open(step3({ orders: 0 }));
+  await g3b.locator('.starter-do').waitFor();
+  check('没军令时仍是过一天', (await g3b.locator('.starter-do').innerText()).startsWith('过一天'), await g3b.locator('.starter-do').innerText());
+  await g3b.context().close();
+  const g3c = await open(step3({ orders: 2, gold: 1600 }));
+  await g3c.locator('.starter-do').waitFor();
+  check('钱够时去兵器库', (await g3c.locator('.starter-do').innerText()) === '去兵器库 →');
+  await g3c.context().close();
 });
 
 await browser.close();

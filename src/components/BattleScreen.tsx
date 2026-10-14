@@ -3,7 +3,7 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import type { AiSkill } from '../lib/doudizhu';
-import { bountyMode } from '../data/dynasty';
+import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
 import { daysUntilNextOrder, LOSS_PENALTY_RATE, type BattleMode } from '../types';
@@ -129,7 +129,7 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
   },
   court: {
     region: '许都', title: '朝堂', statLabel: '声望', unlockHomeLevel: COURT_UNLOCK_HOME_LEVEL, unlockHomeName: '府邸', enterLabel: '入朝议事', background: 'assets/ui/ui_court_battle.png',
-    summary: '朝议比声望（主公 + 伴侣 + 宅邸），兵器不计',
+    summary: '朝议比声望（主公 + 伴侣 + 宅邸），兵器不计；交锋时双方的「声势」相当于兵力，由声望实力换算',
     eyebrow: '许都朝堂', intro: '整冠入朝', fighting: '朝议正酣', attack: '进言', crit: '弹劾', counter: '结党反驳', counterCrit: '构陷', 
     win: '朝议得胜', loss: '失势出京', enemyBroken: '理屈词穷', exhausted: '孤立无援，只得拂袖而去', retreat: '拂袖退朝', hpLabel: '声势',
     scoutReport: (enemy) => `朝中传报：${enemy}已联络党羽。`, departure: (lord) => `${lord}持笏入殿。`, battleStart: () => '钟鼓齐鸣，朝议开始。'
@@ -217,10 +217,25 @@ export function BattleScreen({
   const rawLossGold = battleLossGold(enemy.rewardGold, tierOddsFor(roster, selectedTier, attackPower));
   const [paidLoss, setPaidLoss] = useState<number | null>(null);
   const lossGold = paidLoss ?? effectiveLoss(rawLossGold, farm.gold, homeLevel);
-  const bonusMultiplier = (battleBonus && battleBonus > 1 ? battleBonus : 1) * realmScale(mode);
+  const drillBonus = battleBonus && battleBonus > 1 ? battleBonus : 1;
+  const bonusMultiplier = drillBonus * realmScale(mode);
+  // 胜利实得：与 recordBattle 入账同一公式与乘法顺序（基础 × 练兵之策 × 国号·今日军功，再取整）
+  const winGold = (base: number) => Math.round(base * drillBonus * realmScale(mode));
+  // 缴获加成逐项列出，只写真正生效的那几项；斗地主只吃练兵之策
+  const bonusNote = (forDoudizhu = false) => {
+    const bounty = forDoudizhu ? 1 : bountyScale(day, mode);
+    const realm = forDoudizhu ? 1 : realmScale(mode) / bounty;
+    const parts = [
+      bounty > 1 ? `今日军功 +${Math.round(BOUNTY_BONUS * 100)}%` : '',
+      realm > 1.001 ? `国号 +${Math.round((realm - 1) * 100)}%` : '',
+      drillBonus > 1 ? `练兵之策 ×${drillBonus}` : ''
+    ].filter(Boolean);
+    return parts.length > 0 ? `（${parts.join('、')}）` : '';
+  };
   // 北疆败则扣当前金币 5%（封顶），出征那一刻定下
   const [frontierLoss, setFrontierLoss] = useState(0);
-  const [resultBonus, setResultBonus] = useState(1);
+  // 出征那一刻定下的胜利实得，结算页照此显示
+  const [resultReward, setResultReward] = useState(0);
   const maxPlayerHp = playerMaxHp(attackPower);
   const maxEnemyHp = enemyMaxHp(enemy.power);
   const selectedVenueLocked = selectedRegion.mode === 'doudizhu' && totalPower < selectedVenue.requiredPower;
@@ -295,7 +310,7 @@ export function BattleScreen({
     let result: BattleRuntime['result'] = null;
     if (nextEnemyHp <= 0) {
       result = 'win';
-      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${Math.round(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${battleBonus && battleBonus > 1 ? '（练兵之策翻倍）' : realmScale(mode) > 1 ? '（军功/国号加成）' : ''}。`);
+      logs.unshift(`${enemy.name}${wording.enemyBroken}，缴获 ${winGold(enemy.rewardGold).toLocaleString()} 金${bonusNote()}。`);
     } else {
       const enemyDamage = rollDamage(enemy.power, attackPower, enemyCrit);
       nextPlayerHp = Math.max(0, prev.playerHp - enemyDamage);
@@ -306,7 +321,7 @@ export function BattleScreen({
       }
     }
     return { phase: result ? 'result' : 'battle', playerHp: nextPlayerHp, enemyHp: nextEnemyHp, round, logs: logs.slice(0, 12), result };
-  }, [attackPower, bonusMultiplier, enemy, lord.name, wording]);
+  }, [attackPower, bonusMultiplier, day, drillBonus, enemy, lord.name, mode, wording]);
 
   // 记住上次选的战斗速度（只是本机偏好，读写失败就用常速）
   const [speed, setSpeedState] = useState<1 | 2 | 4>(() => {
@@ -428,6 +443,8 @@ export function BattleScreen({
             );
           })}
         </section>
+        {/* 术语小注：「今日军功」第一次出现在地图上，就地说明 */}
+        <p className="orders-note map-term-note">「今日军功」：官道、江东、许都每日轮换一处，当天在那里得胜缴获 +{Math.round(BOUNTY_BONUS * 100)}%。</p>
 
         {selectedRegion.mode === 'doudizhu' ? (
           <section className="venue-panel" aria-label="场次选择">
@@ -457,7 +474,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(selectedVenue.rewardGold * (battleBonus && battleBonus > 1 ? battleBonus : 1)).toLocaleString()} 金${battleBonus && battleBonus > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
+              : `本场胜缴获 ${(selectedVenue.rewardGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
           </p>
           </section>
         ) : selectedRegion.mode === 'farm' ? (
@@ -519,7 +536,7 @@ export function BattleScreen({
                       <ImageWithFallback src={imageUrl(enemyImagePath(tier), 160)} alt={tier.name} className="tier-card__avatar" />
                       <strong>{tier.name}</strong>
                       <span>{recommended ? '推荐 · ' : ''}胜率约 {oddsPercentLabel(odds)}%</span>
-                      <em>{hopeless ? '力不能及' : `胜\u00a0+${Math.round(tier.rewardGold * bonusMultiplier).toLocaleString()} · 败\u00a0−${effectiveLoss(tierLoss, farm.gold, homeLevel).toLocaleString()}`}</em>
+                      <em>{hopeless ? '力不能及' : `胜\u00a0+${winGold(tier.rewardGold).toLocaleString()} · 败\u00a0−${effectiveLoss(tierLoss, farm.gold, homeLevel).toLocaleString()}`}</em>
                     </button>
                   );
                 })}
@@ -530,9 +547,9 @@ export function BattleScreen({
                 ? `宅邸升至${wording.unlockHomeName}（${wording.unlockHomeLevel} 级）后可进入。${wording.summary}。`
                 : mode === 'frontier'
                   ? frontier.raid
-                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战（不耗军令），预估胜率约 ${oddsPercentLabel(tierOddsFor(roster, selectedTier, attackPower))}%，胜利可缴获 ${enemy.rewardGold.toLocaleString()} 金；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
+                    ? `胡骑犯边！${formatRemaining(raidRemainingMs(frontier.raid))}内须出关迎战（不耗军令），预估胜率约 ${oddsPercentLabel(tierOddsFor(roster, selectedTier, attackPower))}%，胜利可缴获 ${winGold(enemy.rewardGold).toLocaleString()} 金${bonusNote()}；不管或战败则损失 ${Math.round(RAID_PENALTY_RATE * 100)}% 金币（最多 ${RAID_PENALTY_CAP.toLocaleString()}）。`
                     : `边境安宁，下次边患不早于第 ${Math.max(frontier.nextRaidDay, frontier.day + 1)} 日（处理政务到那天即起）。${wording.summary}。`
-                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${oddsPercentLabel((tierOdds[selectedTier] ?? 0))}%：胜缴获 ${(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金${bonusMultiplier > 1 ? '（练兵之策翻倍）' : ''}，败折损 ${Math.min(lossGold, farm.gold).toLocaleString()} 金。`}
+                  : `${wording.summary}。已选 ${enemy.name}，预估胜率约 ${oddsPercentLabel((tierOdds[selectedTier] ?? 0))}%：胜缴获 ${winGold(enemy.rewardGold).toLocaleString()} 金${bonusNote()}，败折损 ${Math.min(lossGold, farm.gold).toLocaleString()} 金。`}
             </p>
           </section>
         )}
@@ -554,7 +571,7 @@ export function BattleScreen({
             });
             setFrontierLoss(raidPenalty(farm.gold));
             setPaidLoss(effectiveLoss(rawLossGold, farm.gold, homeLevel));
-            setResultBonus(bonusMultiplier);
+            setResultReward(winGold(enemy.rewardGold));
             onBattleStart(
               selectedRegion.mode === 'doudizhu' ? 'land' : mode,
               selectedRegion.mode === 'doudizhu' ? Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE) : lossGold,
@@ -588,6 +605,8 @@ export function BattleScreen({
         <BattleFighter name={enemy.name} title={enemy.description} image={imageUrl(enemyImagePath(enemy), 320)} hp={runtime.enemyHp} maxHp={maxEnemyHp} hpLabel={wording.hpLabel} enemy />
       </section>
 
+      {/* 朝议的血条叫「声势」，易与首页「声望」混淆，就地说明 */}
+      {mode === 'court' && <p className="orders-note">「声势」是朝议中的气势，相当于兵力，由声望实力换算；一方声势耗尽即退朝。</p>}
       <section className="battle-info">
         <div>
           <span>匹配敌军</span>
@@ -602,13 +621,13 @@ export function BattleScreen({
           <strong>
             {runtime.phase === 'result'
               ? runtime.result === 'win'
-                ? `+${Math.round(enemy.rewardGold * resultBonus).toLocaleString()} 金`
+                ? `+${resultReward.toLocaleString()} 金`
                 : mode === 'frontier'
                   ? runtime.result === 'retreat' ? '±0 金' : `−${frontierLoss.toLocaleString()} 金`
                   : `−${lossGold.toLocaleString()} 金`
               : (
                   <>
-                    <span className="battle-info__line">胜 +{Math.round(enemy.rewardGold * bonusMultiplier).toLocaleString()} 金{battleBonus && battleBonus > 1 ? ' ×2' : ''}</span>
+                    <span className="battle-info__line">胜 +{winGold(enemy.rewardGold).toLocaleString()} 金{drillBonus > 1 ? ` ×${drillBonus}` : ''}</span>
                     <span className="battle-info__line">败 −{(mode === 'frontier' ? frontierLoss : lossGold).toLocaleString()} 金</span>
                   </>
                 )}

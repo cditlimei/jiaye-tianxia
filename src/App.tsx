@@ -11,7 +11,7 @@ import { bountyScale, DYNASTY_START_GOLD, dynastyCount, findRealm, realmFarmCost
 import { defaultGameState } from './lib/storage';
 import { LEGACY_START_GOLD_PER_POINT } from './lib/battle';
 import type { GameState } from './types';
-import { BattleScreen } from './components/BattleScreen';
+import { BattleScreen, type RegionId } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
 import { HomeScreen } from './components/HomeScreen';
 import { LordSelectScreen } from './components/LordSelectScreen';
@@ -164,8 +164,9 @@ export function App() {
     });
   };
 
-  const [battleEntry, setBattleEntry] = useState<'xishu' | undefined>(undefined);
-  const handleBattle = (region?: 'xishu') => {
+  // 进出征地图时预选的区域：屯田机会进西蜀、边患告警进北疆、引导出征进官道
+  const [battleEntry, setBattleEntry] = useState<RegionId | undefined>(undefined);
+  const handleBattle = (region?: RegionId) => {
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
     setModal(null);
@@ -332,6 +333,7 @@ export function App() {
           onOpenWeapon={() => setModal('weapon')}
           onBattle={() => handleBattle()}
           onOpenFarm={() => handleBattle('xishu')}
+          onBattleAt={handleBattle}
           onClaimQuest={(questId) => {
             game.claimQuest(questId);
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.36);
