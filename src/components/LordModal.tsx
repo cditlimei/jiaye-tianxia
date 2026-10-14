@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Lord } from '../data/gameData';
-import { titles } from '../data/progression';
+import { hasTitle, titles } from '../data/progression';
 import { ambitionStatus, findAmbition } from '../data/ambitions';
 import { findLord } from '../data/gameData';
 import { dynastyCount, findRealm } from '../data/dynasty';
@@ -81,10 +81,10 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
       <section key={group.label} className="title-list" aria-label={group.label}>
         <div className="section-title">
           <span>{group.label}</span>
-          <strong>{group.list.filter((title) => title.isEarned(state)).length}/{group.list.length}</strong>
+          <strong>{group.list.filter((title) => hasTitle(state, title)).length}/{group.list.length}</strong>
         </div>
         {(group.label === '本代称号' && !rankedOpen && group.list.every((title) => title.isEarned(state)) ? [] : group.list).map((title) => {
-          const earned = title.isEarned(state);
+          const earned = hasTitle(state, title);
           return (
             <div key={title.id} className={`title-row ${earned ? 'is-earned' : ''}`}>
               <strong>「{title.name}」</strong>

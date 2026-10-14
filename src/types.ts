@@ -46,6 +46,8 @@ export interface GameState {
   realms: RealmCounts;
   /** 前朝记录 */
   pastDynasties: DynastyEntry[];
+  /** 已得家声称号 id：只增不减，开新朝重置世代/封地后仍保留（家声的「已获得」= 记过 或 当前满足） */
+  earnedTitles: string[];
   soundEnabled: boolean;
   tutorialDone: boolean;
   lastScreen: Screen;

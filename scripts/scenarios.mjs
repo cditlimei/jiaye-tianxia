@@ -742,6 +742,15 @@ await scenario('流民归附', async () => {
   s = await read(page);
   check('募为乡勇：军令 +1 且不给钱', s.orders === o0 + 1 && s.gold === g0 && s.pendingChoice === null, `orders ${o0} → ${s.orders} gold ${g0} → ${s.gold}`);
   await page.context().close();
+  // 军令已满时选「募为乡勇」：不增加，纪事写明已满而不是 +1
+  const full = await open(save({ day: 19, gold: 5000, homeLevel: 2, ownedPartnerIds: [], orders: 6 }));
+  await full.getByRole('button', { name: /^处理政务/ }).click();
+  await full.waitForTimeout(400);
+  await full.locator('.choice-card__options button').nth(1).click();
+  await full.waitForTimeout(300);
+  s = await read(full);
+  check('军令已满时募为乡勇纪事写明未增加', s.orders === 6 && s.eventLog[0]?.detail.includes('军令已满，未增加') && !s.eventLog[0]?.detail.includes('+1'), `orders=${s.orders} ${s.eventLog[0]?.detail}`);
+  await full.context().close();
 });
 
 await scenario('第五轮修复', async () => {
@@ -1059,6 +1068,50 @@ await scenario('新朝审查修复', async () => {
   await dirty.context().close();
 });
 
+await scenario('家声跨朝与家业点满', async () => {
+  const six = { nanyang: 'farming', runan: 'farming', yingchuan: 'military', changsha: 'farming', bajun: 'farming', liaodong: 'farming' };
+  const lineageCount = async (page) => {
+    await page.getByRole('button', { name: '主公' }).click();
+    const dialog = page.getByRole('dialog', { name: '主公' });
+    const count = Number((await dialog.locator('.title-list').first().locator('.section-title strong').innerText()).split('/')[0]);
+    const text = await dialog.innerText();
+    await dialog.getByRole('button', { name: '关闭' }).click();
+    return { count, text };
+  };
+  // 终局存档开新朝：家声数不减少，天下归心仍在
+  const page = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, fiefs: six, chronicle: [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: null, ambitionDone: false }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: 'wealth', ambitionDone: true }] }));
+  const before = await lineageCount(page);
+  await page.getByRole('button', { name: '展开卷轴 →' }).click();
+  check('终局卷轴写明新朝是第 2 朝、魏按新朝口径 6 → 7', (await page.locator('.ending-sheet').innerText()).includes('第 2 朝') && (await page.getByRole('radio', { name: /魏/ }).innerText()).includes('6 → 7'));
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: /开创新朝 · 国号魏/ }).click();
+  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  const after = await lineageCount(page);
+  const s = await read(page);
+  check('开新朝后家声数不减少', after.count >= before.count && before.count >= 5 && s.earnedTitles?.includes('unifier'), `${before.count} → ${after.count} ${JSON.stringify(s.earnedTitles)}`);
+  await page.context().close();
+
+  // 老存档（无 earnedTitles、有前朝）：补记天下归心
+  const legacy = await open(save({ realms: { wei: 1, shu: 0, wu: 0 }, realm: 'wei', pastDynasties: [{ dynasty: 1, realm: null, generations: 3, days: 100, wins: 70, ambitions: 1 }] }));
+  const old = await lineageCount(legacy);
+  check('老存档有前朝即补记天下归心', /「天下归心」\s*已获得/.test(old.text) && old.count >= 6, old.text.match(/「天下归心」[^\n]*\n?[^\n]*/)?.[0]);
+  await legacy.context().close();
+
+  // 家业点满但只有 4 郡：不出志向卡，首页与传位面板改提示只差 2 郡
+  const maxed = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military', changsha: 'farming' } }));
+  const main = await maxed.locator('main').innerText();
+  check('家业点满未满郡：无志向卡且提示只差 2 郡', !(await maxed.locator('.ambition-card').isVisible().catch(() => false)) && main.includes('只差 2 郡') && !main.includes('志向未定'), main.match(/[^\n]*只差[^\n]*/)?.[0]);
+  await maxed.getByRole('button', { name: '设置与存档' }).click();
+  await maxed.getByText('当前存档').first().waitFor();
+  const panel = await maxed.locator('.succession-panel').innerText();
+  check('传位面板不提志向与 10,000 金，改提示只差 2 郡', panel.includes('只差 2 郡') && !panel.includes('志向') && !panel.includes('10,000'), panel.replace(/\n/g, ' '));
+  await maxed.context().close();
+});
+
 await scenario('家风', async () => {
   const two = (id) => [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: id, ambitionDone: true }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: id, ambitionDone: true }];
   // 富国家风：传位 8 万 1 点
@@ -1090,6 +1143,20 @@ await scenario('家风', async () => {
   await might.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
   check('强兵家风开局军令满', (await read(might)).orders === 6, `orders=${(await read(might)).orders}`);
   await might.context().close();
+  // 带整军封地传位：第三代开局军令按含整军加成的上限满额（7/7）
+  const mightFief = await open(save({ generation: 2, homeLevel: 6, gold: 250000, battleWins: 31, fiefs: { nanyang: 'military' }, ambition: { id: 'might', target: 30, baseFiefs: 0 }, chronicle: [two('might')[0]] }));
+  await mightFief.getByRole('button', { name: '设置与存档' }).click();
+  await mightFief.getByText('当前存档').first().waitFor();
+  mightFief.on('dialog', (d) => d.accept());
+  await mightFief.getByRole('button', { name: '传位给下一代' }).click();
+  await mightFief.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  await mightFief.getByRole('button', { name: '确认选择' }).click();
+  await mightFief.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await mightFief.getByRole('button', { name: '携美人，共创家业' }).click();
+  await mightFief.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  const mf = await read(mightFief);
+  check('强兵家风带整军郡开局军令等于上限 7', mf.orders === 7 && (await mightFief.locator('.home-hud__chips').innerText()).includes('7/7'), `orders=${mf.orders}`);
+  await mightFief.context().close();
   // 断档：两代志向不同不成家风；志向卡提示再成一次即家风
   const broken = await open(save({ generation: 3, chronicle: [two('wealth')[0], { ...two('might')[1] }] }));
   check('两代志向不同不成家风且提示候选', !(await broken.locator('.home-hud').innerText()).includes('家风') && (await broken.locator('.ambition-card').innerText()).includes('再成一次即立家风'));

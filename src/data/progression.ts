@@ -145,7 +145,7 @@ export interface Title {
   lineage?: boolean;
 }
 
-// 本代称号按档位从低到高排列，显示已达成里档位最高的；家声称号单列。全部由存档算出，不单独存
+// 本代称号按档位从低到高排列，显示已达成里档位最高的；家声称号单列。本代称号由存档实时算出；家声另记入 earnedTitles，开新朝后不收回
 export const titles: Title[] = [
   { id: 'commoner', name: '白身', requirement: '', isEarned: () => true },
   { id: 'gentry', name: '乡绅', requirement: '宅邸升至砖瓦宅', isEarned: (s) => s.homeLevel >= 3 },
@@ -171,6 +171,23 @@ export const titles: Title[] = [
   { id: 'scholarly', name: '家学渊源', requirement: `三代志向达成`, isEarned: (s) => ambitionsAchieved(s) >= AMBITION_TITLE_COUNT, lineage: true }
 ];
 
+/**
+ * 天下归心时必然满足的家声：六郡（含三郡）、家业点满（≥10）、传过位（家业点只能靠传位得）。
+ * 老存档没有 earnedTitles，有前朝即说明到过终局，按此补记。
+ */
+export const ENDING_LINEAGE_TITLE_IDS = ['founder', 'eternal', 'marquis', 'six-commanderies', 'unifier'];
+
+/** 称号是否已得：家声看记录或当前满足，本代称号只看当前 */
+export function hasTitle(state: GameState, title: Title) {
+  return (title.lineage && state.earnedTitles.includes(title.id)) || title.isEarned(state);
+}
+
+/** 把当前满足的家声并入记录（只增不减）；没有新增时返回原 state，免得多余重渲染 */
+export function collectEarnedTitles(state: GameState): GameState {
+  const fresh = titles.filter((title) => title.lineage && !state.earnedTitles.includes(title.id) && title.isEarned(state)).map((title) => title.id);
+  return fresh.length > 0 ? { ...state, earnedTitles: [...state.earnedTitles, ...fresh] } : state;
+}
+
 export function getTitleStatus(state: GameState) {
   const ranked = titles.filter((title) => !title.lineage);
   let currentIndex = 0;
@@ -180,7 +197,7 @@ export function getTitleStatus(state: GameState) {
   // 只提示比当前更高的称号，达成后显示位一定会变
   const next = ranked.slice(currentIndex + 1).find((title) => !title.isEarned(state)) ?? null;
   const missing = ranked.filter((title) => !title.isEarned(state)).length;
-  const lineage = [...titles].reverse().find((title) => title.lineage && title.isEarned(state)) ?? null;
+  const lineage = [...titles].reverse().find((title) => title.lineage && hasTitle(state, title)) ?? null;
   return { current: ranked[currentIndex], next, missing, lineage };
 }
 
