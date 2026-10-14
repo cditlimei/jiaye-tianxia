@@ -801,6 +801,41 @@ button:disabled {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* 左右内边距统一在这里给，和标题栏 20px 对齐 */
+  padding: 0 20px 16px;
+}
+
+/* 这几块原来各自带左右内边距，统一由 body 给之后清掉，免得双倍缩进 */
+.modal-shell__body .partner-market__summary,
+.modal-shell__body .partner-grid,
+.modal-shell__body .weapon-list,
+.modal-shell__body .partner-talk,
+.modal-shell__body .settings-panel {
+  padding-inline: 0;
+}
+
+.modal-shell__body .partner-market__notice {
+  margin-inline: 0;
+}
+
+/* 府库一格给宽些，七八位数的金额也能一行放下 */
+.modal-shell__body .partner-market__summary {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* 府库金额窄屏缩字号、放不下先在「金」前换行，不再被省略号截断 */
+.modal-shell__body .partner-market__summary strong {
+  overflow: visible;
+  font-size: min(15px, 3.8vw);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* 弹窗底近乎不透明，并模糊背后页面，免得正文和背景文字重影 */
+.modal-backdrop .modal-shell {
+  background: rgba(7, 7, 17, 0.97);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
@@ -1246,7 +1281,8 @@ button:disabled {
   padding: 10px;
 }
 
-@media (max-width: 420px) {
+/* 竖屏手机铺满整屏：≤500 宽（含 428/430 宽的大屏 iPhone），或触屏竖屏 ≤600 宽 */
+@media (max-width: 500px), (pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
   .app-shell {
     padding: 0;
   }
@@ -1425,6 +1461,18 @@ body {
   color: rgba(245, 230, 200, 0.94);
   background: transparent;
   box-shadow: none;
+}
+
+/* 开屏主按钮：金底深字，比上面的文字按钮醒目 */
+.title-screen .game-button.title-screen__start {
+  min-height: 50px;
+  border: 1px solid rgba(255, 236, 170, 0.7);
+  border-radius: 14px;
+  color: #241303;
+  background: linear-gradient(180deg, #f5d984, #ba7c25);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.35), 0 10px 24px rgba(0, 0, 0, 0.45);
+  font-size: 18px;
+  letter-spacing: 0.2em;
 }
 
 .lord-screen {
@@ -1872,6 +1920,11 @@ body {
   background: rgba(139, 26, 26, 0.82);
 }
 
+/* 可招募的主按钮恢复金底：红底配深褐字对比度只有 1.6:1 */
+.partner-card .game-button--primary {
+  background: linear-gradient(180deg, #f5d984, #ba7c25);
+}
+
 .weapon-list {
   padding: 0 20px 20px;
 }
@@ -1886,7 +1939,8 @@ body {
   border-radius: 12px;
 }
 
-@media (max-width: 420px) {
+/* 竖屏手机铺满整屏：≤500 宽（含 428/430 宽的大屏 iPhone），或触屏竖屏 ≤600 宽 */
+@media (max-width: 500px), (pointer: coarse) and (orientation: portrait) and (max-width: 600px) {
   .app-shell {
     padding: 0;
   }
@@ -1902,6 +1956,11 @@ body {
 
   .screen {
     padding: 14px;
+  }
+
+  /* 吸底偏移跟着 .screen 底内边距走，否则底部导航被裁掉 10px */
+  .home-screen .home-tabbar {
+    bottom: -14px;
   }
 
   .lord-card {
@@ -5600,5 +5659,108 @@ body.is-doudizhu-table .ddz-screen .player-hand {
     min-width: 0;
     padding: 8px 9px;
     font-size: 13px;
+  }
+}
+
+/* 移动端全屏断点（布局组）*/
+/* 手机横屏：外框贴满视口高度，外层页面不再滚动，只留各屏自己的内层滚动 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-shell {
+    padding: 0;
+  }
+
+  .phone-shell {
+    width: min(100%, 480px);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  /* 贴满高度后去掉上下边框和圆角；牌桌、出征地图有自己的外框规则，不动 */
+  body:not(.is-doudizhu-table) .phone-shell:not(:has(.expedition-screen)) {
+    border-top: 0;
+    border-bottom: 0;
+    border-radius: 0;
+  }
+
+  /* 开屏：收紧标题区，「开始游戏」留在一屏内 */
+  .title-screen {
+    gap: 6px;
+    padding: 16px 24px 12px;
+  }
+
+  .title-screen h1 {
+    font-size: 40px;
+  }
+
+  .title-screen__subtitle {
+    width: min(100%, 400px);
+    margin-top: 0;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .title-screen__actions {
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    margin-top: 4px;
+    padding-bottom: 0;
+  }
+
+  .title-screen .game-button.title-screen__start {
+    min-height: 44px;
+  }
+
+  /* 选主公：左列主公列表，右列详情 + 确认按钮，参照出征地图横屏布局 */
+  .phone-shell:has(.lord-screen) {
+    width: min(100%, 930px);
+  }
+
+  .lord-screen {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 0 16px;
+    padding: 12px 20px;
+  }
+
+  .lord-screen > .screen-header,
+  .lord-screen > .dynasty-banner {
+    grid-column: 1 / -1;
+  }
+
+  .lord-screen > .screen-header {
+    grid-row: 1;
+    margin-bottom: 8px;
+  }
+
+  .lord-screen > .dynasty-banner {
+    grid-row: 2;
+  }
+
+  .lord-screen > .lord-grid {
+    grid-column: 1;
+    grid-row: 3 / span 2;
+    align-content: start;
+  }
+
+  .lord-screen > .lord-detail {
+    grid-column: 2;
+    grid-row: 3;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .lord-screen > .game-button {
+    grid-column: 2;
+    grid-row: 4;
+    margin-top: 10px;
+  }
+
+  /* 首页：内边距收窄，底部导航吸底偏移跟着走 */
+  .home-screen {
+    padding: 14px 20px;
+  }
+
+  .home-screen .home-tabbar {
+    bottom: -14px;
   }
 }

@@ -50,7 +50,7 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
         </div>
       )}
       <div className="title-screen__actions">
-        <GameButton block onClick={hasSave ? onContinue : onNew}>
+        <GameButton block className="title-screen__start" onClick={hasSave ? onContinue : onNew}>
           {hasSave ? '继续家业' : '开始游戏'}
         </GameButton>
         {hasSave && (
