@@ -285,7 +285,7 @@ export function HomeScreen({
           </div>
           <div>
             <strong>{state.orders}/{orderCap}</strong>
-            <span title="每场出征耗 1 道军令（北疆边患除外），处理政务时按日回复">军令</span>
+            <span title="每场出征耗 1 道军令（北疆边患除外）；府邸前每日回 1 道，之后每 2 日回 1 道">军令</span>
           </div>
           <div>
             <strong>{state.day}</strong>

@@ -103,7 +103,7 @@ function baseReducer(state: GameState, action: Action): GameState {
             day: 1,
             title: state.generation > 1 ? `第 ${state.generation} 代择主` : dynastyCount(state.realms) > 0 ? `第 ${dynastyCount(state.realms) + 1} 朝开国` : '择主立业',
             detail: state.generation > 1
-              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%${state.chronicle[state.chronicle.length - 1]?.ambitionDone ? `；上一代志向达成，开局多得 ${AMBITION_REWARD_GOLD.toLocaleString()} 金` : ''}。请在主城定下本代志向。`
+              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%${state.chronicle[state.chronicle.length - 1]?.ambitionDone ? `；上一代志向达成，开局多得 ${AMBITION_REWARD_GOLD.toLocaleString()} 金` : ''}。${state.legacyPoints >= LEGACY_MAX_POINTS ? '家业点已满，本代专心封郡、升王城，即可天下归心。' : '请在主城定下本代志向。'}`
               : dynastyCount(state.realms) > 0
                 ? `新朝开国。历朝国号加成：${(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')}；开局多得 ${(dynastyCount(state.realms) * DYNASTY_START_GOLD).toLocaleString()} 金。`
                 : '乱世基业已定，待择良缘共理家业。'
