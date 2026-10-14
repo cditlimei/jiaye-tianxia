@@ -5580,3 +5580,24 @@ body.is-doudizhu-table .ddz-screen .player-hand {
 @media (prefers-reduced-motion: reduce) {
   .ddz-clock.is-urgent { animation: none; }
 }
+
+/* 托管按钮：小号次要按钮；竖屏一行要放下闹钟 + 五个按钮 */
+.ddz-btn--auto {
+  min-width: 0;
+  padding: 7px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+@media (orientation: portrait) {
+  .ddz-actions__row {
+    gap: 6px;
+  }
+
+  .ddz-actions__row .ddz-btn--reset,
+  .ddz-actions__row .ddz-btn--auto {
+    min-width: 0;
+    padding: 8px 9px;
+    font-size: 13px;
+  }
+}

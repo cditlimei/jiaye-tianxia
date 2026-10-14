@@ -239,8 +239,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   const myTurn = table.winner === null && (bidding ? table.bid.turn === 0 : table.currentPlayer === 0);
   const turnKey = `${table.phase}-${table.bid.acted}-${table.currentPlayer}-${table.played.length}-${table.recentActions[0].kind}`;
   const [clock, setClock] = useState<number | null>(null);
+  // 托管：连续两次超时自动进入，也可手动开；托管时由系统按老手水平代打
+  const [autoPilot, setAutoPilot] = useState(false);
+  const timeoutsRef = useRef(0);
   useEffect(() => {
-    if (!myTurn) {
+    if (!myTurn || autoPilot) {
       setClock(null);
       return undefined;
     }
@@ -259,6 +262,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       }
       window.clearInterval(timer);
       setClock(0);
+      timeoutsRef.current += 1;
+      if (timeoutsRef.current >= AUTO_PILOT_AFTER_TIMEOUTS) setAutoPilot(true);
       setTable((prev) => {
         if (prev.winner !== null) return prev;
         if (prev.phase === 'bidding') return prev.bid.turn === 0 ? applyBid(prev, 0, false) : prev;
@@ -272,7 +277,26 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     return () => window.clearInterval(timer);
     // turnKey 变化即换了一手，重新计时
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myTurn, turnKey]);
+  }, [myTurn, turnKey, autoPilot]);
+
+  useEffect(() => {
+    if (!myTurn || !autoPilot) return undefined;
+    const timer = window.setTimeout(() => {
+      setTable((prev) => {
+        if (prev.winner !== null) return prev;
+        if (prev.phase === 'bidding') return prev.bid.turn === 0 ? applyBid(prev, 0, aiWantsLandlord(prev.hands[0], 'veteran', prev.bid.candidate !== null)) : prev;
+        if (prev.currentPlayer !== 0) return prev;
+        return resolveSingleAiTurn({ ...prev, selectedIds: [] }, { ...playerNames, 0: '托管' }, { ...styles, 0: 'balanced' }, 'veteran');
+      });
+    }, 800);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myTurn, turnKey, autoPilot]);
+
+  const toggleAutoPilot = (on: boolean) => {
+    timeoutsRef.current = 0;
+    setAutoPilot(on);
+  };
 
   const toggleCard = (cardId: string) => {
     if (table.currentPlayer !== 0 || table.winner !== null) return;
@@ -286,11 +310,13 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
 
   const playSelected = () => {
     if (!canPlay || !selectedCombo) return;
+    timeoutsRef.current = 0;
     setTable((prev) => applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`));
   };
 
   const pass = () => {
     if (!canPass) return;
+    timeoutsRef.current = 0;
     onSfx('audio/sfx/sfx_button.mp3', 0.24);
     setTable((prev) => applyPass(prev, 0, '你选择不要。'));
   };
@@ -424,13 +450,21 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       )}
 
       <section className="ddz-actions" aria-live="polite">
-        {bidding ? (
+        {autoPilot && table.winner === null ? (
+          <>
+            <p className="ddz-readout">托管中 · 系统代你{bidding ? '叫牌' : '出牌'}</p>
+            <div className="ddz-actions__row">
+              <button type="button" className="ddz-btn ddz-btn--play" onClick={() => toggleAutoPilot(false)}>取消托管</button>
+            </div>
+          </>
+        ) : bidding ? (
           <>
             <p className="ddz-readout">{table.bid.turn === 0 ? '地主拿三张底牌、一打二，输赢翻倍；农民和队友联手，输赢各半' : `等待 ${playerNames[table.bid.turn]} 表态`}</p>
             <div className="ddz-actions__row">
               {clock !== null && <span className={`ddz-clock ${clock <= 5 ? 'is-urgent' : ''}`} role="timer" aria-label={`剩余 ${clock} 秒`}>{clock}</span>}
-              <button type="button" className="ddz-btn ddz-btn--pass" disabled={table.bid.turn !== 0} onClick={() => setTable((prev) => applyBid(prev, 0, false))}>{table.bid.candidate === null ? '不叫' : '不抢'}</button>
-              <button type="button" className="ddz-btn ddz-btn--hint" disabled={table.bid.turn !== 0} onClick={() => setTable((prev) => applyBid(prev, 0, true))}>{table.bid.candidate === null ? '叫地主' : '抢地主'}</button>
+              <button type="button" className="ddz-btn ddz-btn--pass" disabled={table.bid.turn !== 0} onClick={() => { timeoutsRef.current = 0; setTable((prev) => applyBid(prev, 0, false)); }}>{table.bid.candidate === null ? '不叫' : '不抢'}</button>
+              <button type="button" className="ddz-btn ddz-btn--hint" disabled={table.bid.turn !== 0} onClick={() => { timeoutsRef.current = 0; setTable((prev) => applyBid(prev, 0, true)); }}>{table.bid.candidate === null ? '叫地主' : '抢地主'}</button>
+              <button type="button" className="ddz-btn ddz-btn--auto" onClick={() => toggleAutoPilot(true)}>托管</button>
             </div>
           </>
         ) : table.winner === null ? (
@@ -442,6 +476,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
               <button type="button" className="ddz-btn ddz-btn--hint" onClick={selectHint} disabled={!canHint}>提示</button>
               <button type="button" className="ddz-btn ddz-btn--play" onClick={playSelected} disabled={!canPlay}>出牌</button>
               <button type="button" className="ddz-btn ddz-btn--reset" onClick={resetSelection} disabled={table.selectedIds.length === 0}>重选</button>
+              <button type="button" className="ddz-btn ddz-btn--auto" onClick={() => toggleAutoPilot(true)}>托管</button>
             </div>
           </>
         ) : (
@@ -680,6 +715,7 @@ function springOf(table: TableState) {
 /** 测试与旧存档回归用：设了这个开关就跳过叫地主，玩家直接当地主 */
 const SKIP_BID_KEY = 'jiaye-ddz-skip-bid';
 // 出牌倒计时（秒）；测试用 localStorage 覆盖，0 表示不计时
+const AUTO_PILOT_AFTER_TIMEOUTS = 2;
 const TURN_SECONDS_KEY = 'jiaye-ddz-turn-seconds';
 const TURN_SECONDS = 20;
 const BID_SECONDS = 12;

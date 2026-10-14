@@ -1311,6 +1311,25 @@ await scenario('出牌倒计时', async () => {
   // 地主先出，2 秒不动就自动出最小的一张
   await page.waitForFunction(() => document.querySelectorAll('.player-hand .poker-card').length === 19, null, { timeout: 8000 }).catch(() => {});
   check('超时自动出最小一张', (await page.locator('.player-hand .poker-card').count()) === 19, `${await page.locator('.player-hand .poker-card').count()} 张`);
+  // 再超时一次（或牌局已结束）→ 自动托管
+  await page.getByText('托管中').first().waitFor({ timeout: 15000 }).catch(() => {});
+  check('连续两次超时进入托管', (await page.getByText('托管中').count()) > 0 || (await page.locator('.doudizhu-result-banner').count()) > 0);
+  await page.context().close();
+});
+
+await scenario('手动托管与取消', async () => {
+  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 390, height: 844 } });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  const row = await page.locator('.ddz-actions__row').evaluate((el) => ({ right: el.getBoundingClientRect().right, scroll: el.scrollWidth - el.clientWidth }));
+  check('竖屏按钮行一行放得下', row.right <= 390 && row.scroll <= 0, JSON.stringify(row));
+  await page.getByRole('button', { name: '托管', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.player-hand .poker-card').length < 20, null, { timeout: 8000 }).catch(() => {});
+  check('托管后系统代你出牌', (await page.getByText('托管中').count()) > 0 && (await page.locator('.player-hand .poker-card').count()) < 20);
+  if ((await page.getByRole('button', { name: '取消托管' }).count()) > 0) await page.getByRole('button', { name: '取消托管' }).click();
+  check('取消托管后恢复出牌按钮', (await page.locator('.doudizhu-result-banner').count()) > 0 || (await page.getByRole('button', { name: '出牌', exact: true }).count()) === 1);
   await page.context().close();
 });
 
