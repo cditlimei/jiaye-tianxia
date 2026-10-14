@@ -67,6 +67,9 @@ try {
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expectText(page, '离线经营');
+  // 离线期间挂起的府中事件会直接弹窗，先收起再去设置
+  const later = page.getByRole('button', { name: '稍后再说' });
+  if (await later.isVisible().catch(() => false)) await later.click();
   await page.getByRole('button', { name: '设置与存档' }).click();
   await expectText(page, '当前存档');
   await page.getByLabel('粘贴存档 JSON').fill(

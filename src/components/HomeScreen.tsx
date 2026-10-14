@@ -205,9 +205,10 @@ export function HomeScreen({
   const choiceRef = useRef<HTMLElement | null>(null);
   const actionRef = useRef<HTMLElement | null>(null);
   const questRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (state.pendingChoice) choiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [state.pendingChoice]);
+  // 府中事件/伴侣心事直接弹窗，不再塞在页面中间等玩家自己往下找；可「稍后再说」，主按钮随时重新打开
+  const choiceKey = state.pendingChoice ? `${state.pendingChoice.eventId}@${state.pendingChoice.day}` : '';
+  const [choiceHiddenKey, setChoiceHiddenKey] = useState('');
+  const choiceOpen = Boolean(state.pendingChoice) && choiceHiddenKey !== choiceKey;
 
   // 首页只留一张「下一步」卡，其余可做的事收进「还有 N 件」；目标与纪事收进底部弹层
   const [sheet, setSheet] = useState<'goals' | 'log' | null>(null);
@@ -221,6 +222,10 @@ export function HomeScreen({
   }, [state.frontierRaid]);
 
   const handleCollectIncome = () => {
+    if (state.pendingChoice) {
+      setChoiceHiddenKey('');
+      return;
+    }
     const amount = onCollectIncome();
     const id = Date.now();
     onIncomeSfx();
@@ -369,12 +374,14 @@ export function HomeScreen({
         </section>
       )}
 
-      {state.pendingChoice && (() => {
+      {state.pendingChoice && choiceOpen && (() => {
         const event = resolvePendingEvent(state.pendingChoice);
         if (!event) return null;
         const partner = event.id.startsWith('partner:') ? partners.find((item) => item.id === partnerIdOfKey(event.id.slice('partner:'.length))) : event.id.startsWith('minor:') ? partners.find((item) => item.id === event.id.split(':')[2]) : null;
         return (
-          <section ref={choiceRef} className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={event.id.startsWith('minor:') ? '府中小事' : partner ? '伴侣心事' : '府中事件'}>
+          <div className="modal-backdrop choice-modal">
+          <section ref={choiceRef} role="dialog" aria-modal="true" className={`choice-card ${partner ? 'choice-card--partner' : ''}`} aria-label={event.id.startsWith('minor:') ? '府中小事' : partner ? '伴侣心事' : '府中事件'}>
+            <em className="choice-card__eyebrow">府中来报 · 请主公定夺</em>
             {partner && <ImageWithFallback src={imageUrl(partner.imagePath, 160)} alt={partner.name} className="choice-card__portrait" />}
             <span>第 {state.pendingChoice.day} 日 · {partner ? `${partner.name} · ` : ''}{event.title}</span>
             <strong>{event.prompt}</strong>
@@ -390,7 +397,9 @@ export function HomeScreen({
                 </button>
               ))}
             </div>
+            <button type="button" className="choice-card__later" onClick={() => setChoiceHiddenKey(choiceKey)}>稍后再说</button>
           </section>
+          </div>
         );
       })()}
 
@@ -453,8 +462,8 @@ export function HomeScreen({
       )}
 
       <section className="home-actions" ref={actionRef}>
-        <GameButton onClick={handleCollectIncome} className={`home-actions__main ${guided('income')}`} disabled={Boolean(state.pendingChoice)}>
-          {state.pendingChoice ? '先决断上方事件' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
+        <GameButton onClick={handleCollectIncome} className={`home-actions__main ${state.pendingChoice ? 'is-guided' : guided('income')}`}>
+          {state.pendingChoice ? '府中来报 · 去定夺' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
         </GameButton>
         <GameButton variant="secondary" onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
           {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金{!canUpgrade ? ` · 差 ${(nextHome.upgradeCost - state.gold).toLocaleString()}` : ''}</small></>) : '宅邸已满'}

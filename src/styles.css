@@ -6200,3 +6200,56 @@ body.is-doudizhu-table .ddz-screen .player-hand {
     min-height: 48px;
   }
 }
+
+/* 府中事件弹窗：页面中间的事件卡改成居中弹出 */
+.choice-modal {
+  align-items: center;
+  justify-content: center;
+}
+
+.choice-modal .choice-card {
+  width: min(100%, 420px);
+  max-height: 90dvh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(60, 44, 12, 0.98), rgba(20, 16, 10, 0.98));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+}
+
+.choice-card .choice-card__eyebrow {
+  color: var(--gold-light);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.choice-card .choice-card__later {
+  justify-self: center;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 13px;
+}
+
+.choice-modal .choice-card--partner > * {
+  grid-column: 2;
+}
+
+.choice-modal .choice-card--partner > .choice-card__portrait {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+}
+
+.choice-modal .choice-card--partner > .choice-card__options,
+.choice-modal .choice-card > .choice-card__later {
+  grid-column: 1 / -1;
+}
+
+/* 首页里的弹层一律贴视口：首页内层会滚动、横屏还是两列网格，absolute 会被卡进某一格 */
+.home-v2 .modal-backdrop {
+  position: fixed;
+  z-index: 50;
+  grid-column: auto;
+  grid-row: auto;
+}

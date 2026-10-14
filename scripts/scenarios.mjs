@@ -59,6 +59,11 @@ async function scenario(name, fn) {
     check(`${name}（脚本异常）`, false, [lines[0], ...lines.filter((line) => /waiting for|intercepts|not stable|not visible/.test(line)).slice(0, 3)].join(' | '));
   }
 }
+// 府中事件现在直接弹窗；要先去别处的用例点「稍后再说」收起
+async function dismissChoice(page) {
+  const later = page.getByRole('button', { name: '稍后再说' });
+  if (await later.isVisible().catch(() => false)) await later.click();
+}
 // 首页「下一步」之外的可做事项收在「还有 N 件」里，点之前先展开
 async function chance(page, name) {
   const target = page.locator('.chance-bar').getByRole('button', { name });
@@ -361,6 +366,7 @@ await scenario('北疆边患', async () => {
   const win24 = s.frontierRaid ? s.frontierRaid.dueAt - s.frontierRaid.startedAt : 0;
   check('第 10 日起边患并给 24 小时窗口', s.frontierRaid?.startDay === 10 && win24 === 24 * 3600 * 1000, JSON.stringify(s.frontierRaid));
   check('主城显示边患提醒', await start.locator('.frontier-alert').isVisible());
+  await dismissChoice(start);
   await start.getByRole('button', { name: '出征', exact: true }).click();
   await start.getByText('九州征途').first().waitFor();
   check('地图北疆显示边患', (await start.getByRole('button', { name: /北疆/ }).innerText()).includes('边患'));
@@ -469,7 +475,11 @@ await scenario('府中事件二选一', async () => {
   await page.waitForTimeout(400);
   let s = await read(page);
   check('第 10 日挂起二选一且不自动入账', s.pendingChoice?.eventId === 'merchants' && s.gold === 5000 + inc && (await page.locator('.choice-card').isVisible()), `gold=${s.gold}`);
-  check('待决断时处理政务暂停', await page.getByRole('button', { name: '先决断上方事件' }).isDisabled());
+  check('事件直接弹窗', (await page.getByRole('dialog', { name: '府中事件' }).count()) === 1);
+  await page.getByRole('button', { name: '稍后再说' }).click();
+  check('稍后再说后主按钮改为去定夺且不过日', (await page.locator('.home-actions__main').innerText()).includes('府中来报') && (await page.locator('.choice-card').count()) === 0);
+  await page.locator('.home-actions__main').click();
+  check('待决断时点主按钮重新弹出事件、不推进日子', (await page.locator('.choice-card').isVisible()) && (await read(page)).day === s.day);
   const box = await page.locator('.choice-card').boundingBox();
   check('事件卡片滚入视口', box !== null && box.y >= 0 && box.y < 844, `y=${box?.y}`);
   // 选减税招商：无现钱，后 10 日政务 +40%
@@ -669,6 +679,7 @@ await scenario('竖屏两行手牌', async () => {
 await scenario('战斗加速与押注上限', async () => {
   // 金 500：败损按余额封顶，付不起全额也照样能打
   const poor = await open(save({ gold: 500, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4 }));
+  await dismissChoice(poor);
   await poor.getByRole('button', { name: '出征', exact: true }).click();
   await poor.getByText('九州征途').first().waitFor();
   await poor.getByRole('button', { name: /官道/ }).click();
@@ -1254,6 +1265,7 @@ await scenario('国号专属与小事离线结算', async () => {
 await scenario('四十日试玩修复', async () => {
   // 新手期败损封顶三成：砖瓦宅、1,000 金
   const poor = await open(save({ homeLevel: 3, gold: 1000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
+  await dismissChoice(poor);
   await poor.getByRole('button', { name: '出征', exact: true }).click();
   await poor.getByText('九州征途').first().waitFor();
   await poor.getByRole('button', { name: /官道/ }).click();
