@@ -19,6 +19,8 @@ interface DouDizhuGameProps {
   lossGold: number;
   onSfx: (path: string, volume?: number) => void;
   onResolved: (win: boolean, rewardGold: number, lossGold: number, forfeit?: boolean, multiplier?: number) => void;
+  /** 倍数或身份变化时回写存档，中途刷新按当前认输金额结算 */
+  onStakeChange?: (multiplier: number, share: number) => void;
   onReturnHome: () => void;
 }
 
@@ -86,12 +88,16 @@ const HAND_EDGE_PERCENT = 7.2;
 const TWO_ROW_THRESHOLD = 12;
 const PORTRAIT_QUERY = '(orientation: portrait) and (max-width: 700px)';
 
-export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold, onSfx, onResolved, onReturnHome }: DouDizhuGameProps) {
+export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, aiSkill, lossGold, onSfx, onResolved, onStakeChange, onReturnHome }: DouDizhuGameProps) {
+  // 缴获按开局时定：练兵之策的翻倍在结算入账后就清掉，不冻结的话横幅会跟着掉回一半
+  const [rewardGold] = useState(rewardGoldProp);
   const [table, setTable] = useState<TableState>(() => createInitialTable());
   const [hintIndex, setHintIndex] = useState(0);
   const settledRef = useRef(false);
   const aiTimerRef = useRef<number | null>(null);
   const [gamesPlayedAtStart] = useState(() => wins + losses);
+  // 新手局：倒计时加倍，超时只代这一手、不进托管
+  const novice = gamesPlayedAtStart < NOVICE_GAMES;
   const profiles = useMemo(() => createPlayerProfiles(lord, gamesPlayedAtStart, aiSkill), [aiSkill, lord, gamesPlayedAtStart]);
   const playerNames = useMemo(
     () => ({
@@ -166,6 +172,12 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
         : '本轮由你先出牌'
       : `${playerNames[table.currentPlayer]}思索中`;
 
+  // 叫抢、定地主、炸弹改了倍数或身份就回写存档，刷新逃局与认输扣同样的金额
+  useEffect(() => {
+    if (table.winner === null) onStakeChange?.(table.multiplier, share);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table.multiplier, share]);
+
   useEffect(() => {
     document.body.classList.add('is-doudizhu-table');
     return () => document.body.classList.remove('is-doudizhu-table');
@@ -239,15 +251,26 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
   const myTurn = table.winner === null && (bidding ? table.bid.turn === 0 : table.currentPlayer === 0);
   const turnKey = `${table.phase}-${table.bid.acted}-${table.currentPlayer}-${table.played.length}-${table.recentActions[0].kind}`;
   const [clock, setClock] = useState<number | null>(null);
-  // 托管：连续两次超时自动进入，也可手动开；托管时由系统按老手水平代打
+  // 托管：连续两次超时自动进入（新手局除外），也可手动开；托管时由系统按老手水平代打，叫牌一律不叫
   const [autoPilot, setAutoPilot] = useState(false);
+  const [autoReason, setAutoReason] = useState('');
+  // 已超时一次：提示再超时将托管
+  const [timeoutWarned, setTimeoutWarned] = useState(false);
   const timeoutsRef = useRef(0);
+  // 这一手玩家已经点过按钮：同一帧里到点的倒计时不再代出
+  const turnDoneRef = useRef(false);
+  const markActed = () => {
+    turnDoneRef.current = true;
+    timeoutsRef.current = 0;
+    setTimeoutWarned(false);
+  };
   useEffect(() => {
+    turnDoneRef.current = false;
     if (!myTurn || autoPilot) {
       setClock(null);
       return undefined;
     }
-    const total = turnSeconds(bidding);
+    const total = turnSeconds(bidding, novice);
     if (total <= 0) {
       setClock(null);
       return undefined;
@@ -262,16 +285,26 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       }
       window.clearInterval(timer);
       setClock(0);
+      if (turnDoneRef.current) return;
+      turnDoneRef.current = true;
       timeoutsRef.current += 1;
-      if (timeoutsRef.current >= AUTO_PILOT_AFTER_TIMEOUTS) setAutoPilot(true);
+      if (!novice) {
+        if (timeoutsRef.current >= AUTO_PILOT_AFTER_TIMEOUTS) {
+          setAutoReason('连续超时，已托管');
+          setAutoPilot(true);
+          setTimeoutWarned(false);
+        } else {
+          setTimeoutWarned(true);
+        }
+      }
       setTable((prev) => {
         if (prev.winner !== null) return prev;
-        if (prev.phase === 'bidding') return prev.bid.turn === 0 ? applyBid(prev, 0, false) : prev;
+        if (prev.phase === 'bidding') return prev.bid.turn === 0 ? withFlash(applyBid(prev, 0, false), prev.bid.candidate === null ? '超时 · 不叫' : '超时 · 不抢') : prev;
         if (prev.currentPlayer !== 0) return prev;
-        if (prev.lastPlay && prev.lastPlay.player !== 0) return applyPass(prev, 0, '你超时未出，自动不要。');
+        if (prev.lastPlay && prev.lastPlay.player !== 0) return withFlash(applyPass(prev, 0, '你超时未出，自动不要。'), '超时 · 自动不要');
         const smallest = sortCards(prev.hands[0])[0];
         const combo = smallest ? evaluateCards([smallest]) : null;
-        return smallest && combo ? applyPlay(prev, 0, [smallest], combo, `你超时未出，自动出 ${formatCards([smallest])}`) : prev;
+        return smallest && combo ? withFlash(applyPlay(prev, 0, [smallest], combo, `你超时未出，自动出 ${formatCards([smallest])}`), '超时 · 自动出牌') : prev;
       });
     }, 250);
     return () => window.clearInterval(timer);
@@ -284,7 +317,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     const timer = window.setTimeout(() => {
       setTable((prev) => {
         if (prev.winner !== null) return prev;
-        if (prev.phase === 'bidding') return prev.bid.turn === 0 ? applyBid(prev, 0, aiWantsLandlord(prev.hands[0], 'veteran', prev.bid.candidate !== null)) : prev;
+        // 托管从不替玩家叫/抢地主
+        if (prev.phase === 'bidding') return prev.bid.turn === 0 ? applyBid(prev, 0, false) : prev;
         if (prev.currentPlayer !== 0) return prev;
         return resolveSingleAiTurn({ ...prev, selectedIds: [] }, { ...playerNames, 0: '托管' }, { ...styles, 0: 'balanced' }, 'veteran');
       });
@@ -293,8 +327,17 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myTurn, turnKey, autoPilot]);
 
+  // 桌心状态行（横屏下按钮上方的 readout 被牌桌挡住）：超时警告与托管原因在这里也说一遍
+  const centerCopy = myTurn && autoPilot
+    ? `${autoReason || '托管中'} · 系统代你${bidding ? '不叫' : '出牌'}`
+    : myTurn && timeoutWarned
+      ? `已超时一次，再超时将托管 · ${statusCopy}`
+      : statusCopy;
+
   const toggleAutoPilot = (on: boolean) => {
     timeoutsRef.current = 0;
+    setTimeoutWarned(false);
+    setAutoReason('');
     setAutoPilot(on);
   };
 
@@ -308,17 +351,23 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     }));
   };
 
+  // 按钮与倒计时互斥：updater 里再确认一次仍轮到你，防同一帧出两手
   const playSelected = () => {
     if (!canPlay || !selectedCombo) return;
-    timeoutsRef.current = 0;
-    setTable((prev) => applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`));
+    markActed();
+    setTable((prev) => (prev.phase === 'playing' && prev.currentPlayer === 0 && prev.winner === null ? applyPlay(prev, 0, selectedCards, selectedCombo, `你出牌：${selectedCombo.label} ${formatCards(selectedCards)}`) : prev));
   };
 
   const pass = () => {
     if (!canPass) return;
-    timeoutsRef.current = 0;
+    markActed();
     onSfx('audio/sfx/sfx_button.mp3', 0.24);
-    setTable((prev) => applyPass(prev, 0, '你选择不要。'));
+    setTable((prev) => (prev.phase === 'playing' && prev.currentPlayer === 0 && prev.winner === null && prev.lastPlay && prev.lastPlay.player !== 0 ? applyPass(prev, 0, '你选择不要。') : prev));
+  };
+
+  const bidAction = (want: boolean) => {
+    markActed();
+    setTable((prev) => (prev.phase === 'bidding' && prev.bid.turn === 0 && prev.winner === null ? applyBid(prev, 0, want) : prev));
   };
 
   const selectHint = () => {
@@ -428,7 +477,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
         )}
         <div className="ddz-center" aria-live="polite">
           <span>{bidding ? `叫地主 · 倍数 ×${table.multiplier}` : table.lastPlay ? `${playerNames[table.lastPlay.player]} · ${table.lastPlay.combo.label}` : '自由出牌'}</span>
-          <strong>{statusCopy}</strong>
+          <strong>{centerCopy}</strong>
         </div>
         <PlayerSeat
           profile={profiles[0]}
@@ -452,24 +501,24 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
       <section className="ddz-actions" aria-live="polite">
         {autoPilot && table.winner === null ? (
           <>
-            <p className="ddz-readout">托管中 · 系统代你{bidding ? '叫牌' : '出牌'}</p>
+            <p className="ddz-readout">{autoReason ? `${autoReason} · ` : '托管中 · '}系统代你{bidding ? '不叫' : '出牌'}</p>
             <div className="ddz-actions__row">
               <button type="button" className="ddz-btn ddz-btn--play" onClick={() => toggleAutoPilot(false)}>取消托管</button>
             </div>
           </>
         ) : bidding ? (
           <>
-            <p className="ddz-readout">{table.bid.turn === 0 ? '地主拿三张底牌、一打二，输赢翻倍；农民和队友联手，输赢各半' : `等待 ${playerNames[table.bid.turn]} 表态`}</p>
+            <p className="ddz-readout">{timeoutWarned && table.bid.turn === 0 ? '已超时一次，再超时将托管' : table.bid.turn === 0 ? '地主拿底牌一打二、按全额结算；农民和队友联手、各按半额结算' : `等待 ${playerNames[table.bid.turn]} 表态`}</p>
             <div className="ddz-actions__row">
               {clock !== null && <span className={`ddz-clock ${clock <= 5 ? 'is-urgent' : ''}`} role="timer" aria-label={`剩余 ${clock} 秒`}>{clock}</span>}
-              <button type="button" className="ddz-btn ddz-btn--pass" disabled={table.bid.turn !== 0} onClick={() => { timeoutsRef.current = 0; setTable((prev) => applyBid(prev, 0, false)); }}>{table.bid.candidate === null ? '不叫' : '不抢'}</button>
-              <button type="button" className="ddz-btn ddz-btn--hint" disabled={table.bid.turn !== 0} onClick={() => { timeoutsRef.current = 0; setTable((prev) => applyBid(prev, 0, true)); }}>{table.bid.candidate === null ? '叫地主' : '抢地主'}</button>
+              <button type="button" className="ddz-btn ddz-btn--pass" disabled={table.bid.turn !== 0} onClick={() => bidAction(false)}>{table.bid.candidate === null ? '不叫' : '不抢'}</button>
+              <button type="button" className="ddz-btn ddz-btn--hint" disabled={table.bid.turn !== 0} onClick={() => bidAction(true)}>{table.bid.candidate === null ? '叫地主' : '抢地主'}</button>
               <button type="button" className="ddz-btn ddz-btn--auto" onClick={() => toggleAutoPilot(true)}>托管</button>
             </div>
           </>
         ) : table.winner === null ? (
           <>
-            <p className="ddz-readout">{table.currentPlayer === 0 ? selectedCopy : `等待 ${playerNames[table.currentPlayer]} 出牌`}</p>
+            <p className="ddz-readout">{table.currentPlayer === 0 ? (timeoutWarned ? `已超时一次，再超时将托管 · ${selectedCopy}` : selectedCopy) : `等待 ${playerNames[table.currentPlayer]} 出牌`}</p>
             <div className="ddz-actions__row">
               {clock !== null && <span className={`ddz-clock ${clock <= 5 ? 'is-urgent' : ''}`} role="timer" aria-label={`剩余 ${clock} 秒`}>{clock}</span>}
               <button type="button" className="ddz-btn ddz-btn--pass" onClick={pass} disabled={!canPass}>不要</button>
@@ -625,10 +674,12 @@ function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; e
 }
 
 function MiniCard({ card }: { card: Card }) {
+  // 大小王小牌放不下两个字：中间单字「大」「小」，角上标「王」，大王红、小王黑
+  const joker = isJoker(card);
   return (
-    <span className={`mini-card ${card.red ? 'is-red' : ''} ${isJoker(card) ? 'is-joker' : ''}`}>
-      <b className="mini-card__rank">{card.rank}</b>
-      {!isJoker(card) && <i className="mini-card__suit">{card.suit}</i>}
+    <span className={`mini-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''}`} aria-label={card.label}>
+      <b className="mini-card__rank">{joker ? (card.value === 17 ? '大' : '小') : card.rank}</b>
+      <i className="mini-card__suit">{joker ? '王' : card.suit}</i>
     </span>
   );
 }
@@ -718,15 +769,22 @@ const SKIP_BID_KEY = 'jiaye-ddz-skip-bid';
 const AUTO_PILOT_AFTER_TIMEOUTS = 2;
 const TURN_SECONDS_KEY = 'jiaye-ddz-turn-seconds';
 const TURN_SECONDS = 20;
-const BID_SECONDS = 12;
-function turnSeconds(bidding: boolean) {
+const BID_SECONDS = 15;
+/** 打满这么多局之前算新手：倒计时加倍、超时不进托管 */
+const NOVICE_GAMES = 5;
+function turnSeconds(bidding: boolean, novice: boolean) {
   try {
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(TURN_SECONDS_KEY) : null;
     if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) return Math.max(0, Number(raw));
   } catch {
     /* 存储被禁用时走默认 */
   }
-  return bidding ? BID_SECONDS : TURN_SECONDS;
+  return (bidding ? BID_SECONDS : TURN_SECONDS) * (novice ? 2 : 1);
+}
+
+/** 桌心提示一行字（系统代操作时告诉玩家发生了什么） */
+function withFlash(table: TableState, text: string): TableState {
+  return { ...table, flash: { id: (table.flash?.id ?? 0) + 1, text, big: false } };
 }
 
 function skipBidding() {
@@ -796,7 +854,7 @@ function applyBid(table: TableState, player: PlayerIndex, want: boolean): TableS
   if (isRebid) return finishBidding(next);
   if (acted < 3) return next;
   // 一圈结束
-  if (candidate === null) return { ...createInitialTable(), history: ['三家都不叫，重新发牌。'] };
+  if (candidate === null) return withFlash({ ...createInitialTable(), history: ['三家都不叫，重新发牌。'], flash: table.flash }, '三家都不叫，重新发牌');
   if (firstCaller !== null && firstCaller !== candidate && !next.bid.rebidUsed) {
     return { ...next, bid: { ...next.bid, turn: firstCaller } };
   }
@@ -845,7 +903,8 @@ function resolveSingleAiTurn(table: TableState, playerNames: Record<PlayerIndex,
   const teammate = isLandlord ? null : others.find((index) => index !== landlord) ?? null;
   const teammateLeads = Boolean(table.lastPlay && teammate !== null && table.lastPlay.player === teammate);
   const pressure = isLandlord ? Math.min(...others.map((index) => table.hands[index].length)) : table.hands[landlord].length;
-  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: pressure, teammateLeads, skill, unseen: others.flatMap((index) => table.hands[index]) });
+  const teammateCards = teammate !== null ? table.hands[teammate].length : undefined;
+  const cards = chooseAiPlay(table.hands[player], target, styles[player] ?? 'balanced', { landlordCards: pressure, teammateLeads, teammateCards, skill, unseen: others.flatMap((index) => table.hands[index]) });
   const combo = cards ? evaluateCards(cards) : null;
 
   if (cards && combo && canBeat(combo, target)) {

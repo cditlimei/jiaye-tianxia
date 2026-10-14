@@ -127,6 +127,12 @@ assertEqual(chooseAiPlay(bombOnly, twoTarget, 'cautious', { landlordCards: 6, te
 assertTrue(chooseAiPlay(bombOnly, twoTarget, 'cautious', { landlordCards: 2, teammateLeads: false }) !== null, 'cautious bombs at 2');
 // 队友领出：谁都不炸队友
 assertEqual(chooseAiPlay(bombOnly, twoTarget, 'aggressive', { landlordCards: 2, teammateLeads: true }), null, 'nobody bombs a teammate');
+// 队友出单 5：只有 A 能跟时不顶队友；Q 以下照跟；队友只剩一两张一律不要；顶完能一手走完才用 A
+const fiveTarget = comboOf([5]);
+assertEqual(chooseAiPlay(cards([3, 3, 4, 14]), fiveTarget, 'balanced', { landlordCards: 12, teammateLeads: true, teammateCards: 8 }), null, 'no ace over a teammate');
+assertEqual(evaluateCards(chooseAiPlay(cards([3, 4, 12, 14]), fiveTarget, 'balanced', { landlordCards: 12, teammateLeads: true, teammateCards: 8 }))?.value, 12, 'follows teammate with Q');
+assertEqual(chooseAiPlay(cards([3, 4, 12, 14]), fiveTarget, 'balanced', { landlordCards: 12, teammateLeads: true, teammateCards: 2 }), null, 'never covers a teammate with two cards left');
+assertEqual(evaluateCards(chooseAiPlay(cards([14, 4, 4]), fiveTarget, 'balanced', { landlordCards: 12, teammateLeads: true, teammateCards: 8 }))?.value, 14, 'ace over teammate only when it finishes next turn');
 // 激进领出先甩长牌
 const leadHand = cards([3, 4, 5, 6, 7, 9, 9, 12]);
 assertEqual(chooseAiPlay(leadHand, null, 'aggressive', { landlordCards: 17, teammateLeads: false }).length, 5, 'aggressive leads the straight');

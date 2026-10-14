@@ -188,6 +188,8 @@ export interface AiContext {
   landlordCards: number;
   /** 当前要压的牌是否是队友打出的 */
   teammateLeads: boolean;
+  /** 队友剩余手牌数（地主没有队友时不传） */
+  teammateCards?: number;
   skill?: AiSkill;
   /** 未见牌（地主与队友手牌合集，不知归属）：高手按它推断哪手牌必不被压 */
   unseen?: Card[];
@@ -206,6 +208,8 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
   if (playable.length === 0) return null;
   const skill = ctx.skill ?? 'veteran';
   const rand = ctx.rand ?? Math.random;
+  // 队友只剩一两张、又是队友的牌：一律不要，让队友走完（自己能一手出完已在上面处理）
+  if (ctx.teammateLeads && ctx.teammateCards !== undefined && ctx.teammateCards <= 2) return null;
 
   if (skill === 'novice') return chooseNovicePlay(hand, target, playable, ctx, rand);
   if (skill === 'master') {
@@ -217,9 +221,12 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
   }
 
   if (ctx.teammateLeads) {
-    // 队友出的牌：只用普通小牌跟，不炸队友；激进派在地主快走完时也会用 2 顶上
+    // 队友出的牌：只用 Q 以下的普通小牌跟，不炸队友；
+    // 压下去后剩下的牌一手能出完时才舍得用 K/A（激进派在地主快走完时也会用 2 顶上）
     const limit = style === 'aggressive' && ctx.landlordCards <= 3 ? 15 : 14;
-    const follow = playable.find((cards) => { const c = evaluateCards(cards); return c !== null && !isBig(c) && c.value <= limit; });
+    const normal = playable.filter((cards) => !isBig(evaluateCards(cards)!));
+    const follow = normal.find((cards) => evaluateCards(cards)!.value <= 12)
+      ?? normal.find((cards) => evaluateCards(cards)!.value <= limit && leavesOneHand(hand, cards));
     return follow ?? null;
   }
 
@@ -255,6 +262,13 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
   if (smallest) return smallest;
   if (bombs.length > 0 && ctx.landlordCards <= 8) return bombs[0];
   return null;
+}
+
+/** 打出这手后剩下的牌恰好是一手合法牌型（下一轮能直接走完） */
+function leavesOneHand(hand: Card[], cards: Card[]) {
+  const played = new Set(cards.map((card) => card.id));
+  const rest = hand.filter((card) => !played.has(card.id));
+  return rest.length > 0 && evaluateCards(rest) !== null;
 }
 
 /** 未见牌里能否出现炸弹（四张同点或双王）：有可能就没有「必不被压」 */

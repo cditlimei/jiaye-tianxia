@@ -24,7 +24,7 @@ function play(skill, styles) {
     const teammateLeads = Boolean(table.lastPlay && table.lastPlay.player !== player && table.lastPlay.player !== 0);
     const cards = player === 0
       ? ddz.findFirstPlayable(table.hands[0], target)
-      : ddz.chooseAiPlay(table.hands[player], target, styles[player], { landlordCards: table.hands[0].length, teammateLeads, skill, unseen: [...table.hands[0], ...table.hands[player === 1 ? 2 : 1]] });
+      : ddz.chooseAiPlay(table.hands[player], target, styles[player], { landlordCards: table.hands[0].length, teammateLeads, teammateCards: table.hands[player === 1 ? 2 : 1].length, skill, unseen: [...table.hands[0], ...table.hands[player === 1 ? 2 : 1]] });
     const combo = cards ? ddz.evaluateCards(cards) : null;
     if (cards && combo && ddz.canBeat(combo, target)) {
       const ids = new Set(cards.map((c) => c.id));

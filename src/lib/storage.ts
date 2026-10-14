@@ -242,24 +242,28 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
 
 function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
   if (!value || typeof value !== 'object') return null;
-  const b = value as { mode?: unknown; lossGold?: unknown; rewardGold?: unknown; odds?: unknown; doudizhu?: unknown };
+  const b = value as { mode?: unknown; lossGold?: unknown; rewardGold?: unknown; odds?: unknown; doudizhu?: unknown; multiplier?: unknown; share?: unknown };
   if (b.mode !== 'land' && b.mode !== 'naval' && b.mode !== 'court' && b.mode !== 'frontier') return null;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
   const odds = num(b.odds);
   const rewardGold = num(b.rewardGold);
+  const multiplier = num(b.multiplier);
+  const share = num(b.share);
   return {
     mode: b.mode,
     lossGold: Math.max(0, Math.floor(num(b.lossGold) ?? 0)),
     ...(rewardGold !== undefined ? { rewardGold: Math.max(0, Math.floor(rewardGold)) } : {}),
     ...(odds !== undefined ? { odds: Math.min(1, Math.max(0, odds)) } : {}),
-    ...(b.doudizhu === true ? { doudizhu: true } : {})
+    ...(b.doudizhu === true ? { doudizhu: true } : {}),
+    ...(multiplier !== undefined && multiplier > 0 ? { multiplier } : {}),
+    ...(share !== undefined && share > 0 && share <= 1 ? { share } : {})
   };
 }
 
 /** 战斗中途刷新/关页：按认输结算（北疆只是退守，不扣金） */
 function settleAbandonedBattle(state: GameState): GameState {
   if (!state.activeBattle) return state;
-  const { mode, lossGold, rewardGold, odds, doudizhu } = state.activeBattle;
+  const { mode, lossGold, rewardGold, odds, doudizhu, multiplier = 1, share = 1 } = state.activeBattle;
   // 自动战：离开不算认输，按出征时显示的胜率替玩家打完（手机来电、切后台不吃亏，也没法靠刷新躲输局）
   if (!doudizhu && mode !== 'frontier' && typeof odds === 'number' && typeof rewardGold === 'number') {
     const win = Math.random() < odds;
@@ -283,7 +287,8 @@ function settleAbandonedBattle(state: GameState): GameState {
       ].slice(0, MAX_EVENT_LOG)
     };
   }
-  const loss = mode === 'frontier' ? 0 : Math.min(state.gold, lossGold);
+  // 斗地主按刷新前的倍数与份额扣（与认输同额）；老存档没记这两项按 ×1 全额
+  const loss = mode === 'frontier' ? 0 : Math.min(state.gold, doudizhu ? Math.round(lossGold * multiplier * share) : lossGold);
   return {
     ...state,
     activeBattle: null,

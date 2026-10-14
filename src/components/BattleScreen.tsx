@@ -34,6 +34,8 @@ interface BattleScreenProps {
   frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
   onBattleStart: (mode: BattleMode, lossGold: number, extra?: { rewardGold?: number; odds?: number; doudizhu?: boolean }) => void;
+  /** 斗地主倍数/身份变化时回写进行中的牌局 */
+  onBattleStakeChange?: (multiplier: number, share: number) => void;
   wins: number;
   losses: number;
   onPlayEffect: (options: { videoPath: string; posterPath?: string; title: string; fallbackMs?: number }) => Promise<void>;
@@ -173,6 +175,7 @@ export function BattleScreen({
   battleBonus,
   onUpgradeFarm,
   onBattleStart,
+  onBattleStakeChange,
   wins,
   losses,
   onPlayEffect,
@@ -383,6 +386,7 @@ export function BattleScreen({
         onSfx={onSfx}
         // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次
         onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1) => onResolved(win, win ? selectedVenue.rewardGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true)}
+        onStakeChange={onBattleStakeChange}
         onReturnHome={onReturnHome}
       />
     );

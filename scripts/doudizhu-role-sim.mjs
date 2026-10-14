@@ -33,7 +33,7 @@ function play(landlord) {
       const teammate = isLandlord ? null : others.find((i) => i !== landlord);
       const teammateLeads = Boolean(last && teammate !== null && last.player === teammate);
       const pressure = isLandlord ? Math.min(...others.map((i) => hands[i].length)) : hands[landlord].length;
-      cards = ddz.chooseAiPlay(hands[player], target, 'balanced', { landlordCards: pressure, teammateLeads, skill: SKILL, unseen: others.flatMap((i) => hands[i]) });
+      cards = ddz.chooseAiPlay(hands[player], target, 'balanced', { landlordCards: pressure, teammateLeads, teammateCards: teammate !== null ? hands[teammate].length : undefined, skill: SKILL, unseen: others.flatMap((i) => hands[i]) });
     }
     const combo = cards ? ddz.evaluateCards(cards) : null;
     if (cards && combo && ddz.canBeat(combo, target)) {

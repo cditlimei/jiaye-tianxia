@@ -2688,12 +2688,13 @@ body {
   font-size: 10px;
 }
 
+/* 大小王：单字「大」「小」横排、偏右下，左上角标「王」（走 __suit），不再竖排两字溢出牌宽 */
 .mini-card.is-joker .mini-card__rank {
+  left: 60%;
+  top: 64%;
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1;
-  text-orientation: upright;
-  writing-mode: vertical-rl;
 }
 
 .mini-card-empty {
@@ -2721,7 +2722,7 @@ body {
 }
 
 .mini-card-strip--center .mini-card.is-joker .mini-card__rank {
-  font-size: 13px;
+  font-size: 18px;
 }
 
 .table-center {
@@ -3482,11 +3483,11 @@ body {
   }
 
   body.is-doudizhu-table .mini-card.is-joker .mini-card__rank {
-    font-size: 12px;
+    font-size: 14px;
   }
 
   body.is-doudizhu-table .mini-card-strip--center .mini-card.is-joker .mini-card__rank {
-    font-size: 13px;
+    font-size: 16px;
   }
 
   body.is-doudizhu-table .landlord-kitty .mini-card {

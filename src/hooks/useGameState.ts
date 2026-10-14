@@ -38,6 +38,7 @@ type Action =
   | { type: 'restore'; state: GameState }
   | { type: 'succeed' }
   | { type: 'startBattle'; mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean }
+  | { type: 'updateActiveBattle'; multiplier: number; share: number }
   | { type: 'resolveChoice'; optionId: string }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
@@ -384,6 +385,11 @@ function reducer(state: GameState, action: Action): GameState {
       // 北疆边患是被迫应战，不耗军令
       if (action.mode !== 'frontier' && state.orders < 1) return state;
       return { ...state, orders: action.mode === 'frontier' ? state.orders : state.orders - 1, activeBattle: { mode: action.mode, lossGold: action.lossGold, rewardGold: action.rewardGold, odds: action.odds, doudizhu: action.doudizhu } };
+    case 'updateActiveBattle':
+      // 斗地主叫抢/炸弹改了倍数、定了身份：回写进行中的牌局，刷新逃局按当前认输金额扣
+      if (!state.activeBattle?.doudizhu) return state;
+      if (state.activeBattle.multiplier === action.multiplier && state.activeBattle.share === action.share) return state;
+      return { ...state, activeBattle: { ...state.activeBattle, multiplier: action.multiplier, share: action.share } };
     case 'recordBattle': {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
@@ -749,6 +755,7 @@ export function useGameState() {
     restoreGame: (nextState: GameState) => dispatch({ type: 'restore', state: nextState }),
     succeed: () => dispatch({ type: 'succeed' }),
     startBattle: (mode: BattleMode, lossGold: number, extra: { rewardGold?: number; odds?: number; doudizhu?: boolean } = {}) => dispatch({ type: 'startBattle', mode, lossGold, ...extra }),
+    updateActiveBattle: (multiplier: number, share: number) => dispatch({ type: 'updateActiveBattle', multiplier, share }),
     resolveChoice: (optionId: string) => dispatch({ type: 'resolveChoice', optionId }),
     resetGame: () => dispatch({ type: 'reset' }),
     restartGame: () => dispatch({ type: 'restart' })

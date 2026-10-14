@@ -1302,7 +1302,8 @@ await scenario('叫地主与抢地主', async () => {
 });
 
 await scenario('出牌倒计时', async () => {
-  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 }, turnSeconds: 2 });
+  // 打满 5 局才算老手：新手局超时不进托管，单独测
+  const page = await open(save({ battleWins: 5, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 }, turnSeconds: 2 });
   await page.getByRole('button', { name: '出征讨伐' }).click();
   await page.getByRole('button', { name: /中级场/ }).click();
   await page.getByRole('button', { name: /^进入斗地主/ }).click();
@@ -1311,9 +1312,12 @@ await scenario('出牌倒计时', async () => {
   // 地主先出，2 秒不动就自动出最小的一张
   await page.waitForFunction(() => document.querySelectorAll('.player-hand .poker-card').length === 19, null, { timeout: 8000 }).catch(() => {});
   check('超时自动出最小一张', (await page.locator('.player-hand .poker-card').count()) === 19, `${await page.locator('.player-hand .poker-card').count()} 张`);
-  // 再超时一次（或牌局已结束）→ 自动托管
-  await page.getByText('托管中').first().waitFor({ timeout: 15000 }).catch(() => {});
-  check('连续两次超时进入托管', (await page.getByText('托管中').count()) > 0 || (await page.locator('.doudizhu-result-banner').count()) > 0);
+  check('超时代出牌有桌心提示', (await page.locator('.ddz-flash').innerText().catch(() => '')).includes('超时 · 自动出牌'), await page.locator('.ddz-flash').innerText().catch(() => '无'));
+  await page.getByText('再超时将托管').first().waitFor({ timeout: 8000 }).catch(() => {});
+  check('第一次超时后提示再超时将托管', (await page.getByText('再超时将托管').count()) > 0 || (await page.locator('.doudizhu-result-banner').count()) > 0);
+  // 再超时一次（或牌局已结束）→ 自动托管，并说明原因
+  await page.getByText('连续超时，已托管').first().waitFor({ timeout: 15000 }).catch(() => {});
+  check('连续两次超时进入托管', (await page.getByText('连续超时，已托管').count()) > 0 || (await page.locator('.doudizhu-result-banner').count()) > 0);
   await page.context().close();
 });
 
@@ -1330,6 +1334,127 @@ await scenario('手动托管与取消', async () => {
   check('托管后系统代你出牌', (await page.getByText('托管中').count()) > 0 && (await page.locator('.player-hand .poker-card').count()) < 20);
   if ((await page.getByRole('button', { name: '取消托管' }).count()) > 0) await page.getByRole('button', { name: '取消托管' }).click();
   check('取消托管后恢复出牌按钮', (await page.locator('.doudizhu-result-banner').count()) > 0 || (await page.getByRole('button', { name: '出牌', exact: true }).count()) === 1);
+  await page.context().close();
+});
+
+await scenario('新手局倒计时与托管', async () => {
+  const base = { homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] };
+  // 不覆盖倒计时：老手叫牌 15 秒，新手（不足 5 局）加倍到 30 秒
+  const vet = await open(save({ ...base, battleWins: 5 }), { viewport: { width: 844, height: 390 }, bidding: true, turnSeconds: '' });
+  await vet.getByRole('button', { name: '出征讨伐' }).click();
+  await vet.getByRole('button', { name: /中级场/ }).click();
+  await vet.getByRole('button', { name: /^进入斗地主/ }).click();
+  await vet.getByText('斗地主牌局').first().waitFor();
+  const vetClock = Number((await vet.locator('.ddz-clock').innerText()).trim());
+  check('老手叫牌倒计时 15 秒', vetClock >= 14 && vetClock <= 15, `${vetClock}`);
+  await vet.context().close();
+  const fresh = await open(save(base), { viewport: { width: 844, height: 390 }, bidding: true, turnSeconds: '' });
+  await fresh.getByRole('button', { name: '出征讨伐' }).click();
+  await fresh.getByRole('button', { name: /中级场/ }).click();
+  await fresh.getByRole('button', { name: /^进入斗地主/ }).click();
+  await fresh.getByText('斗地主牌局').first().waitFor();
+  const freshClock = Number((await fresh.locator('.ddz-clock').innerText()).trim());
+  check('新手叫牌倒计时加倍到 30 秒', freshClock >= 29 && freshClock <= 30, `${freshClock}`);
+  // 叫牌阶段开托管：系统一律不叫，永远不替玩家当地主
+  await fresh.getByRole('button', { name: '托管', exact: true }).click();
+  await fresh.waitForFunction(() => ![...document.querySelectorAll('.ddz-seat__role')].some((el) => el.textContent?.includes('叫牌')), null, { timeout: 30000 }).catch(() => {});
+  const selfRole = await fresh.locator('.ddz-seat--self .ddz-seat__role').innerText();
+  check('托管叫牌不替玩家当地主', selfRole === '农民', selfRole);
+  await fresh.context().close();
+  // 新手局连续超时：只代这一手，不进托管
+  const page = await open(save(base), { viewport: { width: 844, height: 390 }, turnSeconds: 1 });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.player-hand .poker-card').length === 19, null, { timeout: 8000 }).catch(() => {});
+  // 等到第二次轮到你并再次超时
+  await page.waitForTimeout(6000);
+  const flashes = await page.locator('.ddz-flash').allInnerTexts();
+  check('新手局超时不进托管', (await page.getByText('托管中').count()) === 0 && (await page.getByText('已托管').count()) === 0 && (await page.getByText('再超时将托管').count()) === 0 && (await page.locator('.player-hand .poker-card').count()) <= 19, `${await page.locator('.player-hand .poker-card').count()} 张 flash=${flashes.join('/')}`);
+  await page.context().close();
+});
+
+await scenario('斗地主刷新按当前倍数结算', async () => {
+  const base = { gold: 50000, battleWins: 5, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] };
+  // 固定洗牌：Math.random 恒取 0.9999 时洗牌不动，你拿 3/4/5/6 四个炸弹；开桌后恢复随机
+  const enterFixed = async (page) => {
+    await page.getByRole('button', { name: '出征讨伐' }).click();
+    await page.getByRole('button', { name: /中级场/ }).click();
+    await page.evaluate(() => { window.__realRandom = Math.random; Math.random = () => 0.9999; });
+    await page.getByRole('button', { name: /^进入斗地主/ }).click();
+    await page.getByText('斗地主牌局').first().waitFor();
+    await page.evaluate(() => { Math.random = window.__realRandom; });
+  };
+  const quitAmount = async (page) => Number((await page.locator('.ddz-topbar__quit').innerText()).replace(/[^\d]/g, ''));
+  // 地主打出炸弹（×2）后刷新：扣款 = 认输金额
+  const lord = await open(save(base), { viewport: { width: 844, height: 390 } });
+  await enterFixed(lord);
+  for (const card of await lord.locator('.player-hand .poker-card[data-rank="3"]').all()) await card.press('Enter');
+  await lord.getByRole('button', { name: '出牌', exact: true }).click();
+  await lord.waitForFunction((k) => JSON.parse(localStorage.getItem(k) || 'null')?.activeBattle?.multiplier === 2, KEY, { timeout: 5000 }).catch(() => {});
+  // 等轮回到你（AI 都不炸），倍数不再变
+  await lord.getByRole('button', { name: '提示', exact: true }).and(lord.locator(':enabled')).waitFor({ timeout: 8000 }).catch(() => {});
+  const lordQuit = await quitAmount(lord);
+  const g0 = (await read(lord)).gold;
+  await lord.reload({ waitUntil: 'domcontentloaded' });
+  await lord.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 }).catch(() => {});
+  const g1 = (await read(lord)).gold;
+  check('地主炸弹后刷新扣款 = 认输金额', lordQuit === 3200 && g0 - g1 === lordQuit, `认输 ${lordQuit} Δ=${g0 - g1}`);
+  await lord.context().close();
+  // 农民（AI 叫抢后当地主）刷新：按半份扣
+  const farmer = await open(save(base), { viewport: { width: 844, height: 390 }, bidding: true });
+  await enterFixed(farmer);
+  await farmer.getByRole('button', { name: '不叫' }).click();
+  await farmer.waitForFunction(() => document.querySelector('.ddz-seat--self .ddz-seat__role')?.textContent === '农民', null, { timeout: 10000 }).catch(() => {});
+  await farmer.waitForFunction((k) => JSON.parse(localStorage.getItem(k) || 'null')?.activeBattle?.share === 0.5, KEY, { timeout: 5000 }).catch(() => {});
+  await farmer.getByRole('button', { name: '提示', exact: true }).and(farmer.locator(':enabled')).waitFor({ timeout: 15000 }).catch(() => {});
+  const farmerQuit = await quitAmount(farmer);
+  const ab = (await read(farmer)).activeBattle;
+  const f0 = (await read(farmer)).gold;
+  await farmer.reload({ waitUntil: 'domcontentloaded' });
+  await farmer.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 }).catch(() => {});
+  const f1 = (await read(farmer)).gold;
+  check('农民刷新按半份扣（= 认输金额）', ab?.share === 0.5 && farmerQuit === Math.round(1600 * ab.multiplier * 0.5) && f0 - f1 === farmerQuit, `×${ab?.multiplier} share=${ab?.share} 认输 ${farmerQuit} Δ=${f0 - f1}`);
+  await farmer.context().close();
+  // 老存档没记倍数：按 ×1 全额
+  const old = await open(save({ ...base, activeBattle: { mode: 'land', lossGold: 1600, doudizhu: true } }));
+  await old.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 }).catch(() => {});
+  await old.waitForTimeout(300);
+  const o = await read(old);
+  check('老存档斗地主刷新按基础额扣', o.activeBattle === null && o.gold === 50000 - 1600, `gold=${o.gold}`);
+  await old.context().close();
+});
+
+await scenario('练兵之策翻倍横幅', async () => {
+  // 固定洗牌（Math.random 恒 0.7，离线模拟笨地主对老手各性格组合 9/9 全胜），用提示打完；横幅金额必须等于实际入账（含练兵之策翻倍）
+  const page = await open(save({ gold: 50000, battleWins: 5, nextBattleBonus: 2, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  const before = await read(page);
+  await page.evaluate(() => { window.__realRandom = Math.random; Math.random = () => 0.7; });
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  await page.evaluate(() => { Math.random = window.__realRandom; });
+  const t0 = Date.now();
+  while (Date.now() - t0 < 120000) {
+    if (await page.getByRole('button', { name: '返回家业' }).isVisible().catch(() => false)) break;
+    const hint = page.getByRole('button', { name: '提示', exact: true });
+    const pass = page.getByRole('button', { name: '不要', exact: true });
+    if (await hint.isEnabled().catch(() => false)) {
+      await hint.click();
+      await page.getByRole('button', { name: '出牌', exact: true }).click();
+    } else if (await pass.isEnabled().catch(() => false)) {
+      await pass.click();
+    }
+    await page.waitForTimeout(250);
+  }
+  await page.waitForTimeout(400);
+  const banner = await page.locator('.doudizhu-result-banner').innerText().catch(() => '');
+  const shown = Number(banner.match(/胜 \+([\d,]+)/)?.[1]?.replace(/,/g, '') ?? NaN);
+  const after = await read(page);
+  const delta = after.gold - before.gold;
+  check('练兵之策翻倍：横幅金额 = 实际入账', banner.includes('牌局得胜') && shown === delta && after.nextBattleBonus === null, `${banner.replace(/\n/g, ' ')} Δ=${delta}`);
   await page.context().close();
 });
 
