@@ -235,6 +235,45 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
     else onSfx('audio/sfx/sfx_card_play.mp3', 0.45);
   }, [onSfx, table.lastPlay, table.played.length]);
 
+  // 出牌倒计时：轮到你时开始数，到点自动「不要」/不叫；必须先出时出最小的一张
+  const myTurn = table.winner === null && (bidding ? table.bid.turn === 0 : table.currentPlayer === 0);
+  const turnKey = `${table.phase}-${table.bid.acted}-${table.currentPlayer}-${table.played.length}-${table.recentActions[0].kind}`;
+  const [clock, setClock] = useState<number | null>(null);
+  useEffect(() => {
+    if (!myTurn) {
+      setClock(null);
+      return undefined;
+    }
+    const total = turnSeconds(bidding);
+    if (total <= 0) {
+      setClock(null);
+      return undefined;
+    }
+    const deadline = Date.now() + total * 1000;
+    setClock(total);
+    const timer = window.setInterval(() => {
+      const left = Math.ceil((deadline - Date.now()) / 1000);
+      if (left > 0) {
+        setClock(left);
+        return;
+      }
+      window.clearInterval(timer);
+      setClock(0);
+      setTable((prev) => {
+        if (prev.winner !== null) return prev;
+        if (prev.phase === 'bidding') return prev.bid.turn === 0 ? applyBid(prev, 0, false) : prev;
+        if (prev.currentPlayer !== 0) return prev;
+        if (prev.lastPlay && prev.lastPlay.player !== 0) return applyPass(prev, 0, '你超时未出，自动不要。');
+        const smallest = sortCards(prev.hands[0])[0];
+        const combo = smallest ? evaluateCards([smallest]) : null;
+        return smallest && combo ? applyPlay(prev, 0, [smallest], combo, `你超时未出，自动出 ${formatCards([smallest])}`) : prev;
+      });
+    }, 250);
+    return () => window.clearInterval(timer);
+    // turnKey 变化即换了一手，重新计时
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myTurn, turnKey]);
+
   const toggleCard = (cardId: string) => {
     if (table.currentPlayer !== 0 || table.winner !== null) return;
     setTable((prev) => ({
@@ -389,6 +428,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
           <>
             <p className="ddz-readout">{table.bid.turn === 0 ? '地主拿三张底牌、一打二，输赢翻倍；农民和队友联手，输赢各半' : `等待 ${playerNames[table.bid.turn]} 表态`}</p>
             <div className="ddz-actions__row">
+              {clock !== null && <span className={`ddz-clock ${clock <= 5 ? 'is-urgent' : ''}`} role="timer" aria-label={`剩余 ${clock} 秒`}>{clock}</span>}
               <button type="button" className="ddz-btn ddz-btn--pass" disabled={table.bid.turn !== 0} onClick={() => setTable((prev) => applyBid(prev, 0, false))}>{table.bid.candidate === null ? '不叫' : '不抢'}</button>
               <button type="button" className="ddz-btn ddz-btn--hint" disabled={table.bid.turn !== 0} onClick={() => setTable((prev) => applyBid(prev, 0, true))}>{table.bid.candidate === null ? '叫地主' : '抢地主'}</button>
             </div>
@@ -397,6 +437,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold, aiSkill, lossGold
           <>
             <p className="ddz-readout">{table.currentPlayer === 0 ? selectedCopy : `等待 ${playerNames[table.currentPlayer]} 出牌`}</p>
             <div className="ddz-actions__row">
+              {clock !== null && <span className={`ddz-clock ${clock <= 5 ? 'is-urgent' : ''}`} role="timer" aria-label={`剩余 ${clock} 秒`}>{clock}</span>}
               <button type="button" className="ddz-btn ddz-btn--pass" onClick={pass} disabled={!canPass}>不要</button>
               <button type="button" className="ddz-btn ddz-btn--hint" onClick={selectHint} disabled={!canHint}>提示</button>
               <button type="button" className="ddz-btn ddz-btn--play" onClick={playSelected} disabled={!canPlay}>出牌</button>
@@ -638,6 +679,20 @@ function springOf(table: TableState) {
 
 /** 测试与旧存档回归用：设了这个开关就跳过叫地主，玩家直接当地主 */
 const SKIP_BID_KEY = 'jiaye-ddz-skip-bid';
+// 出牌倒计时（秒）；测试用 localStorage 覆盖，0 表示不计时
+const TURN_SECONDS_KEY = 'jiaye-ddz-turn-seconds';
+const TURN_SECONDS = 20;
+const BID_SECONDS = 12;
+function turnSeconds(bidding: boolean) {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(TURN_SECONDS_KEY) : null;
+    if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) return Math.max(0, Number(raw));
+  } catch {
+    /* 存储被禁用时走默认 */
+  }
+  return bidding ? BID_SECONDS : TURN_SECONDS;
+}
+
 function skipBidding() {
   try {
     return typeof window !== 'undefined' && window.localStorage.getItem(SKIP_BID_KEY) === '1';

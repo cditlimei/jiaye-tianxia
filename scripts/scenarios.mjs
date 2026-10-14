@@ -22,10 +22,12 @@ const save = (extra = {}) => ({
 const browser = await chromium.launch({ headless: true });
 
 async function open(state, contextOptions = {}) {
-  const { bidding = false, ...rest } = contextOptions;
+  const { bidding = false, turnSeconds = 0, ...rest } = contextOptions;
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...rest });
   // 旧用例按「玩家当地主」写，默认跳过叫地主；叫地主流程单独测（bidding: true）
   if (!bidding) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-ddz-skip-bid', '1'); } catch { /* 存储被禁用的用例 */ } });
+  // 出牌倒计时默认关掉，免得慢机上用例被自动「不要」；倒计时单独测
+  await ctx.addInitScript((sec) => { try { localStorage.setItem('jiaye-ddz-turn-seconds', String(sec)); } catch { /* 存储被禁用的用例 */ } }, turnSeconds);
   const page = await ctx.newPage();
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   if (state) {
@@ -1296,6 +1298,19 @@ await scenario('叫地主与抢地主', async () => {
   const landlordSeat = roles.findIndex((r) => r === '地主');
   check('叫抢结束恰好一位地主且拿到 20 张', roles.filter((r) => r === '地主').length === 1 && roles.filter((r) => r === '农民').length === 2 && hands[landlordSeat]?.startsWith('20'), `${roles.join('/')} ${hands.join('/')}`);
   check('叫完后亮出底牌', (await page.locator('.ddz-topbar__kitty .mini-card').count()) === 3);
+  await page.context().close();
+});
+
+await scenario('出牌倒计时', async () => {
+  const page = await open(save({ homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 }, turnSeconds: 2 });
+  await page.getByRole('button', { name: '出征讨伐' }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  check('轮到你时显示倒计时', (await page.locator('.ddz-clock').count()) === 1 && ['1', '2'].includes((await page.locator('.ddz-clock').innerText()).trim()));
+  // 地主先出，2 秒不动就自动出最小的一张
+  await page.waitForFunction(() => document.querySelectorAll('.player-hand .poker-card').length === 19, null, { timeout: 8000 }).catch(() => {});
+  check('超时自动出最小一张', (await page.locator('.player-hand .poker-card').count()) === 19, `${await page.locator('.player-hand .poker-card').count()} 张`);
   await page.context().close();
 });
 

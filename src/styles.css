@@ -5546,3 +5546,37 @@ body.is-doudizhu-table .ddz-screen .player-hand {
     padding: 1px 0;
   }
 }
+
+/* 出牌倒计时：轮到你时在按钮行最左边显示闹钟秒数，最后 5 秒变红跳动 */
+.ddz-clock {
+  display: inline-grid;
+  place-items: center;
+  align-self: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #f3d38a;
+  background: radial-gradient(circle at 35% 30%, #fff8e3, #f1d18c);
+  color: #5b3410;
+  font-weight: 800;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  flex: none;
+}
+
+.ddz-clock.is-urgent {
+  border-color: #ff7a5c;
+  background: radial-gradient(circle at 35% 30%, #ffe2d8, #ff9a7a);
+  color: #8c1405;
+  animation: ddz-clock-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes ddz-clock-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ddz-clock.is-urgent { animation: none; }
+}
