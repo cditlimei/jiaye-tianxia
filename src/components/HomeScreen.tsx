@@ -15,6 +15,7 @@ import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
 import { fiefCostFor, legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
+import { affairFor, type Affair } from '../data/affairs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { ModalShell } from './common/ModalShell';
@@ -106,6 +107,9 @@ export function HomeScreen({
   titleStatus
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
+  // 今日政务回报：点一次政务弹一条「这天忙了什么、入账多少」，3 秒后收起
+  const [report, setReport] = useState<(Affair & { id: number; day: number; amount: number }) | null>(null);
+  const reportTimer = useRef<number | null>(null);
   const ambition = ambitionStatus(state);
   // 家业点已满：传位不再可行，志向无从结算，志向卡/进度改提示还差几郡
   const maxedHint = legacyMaxedHint(state);
@@ -229,6 +233,9 @@ export function HomeScreen({
     const amount = onCollectIncome();
     const id = Date.now();
     onIncomeSfx();
+    setReport({ ...affairFor(state.day + 1, state.homeLevel), id, day: state.day + 1, amount });
+    if (reportTimer.current !== null) window.clearTimeout(reportTimer.current);
+    reportTimer.current = window.setTimeout(() => setReport(null), 3000);
     setFloating((items) => [...items, { id, amount }].slice(-3));
     window.setTimeout(() => setFloating((items) => items.filter((item) => item.id !== id)), 1500);
   };
@@ -330,6 +337,13 @@ export function HomeScreen({
             <span key={item.id}>+{item.amount}金</span>
           ))}
         </div>
+        {report && (
+          <div key={report.id} className="affair-report" role="status">
+            <span>第 {report.day} 日 · 今日政务</span>
+            <strong>{report.title}<b>+{report.amount.toLocaleString()} 金</b></strong>
+            <small>{report.detail}</small>
+          </div>
+        )}
         <div className="home-banner__text">
           <h2>Lv.{currentHome.level} {currentHome.name}</h2>
           <details className="home-banner__detail">

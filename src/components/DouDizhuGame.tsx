@@ -7,6 +7,7 @@ import type { Card, Combo, PlayerIndex } from '../lib/doudizhu';
 import { AI_SKILL_LABEL, AI_STYLE_LABEL, LORD_AI_STYLE, type AiSkill, type ComboType, canBeat, chooseAiPlay, comboLabel, createDoudizhuDeal, evaluateCards, findPlayableCombos, formatCards, sortCards, sortCardsDescending } from '../lib/doudizhu';
 import type { AiStyle } from '../lib/doudizhu';
 import { GameButton } from './common/GameButton';
+import { CourtArt, JokerArt, SuitIcon } from './common/CardArt';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
 interface DouDizhuGameProps {
@@ -560,25 +561,21 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
             >
               <span className="poker-card__corner" aria-hidden="true">
                 {joker ? (
-                  card.rank
+                  <span className="poker-card__joker-word">JOKER</span>
                 ) : (
                   <>
                     <b>{card.rank}</b>
-                    <i>{card.suit}</i>
+                    <SuitIcon suit={card.suit} className="poker-card__suit" />
                   </>
                 )}
               </span>
-              <strong className="poker-card__pip" aria-hidden="true">
-                {joker ? card.rank : card.suit}
-              </strong>
-              <span className="poker-card__corner poker-card__corner--bottom" aria-hidden="true">
+              <span className="poker-card__art" aria-hidden="true">
                 {joker ? (
-                  card.rank
+                  <JokerArt big={card.value === 17} />
+                ) : ['J', 'Q', 'K'].includes(card.rank) ? (
+                  <CourtArt rank={card.rank} />
                 ) : (
-                  <>
-                    <b>{card.rank}</b>
-                    <i>{card.suit}</i>
-                  </>
+                  <SuitIcon suit={card.suit} />
                 )}
               </span>
             </button>
@@ -679,7 +676,7 @@ function MiniCard({ card }: { card: Card }) {
   return (
     <span className={`mini-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''}`} aria-label={card.label}>
       <b className="mini-card__rank">{joker ? (card.value === 17 ? '大' : '小') : card.rank}</b>
-      <i className="mini-card__suit">{joker ? '王' : card.suit}</i>
+      {joker ? <i className="mini-card__suit">王</i> : <SuitIcon suit={card.suit} className="mini-card__suit" />}
     </span>
   );
 }

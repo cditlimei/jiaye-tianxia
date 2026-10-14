@@ -126,6 +126,9 @@ try {
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '出征', exact: true }).click();
+  // 出征直达斗地主选场，地图收在「其他战场」
+  await page.getByRole('button', { name: /^进入斗地主/ }).waitFor({ state: 'visible', timeout: 7000 });
+  await page.getByRole('button', { name: '其他战场 ›' }).click();
   await expectText(page, '九州征途');
   await assertExpeditionModes(page);
   await assertVenueGate(page);

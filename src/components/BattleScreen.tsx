@@ -188,6 +188,8 @@ export function BattleScreen({
   const [mapOpen, setMapOpen] = useState(true);
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
   const [selectedRegionId, setSelectedRegionId] = useState<RegionId>(initialRegion ?? 'jingzhou');
+  // 从「出征」直接进来（没指定地区）先只摆斗地主选场；其他战场点「其他战场」再展开地图
+  const [showRegions, setShowRegions] = useState(initialRegion !== undefined && initialRegion !== 'jingzhou');
   // 默认选能进的最高场
   const [venueId, setVenueId] = useState<VenueId>(() => [...VENUES].reverse().find((venue) => totalPower >= venue.requiredPower)?.id ?? 'beginner');
   // 每个战场自选的对手档位；null = 推荐档。边患不可选
@@ -409,18 +411,33 @@ export function BattleScreen({
 
   if (mapOpen) {
     return (
-      <main className="screen battle-screen expedition-screen">
+      <main className={`screen battle-screen expedition-screen ${showRegions ? '' : 'is-ddz-only'}`}>
         <header className="screen-header">
           <div>
-            <span className="eyebrow">出征地图 · 军令 {orders}/{orderCap}{orders < orderCap ? `（${daysUntilNextOrder(day, homeLevel)} 日后 +1）` : ''}</span>
-            <h2>九州征途</h2>
+            <span className="eyebrow">{showRegions ? '出征地图' : '荆州'} · 军令 {orders}/{orderCap}{orders < orderCap ? `（${daysUntilNextOrder(day, homeLevel)} 日后 +1）` : ''}</span>
+            <h2>{showRegions ? '九州征途' : '斗地主'}</h2>
           </div>
-          <GameButton variant="ghost" onClick={onReturnHome}>
-            回府
-          </GameButton>
+          <div className="expedition-header__actions">
+            {showRegions ? (
+              <GameButton variant="ghost" onClick={() => { setShowRegions(false); setSelectedRegionId('jingzhou'); }}>
+                斗地主
+              </GameButton>
+            ) : (
+              <GameButton variant="ghost" className="expedition-more" onClick={() => setShowRegions(true)}>
+                其他战场 ›
+              </GameButton>
+            )}
+            <GameButton variant="ghost" onClick={onReturnHome}>
+              回府
+            </GameButton>
+          </div>
         </header>
 
-        <section className="expedition-map" aria-label="三国地图">
+        {!showRegions && (
+          <p className="orders-note ddz-only-note">官道、江东、许都、西蜀屯田、北疆边患在「其他战场」，系统按胜率自动打{raidActive ? '；北疆正有边患！' : '。'}</p>
+        )}
+
+        {showRegions && <section className="expedition-map" aria-label="三国地图">
           <div className="expedition-map__terrain" />
           {MAP_REGIONS.map((region) => {
             const lockedByHome = isModeLocked(region.mode);
@@ -442,9 +459,9 @@ export function BattleScreen({
               </button>
             );
           })}
-        </section>
+        </section>}
         {/* 术语小注：「今日军功」第一次出现在地图上，就地说明 */}
-        <p className="orders-note map-term-note">「今日军功」：官道、江东、许都每日轮换一处，当天在那里得胜缴获 +{Math.round(BOUNTY_BONUS * 100)}%。</p>
+        {showRegions && <p className="orders-note map-term-note">「今日军功」：官道、江东、许都每日轮换一处，当天在那里得胜缴获 +{Math.round(BOUNTY_BONUS * 100)}%。</p>}
 
         {selectedRegion.mode === 'doudizhu' ? (
           <section className="venue-panel" aria-label="场次选择">

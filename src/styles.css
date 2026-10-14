@@ -6253,3 +6253,253 @@ body.is-doudizhu-table .ddz-screen .player-hand {
   grid-column: auto;
   grid-row: auto;
 }
+
+/* 今日政务回报：压在宅邸横幅顶部，3 秒后收起 */
+.affair-report {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 3;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid rgba(240, 214, 138, 0.55);
+  border-radius: 12px;
+  background: rgba(14, 10, 6, 0.9);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  animation: affair-in 3s ease forwards;
+  pointer-events: none;
+}
+
+.affair-report span {
+  color: rgba(245, 230, 200, 0.65);
+  font-size: 11px;
+}
+
+.affair-report strong {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--gold-light);
+  font-size: 15px;
+}
+
+.affair-report strong b {
+  color: #8fe3a0;
+  font-size: 14px;
+}
+
+.affair-report small {
+  color: rgba(255, 245, 220, 0.85);
+  font-size: 12px;
+}
+
+@keyframes affair-in {
+  0% { opacity: 0; transform: translateY(-6px); }
+  8% { opacity: 1; transform: none; }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .affair-report { animation: none; }
+}
+
+/* 出征直达斗地主：头部右侧两个按钮并排 */
+.expedition-header__actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.expedition-header__actions .game-button {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.expedition-screen .expedition-more {
+  color: var(--gold-light);
+}
+
+.ddz-only-note {
+  margin: 0;
+}
+
+/* ===== 牌面 v2：白底、矢量花色、J/Q/K 金框徽记、大小王竖排 JOKER ===== */
+body .ddz-screen .poker-card,
+body.is-doudizhu-table .ddz-screen .poker-card {
+  border: 1px solid #b9b4aa;
+  border-radius: 9px;
+  color: #17171c;
+  background: linear-gradient(160deg, #ffffff 0%, #fbfaf6 55%, #efece4 100%);
+  box-shadow:
+    -2px 0 4px rgba(0, 0, 0, 0.18),
+    0 6px 12px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+}
+
+body .ddz-screen .poker-card::before {
+  display: none;
+}
+
+body .ddz-screen .poker-card.is-red {
+  color: #d3202b;
+}
+
+body .ddz-screen .poker-card.is-selected,
+body.is-doudizhu-table .ddz-screen .poker-card.is-selected {
+  border-color: #e7b84a;
+  background: linear-gradient(160deg, #fffaf0 0%, #fff4dc 60%, #f6e6c0 100%);
+  box-shadow:
+    0 0 0 2px rgba(240, 190, 70, 0.75),
+    0 10px 18px rgba(0, 0, 0, 0.34);
+}
+
+body .ddz-screen .poker-card .poker-card__corner {
+  left: 4px;
+  top: 5px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: calc(var(--hand-card-edge) - 6px);
+  font-family: 'DIN Alternate', 'Avenir Next Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  writing-mode: horizontal-tb;
+}
+
+body .ddz-screen .poker-card .poker-card__corner b {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+
+body .ddz-screen .poker-card .poker-card__suit {
+  width: 14px;
+  height: 14px;
+}
+
+body .ddz-screen .poker-card .poker-card__art {
+  position: absolute;
+  right: 5px;
+  bottom: 6px;
+  width: 52%;
+  height: 52%;
+  display: grid;
+  place-items: center;
+  font-size: initial;
+}
+
+body .ddz-screen .poker-card .poker-card__art svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* J/Q/K 徽记更高一些，占右半张 */
+body .ddz-screen .poker-card .poker-card__art:has(> svg[viewBox="0 0 40 52"]) {
+  top: 8px;
+  height: auto;
+  width: 50%;
+}
+
+body .ddz-screen .poker-card.is-joker {
+  background: linear-gradient(160deg, #ffffff 0%, #fbf7ec 60%, #f1e6c8 100%);
+}
+
+body .ddz-screen .poker-card.is-joker .poker-card__corner {
+  top: 6px;
+}
+
+body .ddz-screen .poker-card .poker-card__joker-word {
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.02;
+  text-align: center;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+body .ddz-screen .poker-card.is-joker.is-red .poker-card__joker-word {
+  color: #d3202b;
+}
+
+body .ddz-screen .poker-card.is-joker .poker-card__art {
+  width: 56%;
+  height: 46%;
+}
+
+/* 出牌区 / 底牌小牌：同样白底、矢量花色 */
+body .ddz-screen .mini-card {
+  border: 1px solid #b9b4aa;
+  color: #17171c;
+  background: linear-gradient(160deg, #ffffff 0%, #f8f6f0 100%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+body .ddz-screen .mini-card.is-red {
+  color: #d3202b;
+}
+
+body .ddz-screen .mini-card .mini-card__rank {
+  font-family: 'DIN Alternate', 'Avenir Next Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+body .ddz-screen .mini-card svg.mini-card__suit {
+  width: 10px;
+  height: 10px;
+}
+
+body .ddz-screen .mini-card-strip--center .mini-card svg.mini-card__suit {
+  width: 12px;
+  height: 12px;
+}
+
+/* 小牌：数字左上、花色左下，不再叠在一起 */
+body .ddz-screen .mini-card:not(.is-joker) .mini-card__rank {
+  left: 4px;
+  top: 4px;
+  font-size: 16px;
+  transform: none;
+  text-align: left;
+}
+
+body .ddz-screen .mini-card:not(.is-joker) svg.mini-card__suit {
+  left: 4px;
+  top: auto;
+  bottom: 4px;
+  width: 11px;
+  height: 11px;
+}
+
+body .ddz-screen .mini-card-strip--center .mini-card:not(.is-joker) .mini-card__rank {
+  font-size: 19px;
+}
+
+body .ddz-screen .mini-card-strip--center .mini-card:not(.is-joker) svg.mini-card__suit {
+  width: 13px;
+  height: 13px;
+}
+
+body .ddz-screen .mini-card.is-joker {
+  background: linear-gradient(160deg, #ffffff 0%, #fbf7ec 60%, #f1e6c8 100%);
+}
+
+/* 竖屏顶栏底牌很小：数字、花色跟着缩 */
+@media (orientation: portrait) {
+  body .ddz-screen .ddz-topbar__kitty .mini-card:not(.is-joker) .mini-card__rank {
+    left: 3px;
+    top: 2px;
+    font-size: 13px;
+  }
+
+  body .ddz-screen .ddz-topbar__kitty .mini-card:not(.is-joker) svg.mini-card__suit {
+    left: 3px;
+    bottom: 2px;
+    width: 9px;
+    height: 9px;
+  }
+}
