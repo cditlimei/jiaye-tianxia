@@ -241,16 +241,30 @@ async function assertPlayerHandFits(page) {
  * 先等手牌里真有牌再点；仍超时就把当时的牌桌文字与手牌状态写进报错，方便从 CI 注解里看现场。
  */
 async function clickHand(page, position) {
+  await page.locator('.player-hand .poker-card').first().waitFor({ state: 'visible', timeout: 15000 });
   try {
-    await page.locator('.player-hand .poker-card').first().waitFor({ state: 'visible', timeout: 15000 });
     await page.locator('.player-hand').click({ position, timeout: 15000 });
+    return;
   } catch (error) {
-    const scene = await page.evaluate(() => ({
-      hand: document.querySelector('.player-hand')?.className ?? 'missing',
-      cards: document.querySelectorAll('.player-hand .poker-card').length,
-      text: (document.querySelector('main')?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 300)
-    })).catch(() => null);
-    throw new Error(`smoke_click_hand_failed ${JSON.stringify(scene)} ${String(error?.message ?? error).split('\n')[0]}`);
+    // CI 上偶发「点手牌超时」而本地复现不了：记下点击点上实际是哪个元素、手牌是否在动，再强制点一次
+    const box = await page.locator('.player-hand').boundingBox();
+    const scene = await page.evaluate(({ x, y }) => {
+      const top = document.elementFromPoint(x, y);
+      const hand = document.querySelector('.player-hand');
+      return {
+        topAtPoint: top ? `${top.tagName.toLowerCase()}.${String(top.className).trim().replace(/\s+/g, '.')}` : 'none',
+        insideHand: Boolean(hand && top && hand.contains(top)),
+        animations: document.getAnimations().filter((a) => a.playState === 'running').map((a) => `${a.animationName ?? a.constructor.name}@${a.effect?.target?.className ?? ''}`).slice(0, 6),
+        cards: document.querySelectorAll('.player-hand .poker-card').length
+      };
+    }, { x: (box?.x ?? 0) + position.x, y: (box?.y ?? 0) + position.y }).catch(() => null);
+    const log = String(error?.message ?? error).split('\n').filter((line) => /intercepts|not stable|not visible|outside|waiting/.test(line)).slice(0, 4).join(' | ');
+    console.log(`::warning title=smoke_click_hand_retry::${JSON.stringify(scene)} ${log}`.slice(0, 900));
+    try {
+      await page.locator('.player-hand').click({ position, timeout: 5000, force: true });
+    } catch (forced) {
+      throw new Error(`smoke_click_hand_failed ${JSON.stringify(scene)} ${log}`);
+    }
   }
 }
 
