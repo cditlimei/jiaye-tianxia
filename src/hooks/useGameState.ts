@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
-import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
+import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, collectEarnedTitles, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
@@ -57,7 +57,17 @@ function findPartnerName(partnerId: string) {
   return partners.find((item) => item.id === partnerId)?.name ?? '';
 }
 
+/** 每次状态更新后把当前满足的家声并入 earnedTitles（只增不减），开新朝重置世代/封地也不收回 */
 function reducer(state: GameState, action: Action): GameState {
+  return collectEarnedTitles(baseReducer(state, action));
+}
+
+/** 军令 +1 类选项：已满时不增加，纪事改写，免得写着 +1 实际没加 */
+function orderGainDetail(state: GameState, detail: string) {
+  return state.orders >= orderCapFor(state.fiefs, state.realms) ? detail.replace('军令 +1', '军令已满，未增加') : detail;
+}
+
+function baseReducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case 'setScreen':
       return {
@@ -78,9 +88,10 @@ function reducer(state: GameState, action: Action): GameState {
         realm: state.realm,
         realms: state.realms,
         pastDynasties: state.pastDynasties,
+        earnedTitles: collectEarnedTitles(state).earnedTitles,
         ambition: null,
-        // 强兵家风：每代开局军令满额
-        orders: traditionOf(state.chronicle)?.id === 'might' ? orderCapFor({}, state.realms) : defaultGameState.orders,
+        // 强兵家风：每代开局军令满额（上限按传下来的封地算，含整军加成）
+        orders: traditionOf(state.chronicle)?.id === 'might' ? orderCapFor(state.generation > 1 ? state.fiefs : {}, state.realms) : defaultGameState.orders,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
@@ -202,7 +213,7 @@ function reducer(state: GameState, action: Action): GameState {
           orders: picked.kind === 'order' ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
           partnerBoosts: picked.kind === 'boost' ? { ...state.partnerBoosts, [minor.partner.id]: addBoost(state.partnerBoosts[minor.partner.id], boost) } : state.partnerBoosts,
           eventLog: [
-            { id: `minor-${state.pendingChoice.day}`, day: state.day, title: `${minor.partner.name} · ${minor.template.title} · ${picked.label}`, detail: picked.detail(minor.partner.name, gold), goldDelta: gold || undefined },
+            { id: `minor-${state.pendingChoice.day}`, day: state.day, title: `${minor.partner.name} · ${minor.template.title} · ${picked.label}`, detail: picked.kind === 'order' ? orderGainDetail(state, picked.detail(minor.partner.name, gold)) : picked.detail(minor.partner.name, gold), goldDelta: gold || undefined },
             ...state.eventLog
           ].slice(0, 18)
         };
@@ -217,7 +228,7 @@ function reducer(state: GameState, action: Action): GameState {
         nextBattleBonus: option.id === 'battleBonus' ? BATTLE_BONUS_MULTIPLIER : state.nextBattleBonus,
         orders: option.id === 'order' ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
         eventLog: [
-          { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.detail, goldDelta: gold || undefined },
+          { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.id === 'order' ? orderGainDetail(state, option.detail) : option.detail, goldDelta: gold || undefined },
           ...state.eventLog
         ].slice(0, 18)
       };
@@ -505,6 +516,7 @@ function reducer(state: GameState, action: Action): GameState {
         realm: state.realm,
         realms: state.realms,
         pastDynasties: state.pastDynasties,
+        earnedTitles: collectEarnedTitles(state).earnedTitles,
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,
@@ -541,14 +553,16 @@ function reducer(state: GameState, action: Action): GameState {
         realm: realm.id,
         realms,
         pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions }].slice(-20),
+        // 家声跨朝保留：天下归心等称号不随世代/封地重置被收回（先按重置前的存档补记一次，读档后未经任何操作就开新朝也不漏）
+        earnedTitles: collectEarnedTitles(state).earnedTitles,
         eventLog: [
           { id: `dynasty-${Date.now()}`, day: 1, title: `开创新朝 · ${realm.name}`, detail: `前朝历 ${summary.generations} 代 ${summary.days} 日，${summary.wins} 胜，六郡归心。新朝国号「${realm.name}」：${realm.effect}，永久保留。` }
         ]
       };
     }
-    // 重开基业：放弃本朝重来，国号加成与前朝记录是跨朝资产，保留（只有「重置存档」才全清）
+    // 重开基业：放弃本朝重来，国号加成、前朝记录与家声是跨朝资产，保留（只有「重置存档」才全清）
     case 'restart':
-      return { ...defaultGameState, soundEnabled: state.soundEnabled, realm: state.realm, realms: state.realms, pastDynasties: state.pastDynasties, tutorialDone: dynastyCount(state.realms) > 0 };
+      return { ...defaultGameState, soundEnabled: state.soundEnabled, realm: state.realm, realms: state.realms, pastDynasties: state.pastDynasties, earnedTitles: collectEarnedTitles(state).earnedTitles, tutorialDone: dynastyCount(state.realms) > 0 };
     case 'reset':
       clearGameState();
       return {

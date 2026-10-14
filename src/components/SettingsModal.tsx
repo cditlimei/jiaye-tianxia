@@ -3,7 +3,7 @@ import type { GameState } from '../types';
 import { LEGACY_GOLD_PER_POINT, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, legacyPointsGainable, SUCCESSION_HOME_LEVEL } from '../lib/battle';
 import { GameButton } from './common/GameButton';
 import { ambitionSummary } from '../data/ambitions';
-import { endingHint, isEndingReached } from '../data/dynasty';
+import { endingHint, isEndingReached, legacyMaxedHint } from '../data/dynasty';
 import { legacyGoldPerPointFor } from '../data/traditions';
 import { ModalShell } from './common/ModalShell';
 
@@ -45,8 +45,10 @@ export function SettingsModal({
       : gainedPoints < 1
         ? `至少需 ${goldPerPoint.toLocaleString()} 金才能换到 1 点家业点。`
         : `现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
-  const ambitionNote = isEndingReached(state) ? null : ambitionSummary(state);
-  const nearEnding = endingHint(state);
+  // 家业点已满时传位不可行，不再提志向结算/传位承诺，只提示离天下归心还差什么
+  const maxedHint = legacyMaxedHint(state);
+  const ambitionNote = isEndingReached(state) || maxedHint ? null : ambitionSummary(state);
+  const nearEnding = endingHint(state) ?? maxedHint;
   const [importText, setImportText] = useState('');
   const [importStatus, setImportStatus] = useState<{ ok: boolean; message: string } | null>(null);
 

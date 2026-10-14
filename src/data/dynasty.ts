@@ -72,6 +72,18 @@ export function endingHint(state: GameState) {
   return `再得 ${LEGACY_MAX_POINTS - state.legacyPoints} 点家业点即天下归心，可开创新朝。`;
 }
 
+/**
+ * 家业点已满但还没天下归心：传位不再加点（按钮灰），志向也无从结算，改提示还差几郡/王城。
+ * 与 endingHint 互斥（那边要求六郡 + 王城已齐）。
+ */
+export function legacyMaxedHint(state: GameState) {
+  if (state.legacyPoints < LEGACY_MAX_POINTS || isEndingReached(state)) return null;
+  const missing = Math.max(0, 6 - ownedFiefCount(state.fiefs));
+  const needHome = state.homeLevel < 6;
+  if (missing > 0) return `家业点已满，只差 ${missing} 郡${needHome ? '并升至王城' : ''}即天下归心。`;
+  return '家业点已满、六郡已归，宅邸升至王城即天下归心。';
+}
+
 /** 天下归心：六郡 + 王城 + 家业点满 */
 export function isEndingReached(state: GameState) {
   return ownedFiefCount(state.fiefs) >= 6 && state.homeLevel >= 6 && state.legacyPoints >= LEGACY_MAX_POINTS;

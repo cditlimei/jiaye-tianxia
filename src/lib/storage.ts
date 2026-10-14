@@ -1,6 +1,6 @@
 import type { GameState, Screen } from '../types';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
-import { choiceGoldValue, getChoiceEvent, getDailyEvent, quests } from '../data/progression';
+import { choiceGoldValue, collectEarnedTitles, ENDING_LINEAGE_TITLE_IDS, getChoiceEvent, getDailyEvent, quests, titles } from '../data/progression';
 import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
 import { isOrderDay, ORDER_START } from '../types';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
@@ -52,6 +52,7 @@ export const defaultGameState: GameState = {
   realm: null,
   realms: { wei: 0, shu: 0, wu: 0 },
   pastDynasties: [],
+  earnedTitles: [],
   soundEnabled: true,
   tutorialDone: false,
   lastScreen: 'title',
@@ -194,7 +195,8 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
   const homeLevel = homeLevels.some((home) => home.level === parsed.homeLevel) ? Number(parsed.homeLevel) : defaultGameState.homeLevel;
   const equippedWeaponId = isKnownId(parsed.equippedWeaponId, weapons) ? parsed.equippedWeaponId : defaultGameState.equippedWeaponId;
 
-  return {
+  // 家声按读入时的存档即时补记（老存档没有 earnedTitles）
+  return collectEarnedTitles({
     ...defaultGameState,
     screen: safeScreen,
     selectedLordId,
@@ -225,6 +227,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     realm: isRealmId(parsed.realm) ? parsed.realm : null,
     realms: reconcileRealms(sanitizeRealms(parsed.realms), sanitizePastDynasties(parsed.pastDynasties), isRealmId(parsed.realm) ? parsed.realm : null),
     pastDynasties: sanitizePastDynasties(parsed.pastDynasties),
+    earnedTitles: sanitizeEarnedTitles(parsed.earnedTitles, sanitizePastDynasties(parsed.pastDynasties).length),
     fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
     ambition: sanitizeAmbition(parsed.ambition, sanitizeNumber(parsed.generation, 1, 1), sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))),
     chronicle: sanitizeChronicle(parsed.chronicle),
@@ -237,7 +240,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     lastScreen: safeScreen,
     eventLog: sanitizeEventLog(parsed.eventLog),
     lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now
-  };
+  });
 }
 
 function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
@@ -350,6 +353,13 @@ function sanitizePastDynasties(value: unknown): GameState['pastDynasties'] {
     .slice(-20)
     // 朝代号按顺序重编，脏档的重复/乱序号不信
     .map((entry, index) => ({ ...entry, dynasty: index + 1 }));
+}
+
+/** 家声记录：非数组归空、去重、只留家声称号 id；旧存档有前朝说明至少天下归心过一次，补入终局时必然满足的几项 */
+function sanitizeEarnedTitles(value: unknown, pastCount: number): string[] {
+  const known = new Set(titles.filter((title) => title.lineage).map((title) => title.id));
+  const kept = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && known.has(id)) : [];
+  return [...new Set([...kept, ...(pastCount > 0 ? ENDING_LINEAGE_TITLE_IDS : [])])];
 }
 
 function sanitizeAmbition(value: unknown, generation: number, fiefs: FiefHoldings): GameState['ambition'] {

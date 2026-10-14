@@ -9,7 +9,7 @@ import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
-import { dynastyCount, endingHint, findRealm, isEndingReached, realmIncomePercent } from '../data/dynasty';
+import { dynastyCount, endingHint, findRealm, isEndingReached, legacyMaxedHint, realmIncomePercent } from '../data/dynasty';
 import { daysUntilNextOrder } from '../types';
 import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
@@ -104,6 +104,9 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   const ambition = ambitionStatus(state);
+  // 家业点已满：传位不再可行，志向无从结算，志向卡/进度改提示还差几郡
+  const maxedHint = legacyMaxedHint(state);
+  const ambitionOpen = !isEndingReached(state) && !maxedHint;
   // 「稍后再定」只记在本次会话里，刷新后再提醒一次
   const [ambitionDeferred, setAmbitionDeferred] = useState(() => {
     try { return window.sessionStorage.getItem('jiaye-ambition-deferred') === String(state.generation); } catch { return false; }
@@ -243,7 +246,7 @@ export function HomeScreen({
     ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
       ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [endingHint(state)?.replace(/。$/, '') ?? `下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state)))) - 1) * 100)}%、开局 ${(1000 + Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))) * 3000).toLocaleString()} 金`, ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
       : []),
-    ...(state.generation >= 2 && !state.ambition && !isEndingReached(state) && ambitionDeferred ? [{ key: 'ambition', label: '本代志向未定', detail: '定下志向才有传位结算', onClick: () => setAmbitionDeferred(false) }] : []),
+    ...(state.generation >= 2 && !state.ambition && ambitionOpen && ambitionDeferred ? [{ key: 'ambition', label: '本代志向未定', detail: '定下志向才有传位结算', onClick: () => setAmbitionDeferred(false) }] : []),
     ...(isEndingReached(state) && endingSeen ? [{ key: 'ending', label: '天下归心', detail: '展开卷轴开创新朝', onClick: onOpenEnding }] : [])
   ];
   return (
@@ -254,8 +257,8 @@ export function HomeScreen({
           <div>
             <strong>{lord.name}</strong>
             <span>{lord.title}{dynastyCount(state.realms) > 0 ? ` · ${state.realm ? `${findRealm(state.realm)?.name} · ` : ''}第 ${dynastyCount(state.realms) + 1} 朝` : ''}{state.generation > 1 ? ` · 第 ${state.generation} 代` : ''}</span>
-            {(tradition || (ambition && !isEndingReached(state))) && (
-              <em className="home-hud__ambition" title={tradition?.effect}>{[tradition?.name, ambition && !isEndingReached(state) ? `志向 ${ambition.ambition.name} ${ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}` : null].filter(Boolean).join(' · ')}</em>
+            {(tradition || (ambition && ambitionOpen)) && (
+              <em className="home-hud__ambition" title={tradition?.effect}>{[tradition?.name, ambition && ambitionOpen ? `志向 ${ambition.ambition.name} ${ambition.done ? '已达成' : `${ambition.progress.toLocaleString()}/${ambition.target.toLocaleString()}`}` : null].filter(Boolean).join(' · ')}</em>
             )}
             <em className="home-hud__honor" title={titleStatus.next ? `下一称号「${titleStatus.next.name}」：${titleStatus.next.requirement}` : titleStatus.missing > 0 ? `已是最高称号，另有 ${titleStatus.missing} 个称号待集齐` : '称号已集齐'}>「{titleStatus.current.name}」</em>
           </div>
@@ -349,7 +352,7 @@ export function HomeScreen({
         </section>
       )}
 
-      {state.generation >= 2 && !state.ambition && !isEndingReached(state) && !ambitionDeferred && (
+      {state.generation >= 2 && !state.ambition && ambitionOpen && !ambitionDeferred && (
         <section className="ambition-card" aria-label="本代志向">
           <div className="section-title">
             <span>第 {state.generation} 代 · 本代志向</span>
@@ -462,9 +465,10 @@ export function HomeScreen({
           <span>家业目标</span>
           <strong>{questStatuses.filter((quest) => quest.claimed).length}/{questStatuses.length}</strong>
         </div>
-        {ambition && !isEndingReached(state) && (
+        {ambition && ambitionOpen && (
           <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.ambition.describe(ambition.target)}，现 {ambition.progress.toLocaleString()} {ambition.ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
         )}
+        {maxedHint && <p className="ambition-progress legacy-maxed-hint">{maxedHint}</p>}
         <p className="honor-hint">
           当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : titleStatus.missing > 0 ? `，已是本代最高称号，另有 ${titleStatus.missing} 个称号待集齐（点头像查看）` : '，本代称号已集齐'}。
         </p>
