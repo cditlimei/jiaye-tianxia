@@ -15,7 +15,7 @@ import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
 import { fiefCostFor, legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
-import { affairFor, type Affair } from '../data/affairs';
+import { AFFAIR_KIND_LABEL, AFFAIR_TRAINING_CAP, affairChoicesFor, affairOutcome, type Affair, type AffairKind } from '../data/affairs';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { ModalShell } from './common/ModalShell';
@@ -36,7 +36,7 @@ interface HomeScreenProps {
   farmFlat: number;
   orderCap: number;
   recruitDiscount: number;
-  onCollectIncome: () => number;
+  onCollectIncome: (kind?: AffairKind) => number;
   onResolveChoice: (optionId: string) => void;
   onUpgrade: () => boolean;
   onOpenPartner: () => void;
@@ -225,15 +225,29 @@ export function HomeScreen({
     return () => window.clearInterval(timer);
   }, [state.frontierRaid]);
 
-  const handleCollectIncome = () => {
+  // 府中三件事：点「处理政务」先弹出今日三件事挑一件办；办完留在弹层里接着办下一日
+  const [affairsOpen, setAffairsOpen] = useState(false);
+  const [lastAffair, setLastAffair] = useState<{ title: string; amount: number; gain: string } | null>(null);
+  const affairChoices = affairChoicesFor(state.day + 1, state.homeLevel);
+  const handleCollectIncome = (kind?: AffairKind) => {
     if (state.pendingChoice) {
+      setAffairsOpen(false);
       setChoiceHiddenKey('');
       return;
     }
-    const amount = onCollectIncome();
+    if (!kind && !quickAffairs()) {
+      setLastAffair(null);
+      setAffairsOpen(true);
+      return;
+    }
+    const chosenKind = kind ?? 'treasury';
+    const chosen = affairChoices.find((item) => item.kind === chosenKind) ?? affairChoices[0];
+    const { trains } = affairOutcome(chosenKind, dailyIncome, state.affairTraining);
+    const amount = onCollectIncome(chosenKind);
     const id = Date.now();
     onIncomeSfx();
-    setReport({ ...affairFor(state.day + 1, state.homeLevel), id, day: state.day + 1, amount });
+    setLastAffair({ title: chosen.title, amount, gain: trains ? (chosenKind === 'military' ? '武力 +1' : '智谋、声望 +1') : '' });
+    setReport({ ...chosen, id, day: state.day + 1, amount });
     if (reportTimer.current !== null) window.clearTimeout(reportTimer.current);
     reportTimer.current = window.setTimeout(() => setReport(null), 3000);
     setFloating((items) => [...items, { id, amount }].slice(-3));
@@ -417,6 +431,39 @@ export function HomeScreen({
         );
       })()}
 
+      {affairsOpen && !state.pendingChoice && (
+        <div className="modal-backdrop choice-modal affairs-modal">
+          <section role="dialog" aria-modal="true" aria-label="府中三件事" className="choice-card affairs-card">
+            <em className="choice-card__eyebrow">第 {state.day + 1} 日 · 府中三件事 · 挑一件去办</em>
+            {lastAffair && (
+              <p className="affairs-card__done" role="status">
+                刚办完「{lastAffair.title}」+{lastAffair.amount.toLocaleString()} 金{lastAffair.gain ? ` · ${lastAffair.gain}` : ''}
+              </p>
+            )}
+            <div className="choice-card__options affairs-card__options">
+              {affairChoices.map((item) => {
+                const { gold, trains } = affairOutcome(item.kind, dailyIncome, state.affairTraining);
+                const trained = item.kind === 'military' ? state.affairTraining.strength : state.affairTraining.civil;
+                const gain = item.kind === 'treasury'
+                  ? '足额政务收入'
+                  : trains
+                    ? `${item.kind === 'military' ? '武力' : '智谋、声望'} +1（本代 ${trained}/${AFFAIR_TRAINING_CAP}）`
+                    : `${item.kind === 'military' ? '武力' : '智谋声望'}已练满，按足额给金`;
+                return (
+                  <button key={item.kind} type="button" className={`affairs-option affairs-option--${item.kind}`} onClick={() => handleCollectIncome(item.kind)}>
+                    <span className="affairs-option__tag">{AFFAIR_KIND_LABEL[item.kind]}</span>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
+                    <b>+{gold.toLocaleString()} 金 · {gain}</b>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" className="choice-card__later" onClick={() => setAffairsOpen(false)}>回府</button>
+          </section>
+        </div>
+      )}
+
       {state.tutorialDone && isEndingReached(state) && !endingSeen && (
         <section className="succession-hint ending-hint" aria-label="天下归心">
           <strong>天下归心</strong>
@@ -476,7 +523,7 @@ export function HomeScreen({
       )}
 
       <section className="home-actions" ref={actionRef}>
-        <GameButton onClick={handleCollectIncome} className={`home-actions__main ${state.pendingChoice ? 'is-guided' : guided('income')}`}>
+        <GameButton onClick={() => handleCollectIncome()} className={`home-actions__main ${state.pendingChoice ? 'is-guided' : guided('income')}`}>
           {state.pendingChoice ? '府中来报 · 去定夺' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
         </GameButton>
         <GameButton variant="secondary" onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
@@ -580,4 +627,14 @@ export function HomeScreen({
       )}
     </main>
   );
+}
+
+/** 测试用：设了这个开关，「处理政务」不弹三件事，直接办钱粮 */
+const AFFAIR_QUICK_KEY = 'jiaye-affair-quick';
+function quickAffairs() {
+  try {
+    return window.localStorage.getItem(AFFAIR_QUICK_KEY) === '1';
+  } catch {
+    return false;
+  }
 }

@@ -6998,3 +6998,128 @@ body.is-doudizhu-table .ddz-screen .mini-card.is-joker .mini-card__suit {
     font-size: 11px;
   }
 }
+
+/* ===== 府中三件事：处理政务时挑一件办 ===== */
+.affairs-card .choice-card__options.affairs-card__options {
+  grid-template-columns: 1fr;
+}
+
+.affairs-card__done {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(212, 168, 67, 0.16);
+  color: var(--gold-light);
+  font-size: 13px;
+  font-weight: 700;
+  animation: affairs-done-in 0.35s ease-out;
+}
+
+@keyframes affairs-done-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.affairs-option {
+  position: relative;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+}
+
+.affairs-option > strong,
+.affairs-option > small,
+.affairs-option > b {
+  grid-column: 2;
+}
+
+.affairs-option__tag {
+  grid-row: 1 / span 3;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 800;
+  color: #241303;
+  background: linear-gradient(180deg, #ffe99d, #d4a843);
+}
+
+.affairs-option--military .affairs-option__tag {
+  color: #fff;
+  background: linear-gradient(180deg, #e0655a, #9b2a22);
+}
+
+.affairs-option--civil .affairs-option__tag {
+  color: #fff;
+  background: linear-gradient(180deg, #6fa6e0, #2c5d9b);
+}
+
+.affairs-option > b {
+  color: #ffe08a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.affairs-option:active {
+  transform: translateY(1px);
+  border-color: var(--gold-light);
+}
+
+.affairs-card {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+
+/* 横屏矮屏：三件事并排三列，「回府」留在一屏内 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .affairs-card {
+    width: min(94vw, 780px);
+    max-width: none;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .affairs-card .choice-card__options.affairs-card__options {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .affairs-option {
+    grid-template-columns: 1fr;
+    align-content: start;
+    row-gap: 4px;
+  }
+
+  .affairs-option > strong,
+  .affairs-option > small,
+  .affairs-option > b {
+    grid-column: 1;
+  }
+
+  .affairs-option__tag {
+    grid-row: auto;
+    width: auto;
+    height: auto;
+    justify-self: start;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+
+  .affairs-card__done {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+}
+
+/* 弹层是 grid：卡片定了宽度就会靠左，居中摆 */
+.affairs-modal {
+  justify-items: center;
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .choice-modal .choice-card.affairs-card {
+    width: min(94vw, 780px);
+  }
+}

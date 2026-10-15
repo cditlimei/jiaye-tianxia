@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { affairOutcome, type AffairKind } from '../data/affairs';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
@@ -20,7 +21,7 @@ type Action =
   | { type: 'setScreen'; screen: Screen }
   | { type: 'selectLord'; lordId: string }
   | { type: 'selectStarterPartner'; partner: Partner }
-  | { type: 'collectIncome'; amount: number }
+  | { type: 'collectIncome'; amount: number; kind?: AffairKind }
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
@@ -136,9 +137,16 @@ function baseReducer(state: GameState, action: Action): GameState {
       const nextDay = state.day + 1;
       const dailyEvent = getDailyEvent(nextDay, action.amount);
       // 减税招商：政务收入加成
-      const buffed = state.incomeBuff && nextDay <= state.incomeBuff.untilDay
+      // 府中三件事：军务/治理只拿一半政务收入，换本代属性 +1（练满后按足额）
+      const outcome = affairOutcome(action.kind ?? 'treasury', action.amount, state.affairTraining);
+      const affairTraining = outcome.trains
+        ? { ...state.affairTraining, ...(action.kind === 'military' ? { strength: state.affairTraining.strength + 1 } : { civil: state.affairTraining.civil + 1 }) }
+        : state.affairTraining;
+      // 先算减税招商加成，再按所办之事折算，与首页三件事卡片上显示的金额同一算法
+      const buffedBase = state.incomeBuff && nextDay <= state.incomeBuff.untilDay
         ? Math.round(action.amount * (1 + state.incomeBuff.percent / 100))
         : action.amount;
+      const buffed = affairOutcome(action.kind ?? 'treasury', buffedBase, state.affairTraining).gold;
       const incomeBuff = state.incomeBuff && nextDay <= state.incomeBuff.untilDay ? state.incomeBuff : null;
       const buffExpired = Boolean(state.incomeBuff) && !incomeBuff;
       const calendarChoice = getChoiceEvent(nextDay, action.amount);
@@ -175,6 +183,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         orders: isOrderDay(nextDay, state.homeLevel) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
         incomeBuff,
         pendingChoice,
+        affairTraining,
         eventLog
       };
     }
@@ -631,12 +640,15 @@ export function useGameState() {
   );
 
   const fiefStat = fiefStatBonus(state.fiefs) + realmStatBonus(state.realms);
+  // 处理政务练出的属性：军务加武力，治理加智谋与声望
+  const strengthExtra = fiefStat + state.affairTraining.strength;
+  const civilExtra = fiefStat + state.affairTraining.civil;
   const orderCap = orderCapFor(state.fiefs, state.realms);
-  const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome, fiefStat) : 0;
-  const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome, fiefStat) : 0;
-  const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome, fiefStat) : 0;
-  const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners, fiefStat) : 0;
-  const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners, fiefStat) : 0;
+  const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome, strengthExtra) : 0;
+  const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome, civilExtra) : 0;
+  const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome, civilExtra) : 0;
+  const intelligence = selectedLord ? calculateIntelligence(selectedLord, ownedPartners, civilExtra) : 0;
+  const charisma = selectedLord ? calculateCharisma(selectedLord, ownedPartners, civilExtra) : 0;
   const questStatuses = getQuestStatuses(state, { currentHome, equippedWeapon, ownedPartners, totalPower });
   const titleStatus = useMemo(() => getTitleStatus(state), [state]);
 
@@ -651,10 +663,11 @@ export function useGameState() {
   const recruitDiscount = recruitDiscountPercent(charisma);
   const recruitCostFor = useCallback((partner: Partner) => effectiveRecruitCost(partner.recruitCost, charisma), [charisma]);
 
-  const collectIncome = useCallback(() => {
-    dispatch({ type: 'collectIncome', amount: dailyIncome });
-    return displayedIncome;
-  }, [dailyIncome, displayedIncome]);
+  /** 办一件政务，返回实际入账（含减税招商加成） */
+  const collectIncome = useCallback((kind: AffairKind = 'treasury') => {
+    dispatch({ type: 'collectIncome', amount: dailyIncome, kind });
+    return affairOutcome(kind, displayedIncome, state.affairTraining).gold;
+  }, [dailyIncome, displayedIncome, state.affairTraining]);
 
   const upgradeHome = useCallback(() => {
     if (!nextHome || state.gold < nextHome.upgradeCost) {

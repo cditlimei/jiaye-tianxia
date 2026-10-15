@@ -122,6 +122,20 @@ function tierPosition(list: Enemy[], power: number) {
 }
 
 /**
+ * 推荐档自动战的每道军令期望，按战力在两档之间连续过渡：
+ * 直接取推荐档会在战力跨过下一档门槛的那 1 点上跳一大截（斗地主缴获跟着它走，曾让 +1 武力把王城提前 5 个游玩日）。
+ * 在门槛上两者相等，所以曲线连续。
+ */
+export function smoothRecommendedValue(list: Enemy[], power: number) {
+  const pos = tierPosition(list, power);
+  const index = Math.min(list.length - 1, Math.floor(pos));
+  const value = (i: number) => expectedTierGold(list[i].rewardGold, tierOddsFor(list, i, power));
+  if (index >= list.length - 1) return value(list.length - 1);
+  const frac = pos - index;
+  return (1 - frac) * value(index) + frac * value(index + 1);
+}
+
+/**
  * 战败折损：胜率越低折损越重（胜率 100% 时 20%，0% 时 70%），
  * 让期望收益在推荐档（约 75%）附近最高，往上硬冲不再稳赚。
  */

@@ -1,4 +1,5 @@
 import type { GameState, Screen } from '../types';
+import { AFFAIR_TRAINING_CAP } from '../data/affairs';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { choiceGoldValue, collectEarnedTitles, ENDING_LINEAGE_TITLE_IDS, getChoiceEvent, getDailyEvent, quests, titles } from '../data/progression';
 import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
@@ -41,6 +42,7 @@ export const defaultGameState: GameState = {
   legacyPoints: 0,
   pendingChoice: null,
   partnerBoosts: {},
+  affairTraining: { strength: 0, civil: 0 },
   resolvedPartnerEvents: {},
   incomeBuff: null,
   nextBattleBonus: null,
@@ -219,6 +221,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     legacyPoints: Math.min(LEGACY_MAX_POINTS, sanitizeNumber(parsed.legacyPoints, 0, 0)),
     pendingChoice: sanitizeChoice(parsed.pendingChoice),
     partnerBoosts: sanitizeBoosts(parsed.partnerBoosts),
+    affairTraining: sanitizeTraining(parsed.affairTraining),
     resolvedPartnerEvents: sanitizeResolved(parsed.resolvedPartnerEvents),
     incomeBuff: sanitizeBuff(parsed.incomeBuff),
     nextBattleBonus: typeof parsed.nextBattleBonus === 'number' && parsed.nextBattleBonus > 1 ? parsed.nextBattleBonus : null,
@@ -391,6 +394,12 @@ function sanitizeChronicle(value: unknown): GameState['chronicle'] {
   return trimChronicle(entries);
 }
 
+function sanitizeTraining(value: unknown): GameState['affairTraining'] {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const clamp = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(AFFAIR_TRAINING_CAP, Math.floor(n))) : 0);
+  return { strength: clamp(raw.strength), civil: clamp(raw.civil) };
+}
+
 function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {
   if (!value || typeof value !== 'object') return {};
   const out: GameState['partnerBoosts'] = {};
@@ -503,7 +512,7 @@ function applyOfflineIncome(state: GameState): GameState {
     findHomeLevel(state.homeLevel).dailyIncome,
     findFarmLevel(state.farmLevel).incomePercent,
     state.legacyPoints,
-    lord ? calculateIntelligence(lord, ownedPartners, fiefStatBonus(state.fiefs) + realmStatBonus(state.realms)) : 0,
+    lord ? calculateIntelligence(lord, ownedPartners, fiefStatBonus(state.fiefs) + realmStatBonus(state.realms) + state.affairTraining.civil) : 0,
     findFarmLevel(state.farmLevel).flatIncome,
     fiefIncomePercent(state.fiefs) + realmIncomePercent(state.realms)
   );

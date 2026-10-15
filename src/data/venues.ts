@@ -1,5 +1,5 @@
 import type { AiSkill } from '../lib/doudizhu';
-import { bestValueTierIndex, recommendedTierIndex, COURT_UNLOCK_HOME_LEVEL, expectedTierGold, NAVAL_UNLOCK_HOME_LEVEL, ROSTERS, tierOddsFor } from '../lib/battle';
+import { bestValueTierIndex, smoothRecommendedValue, COURT_UNLOCK_HOME_LEVEL, expectedTierGold, NAVAL_UNLOCK_HOME_LEVEL, ROSTERS, tierOddsFor } from '../lib/battle';
 
 export type VenueId = 'beginner' | 'middle' | 'high';
 export interface Venue {
@@ -22,9 +22,9 @@ export const VENUES: Venue[] = [
 /** 一局斗地主的净期望（以场次缴获为 1）：胜方按倍数×份额拿缴获、负方付两成。
  *  笨玩家（永远出最小可出牌）实测：生手 0.506−0.2×0.282、老手 0.443−0.2×0.49、高手 0.505−0.2×0.464 */
 export const DDZ_NET_VALUE: Record<AiSkill, number> = { novice: 0.45, veteran: 0.345, master: 0.412 };
-/** 斗地主每道军令的期望收益 ≈ 同战力推荐档自动战的 1.5 倍，且不低于挑最划算那档自动战的 1.1 倍（要真打、耗时更长，得比挂机划算）。
- *  基准用推荐档而非最划算档：econ 轻度玩家王城约第 24 次上线；改用最划算档会快到第 15 次 */
-export const DDZ_VS_AUTO = 1.5;
+/** 斗地主每道军令的期望收益 ≈ 同战力推荐档自动战的 1.2 倍，且不低于挑最划算那档自动战的 1.1 倍（要真打、耗时更长，得比挂机划算）。
+ *  推荐档按战力在两档间连续过渡（smoothRecommendedValue）；10-15 平滑后从 1.5 调到 1.2，econ 轻度玩家王城仍约第 20 次上线 */
+export const DDZ_VS_AUTO = 1.2;
 export const DDZ_VS_BEST_AUTO = 1.1;
 
 export interface BattlePowers {
@@ -42,7 +42,8 @@ export function bestAutoBattleValue(powers: BattlePowers, homeLevel: number, pic
     0,
     ...modes.map((mode) => {
       const roster = ROSTERS[mode];
-      const index = pick === 'recommended' ? recommendedTierIndex(roster, powers[mode]) : bestValueTierIndex(roster, powers[mode]);
+      if (pick === 'recommended') return smoothRecommendedValue(roster, powers[mode]);
+      const index = bestValueTierIndex(roster, powers[mode]);
       return expectedTierGold(roster[index].rewardGold, tierOddsFor(roster, index, powers[mode]));
     })
   );

@@ -22,12 +22,14 @@ const save = (extra = {}) => ({
 const browser = await chromium.launch({ headless: true });
 
 async function open(state, contextOptions = {}) {
-  const { bidding = false, turnSeconds = 0, ...rest } = contextOptions;
+  const { bidding = false, turnSeconds = 0, affairs = false, ...rest } = contextOptions;
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...rest });
   // 旧用例按「玩家当地主」写，默认跳过叫地主；叫地主流程单独测（bidding: true）
   if (!bidding) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-ddz-skip-bid', '1'); } catch { /* 存储被禁用的用例 */ } });
   // 出牌倒计时默认关掉，免得慢机上用例被自动「不要」；倒计时单独测
   await ctx.addInitScript((sec) => { try { localStorage.setItem('jiaye-ddz-turn-seconds', String(sec)); } catch { /* 存储被禁用的用例 */ } }, turnSeconds);
+  // 「处理政务」默认一键办钱粮（旧用例按点一次拿足额政务收入写）；府中三件事弹层单独测（affairs: true）
+  if (!affairs) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-affair-quick', '1'); } catch { /* 存储被禁用的用例 */ } });
   const page = await ctx.newPage();
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   if (state) {
@@ -125,6 +127,7 @@ await scenario('存档安全', async () => {
 
 await scenario('多标签页', async () => {
   const ctx = await browser.newContext();
+  await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-affair-quick', '1'); } catch { /* ignore */ } });
   const a = await ctx.newPage();
   await a.goto(URL, { waitUntil: 'domcontentloaded' });
   await a.evaluate(([k, s]) => localStorage.setItem(k, JSON.stringify(s)), [KEY, save({ ownedPartnerIds: [] })]);
@@ -1524,10 +1527,62 @@ await scenario('今日政务回报', async () => {
   await page.locator('.affair-report').waitFor();
   const text = await page.locator('.affair-report').innerText();
   const gained = (await read(page)).gold - before;
-  check('点处理政务弹出今日政务：日子、事项、入账', text.includes('第 13 日') && text.includes('今日政务') && text.includes(`+${gained.toLocaleString()} 金`) && /清点仓廪|审理田讼|接见乡老|督修水渠|收取租赋|整顿市集|招抚流民|训练家丁/.test(text), text.replace(/\n/g, ' '));
+  check('点处理政务弹出今日政务：日子、事项、入账', text.includes('第 13 日') && text.includes('今日政务') && text.includes(`+${gained.toLocaleString()} 金`) && /清点仓廪|收取租赋|整顿市集|开设盐铺/.test(text), text.replace(/\n/g, ' '));
   await page.locator('.affair-report').waitFor({ state: 'detached', timeout: 5000 });
   check('政务回报 3 秒后收起', (await page.locator('.affair-report').count()) === 0);
   await page.context().close();
+});
+
+await scenario('府中三件事', async () => {
+  const page = await open(save({ homeLevel: 4, day: 12 }), { affairs: true });
+  const base = income(await page.locator('.home-actions__main').innerText());
+  const s0 = await read(page);
+  await page.locator('.home-actions__main').click();
+  const dialog = page.getByRole('dialog', { name: '府中三件事' });
+  await dialog.waitFor();
+  const text = await dialog.innerText();
+  check('处理政务先弹出当日三件事：钱粮、军务、治理各一件', text.includes('第 13 日') && ['钱粮', '军务', '治理'].every((t) => text.includes(t)) && (await dialog.locator('.affairs-option').count()) === 3, text.replace(/\n/g, ' ').slice(0, 160));
+  check('弹出时还没过日子、没入账', (await read(page)).day === s0.day && (await read(page)).gold === s0.gold);
+  const half = Math.round(base * 0.5);
+  check('卡片写明各自收益', text.includes(`+${base.toLocaleString()} 金 · 足额政务收入`) && text.includes(`+${half.toLocaleString()} 金 · 武力 +1（本代 0/15）`) && text.includes(`+${half.toLocaleString()} 金 · 智谋、声望 +1（本代 0/15）`), text.replace(/\n/g, ' '));
+  // 钱粮：足额
+  await dialog.locator('.affairs-option--treasury').click();
+  let s = await read(page);
+  check('办钱粮：过一天、足额入账、弹层留着接着办', s.day === s0.day + 1 && s.gold === s0.gold + base && (await dialog.isVisible()) && (await dialog.innerText()).includes('第 14 日'), `day=${s.day} Δ=${s.gold - s0.gold}`);
+  check('弹层写明刚办完哪件', /刚办完「.+」\+[\d,]+ 金/.test(await dialog.locator('.affairs-card__done').innerText()));
+  // 军务：一半金 + 武力 +1，首页武力跟着涨
+  const power0 = Number((await page.locator('.home-hud__chips').innerText()).match(/(\d+)\s*\n?\s*武力|武力\s*\n?\s*(\d+)/)?.slice(1).find(Boolean) ?? NaN);
+  const g1 = s.gold;
+  await dialog.locator('.affairs-option--military').click();
+  s = await read(page);
+  check('办军务：一半政务收入、本代武力 +1', s.gold === g1 + half && s.affairTraining?.strength === 1 && (await dialog.locator('.affairs-card__done').innerText()).includes('武力 +1'), `Δ=${s.gold - g1} t=${JSON.stringify(s.affairTraining)}`);
+  // 治理：智谋声望 +1
+  await dialog.locator('.affairs-option--civil').click();
+  s = await read(page);
+  check('办治理：本代智谋声望 +1', s.affairTraining?.civil === 1 && s.affairTraining?.strength === 1);
+  // 连办几天可能撞上府中事件：事件弹窗优先，三件事弹层让位
+  if (await page.getByRole('dialog', { name: /府中事件|伴侣心事|府中小事/ }).isVisible().catch(() => false)) {
+    check('撞上府中事件时三件事弹层让位', (await dialog.count()) === 0);
+    await dismissChoice(page);
+  } else {
+    await dialog.getByRole('button', { name: '回府' }).click();
+  }
+  const power1 = Number((await page.locator('.home-hud__chips').innerText()).match(/(\d+)\s*\n?\s*武力|武力\s*\n?\s*(\d+)/)?.slice(1).find(Boolean) ?? NaN);
+  check('回府关闭弹层，顶栏武力 +1', (await dialog.count()) === 0 && power1 === power0 + 1, `${power0} → ${power1}`);
+  await page.context().close();
+  // 练满：按足额给金，不再涨；存档里超上限的数会被压回 15
+  const capped = await open(save({ homeLevel: 4, day: 12, affairTraining: { strength: 99, civil: 15 } }), { affairs: true });
+  check('读档时练出的属性压回上限 15', (await read(capped)).affairTraining?.strength === 15);
+  // 智谋练满 +15，政务收入也跟着涨：按这份存档自己的收入核对
+  const cappedBase = income(await capped.locator('.home-actions__main').innerText());
+  await capped.locator('.home-actions__main').click();
+  const d2 = capped.getByRole('dialog', { name: '府中三件事' });
+  const text2 = await d2.innerText();
+  check('练满后写明按足额给金', text2.includes(`+${cappedBase.toLocaleString()} 金 · 武力已练满，按足额给金`) && text2.includes('智谋声望已练满'), text2.replace(/\n/g, ' '));
+  const c0 = (await read(capped)).gold;
+  await d2.locator('.affairs-option--military').click();
+  check('练满后办军务拿足额、属性不再涨', (await read(capped)).gold === c0 + cappedBase && (await read(capped)).affairTraining.strength === 15);
+  await capped.context().close();
 });
 
 await scenario('出牌倒计时', async () => {

@@ -26,6 +26,8 @@ export interface GameState {
   legacyPoints: number;
   pendingChoice: { eventId: string; day: number; dailyIncome: number } | null;
   partnerBoosts: Record<string, { strength?: number; intelligence?: number; charisma?: number }>;
+  /** 本代处理政务练出来的属性：军务练武力，治理练智谋与声望（各封顶 AFFAIR_TRAINING_CAP，传位清零） */
+  affairTraining: { strength: number; civil: number };
   resolvedPartnerEvents: Record<string, string>;
   incomeBuff: { percent: number; untilDay: number } | null;
   nextBattleBonus: number | null;
