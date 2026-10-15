@@ -299,9 +299,16 @@ async function assertVisibleCardCornerSelection(page) {
   }
 
   const targetIndex = Math.floor(cards.length / 2);
-  await clickCardCorner(page, targetIndex - 1);
-  await clickCardCorner(page, targetIndex + 1);
-  const targetId = await clickCardCorner(page, targetIndex);
+  // 每次点击后记下点中的牌与已选牌，失败时一并输出，便于区分「点空」「点错」「重复切换」
+  const trace = [];
+  const traced = async (index) => {
+    const id = await clickCardCorner(page, index);
+    trace.push({ index, id, selected: await page.$$eval('.player-hand .poker-card.is-selected', (els) => els.map((el) => el.getAttribute('data-card-id'))) });
+    return id;
+  };
+  await traced(targetIndex - 1);
+  await traced(targetIndex + 1);
+  const targetId = await traced(targetIndex);
 
   const selected = await page.$$eval('.player-hand .poker-card', (elements) => elements
     .filter((element) => element.classList.contains('is-selected'))
@@ -312,13 +319,28 @@ async function assertVisibleCardCornerSelection(page) {
     })));
 
   if (selected.length !== 3 || !selected.some((card) => card.id === targetId)) {
-    throw new Error(`smoke_visible_card_corner_selection_failed ${JSON.stringify({ targetId, selected })}`);
+    throw new Error(`smoke_visible_card_corner_selection_failed ${JSON.stringify({ targetId, selected, trace })}`);
   }
 
   await page.getByRole('button', { name: '重选' }).click();
 }
 
 async function clickCardCorner(page, index) {
+  // 先等这张牌停稳（发牌飞入、选中上抬都有过渡）：点空桌面现在不会吸附到最近的牌，读到半路的位置就会点空
+  await page.locator('.player-hand .poker-card').nth(index).evaluate((card) => new Promise((resolve) => {
+    let last = '';
+    let stable = 0;
+    const started = performance.now();
+    const tick = () => {
+      const r = card.getBoundingClientRect();
+      const key = `${Math.round(r.left)},${Math.round(r.top)}`;
+      stable = key === last ? stable + 1 : 0;
+      last = key;
+      if (stable >= 3 || performance.now() - started > 2000) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
   const data = await page.locator('.player-hand .poker-card').nth(index).evaluate((card) => {
     const hand = card.closest('.player-hand');
     if (!hand) {
