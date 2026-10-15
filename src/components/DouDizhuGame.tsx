@@ -7,7 +7,7 @@ import type { Card, Combo, PlayerIndex } from '../lib/doudizhu';
 import { AI_SKILL_LABEL, AI_STYLE_LABEL, LORD_AI_STYLE, type AiSkill, type ComboType, canBeat, chooseAiPlay, comboLabel, createDoudizhuDeal, evaluateCards, findPlayableCombos, formatCards, sortCards, sortCardsDescending } from '../lib/doudizhu';
 import type { AiStyle } from '../lib/doudizhu';
 import { GameButton } from './common/GameButton';
-import { CourtArt, JokerArt, SuitIcon } from './common/CardArt';
+import { JokerArt, SuitIcon } from './common/CardArt';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
 interface DouDizhuGameProps {
@@ -544,7 +544,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
             <button
               key={card.id}
               type="button"
-              className={`poker-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''} ${selected ? 'is-selected' : ''}`}
+              className={`poker-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''} ${selected ? 'is-selected' : ''} ${twoRows && handRowLayout(index, displayedHand.length, true).row === 0 ? 'is-upper-row' : ''}`}
               style={handCardStyle(index, displayedHand.length, selected, twoRows)}
               onClick={(event) => event.preventDefault()}
               onKeyDown={(event) => {
@@ -569,15 +569,17 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
                   </>
                 )}
               </span>
-              <span className="poker-card__art" aria-hidden="true">
-                {joker ? (
+              {joker ? (
+                <span className="poker-card__art" aria-hidden="true">
                   <JokerArt big={card.value === 17} />
-                ) : ['J', 'Q', 'K'].includes(card.rank) ? (
-                  <CourtArt rank={card.rank} />
-                ) : (
-                  <SuitIcon suit={card.suit} />
-                )}
-              </span>
+                </span>
+              ) : (
+                // 参照黄金岛牌面：中间留白，右下角倒置一组数字 + 花色
+                <span className="poker-card__index-br" aria-hidden="true">
+                  <b>{card.rank}</b>
+                  <SuitIcon suit={card.suit} className="poker-card__suit" />
+                </span>
+              )}
             </button>
           );
         })}
@@ -698,16 +700,13 @@ function handCardStyle(index: number, count: number, selected: boolean, twoRows:
   const { row, indexInRow, countInRow, rows } = handRowLayout(index, count, twoRows);
   const progress = countInRow <= 1 ? 0.5 : indexInRow / (countInRow - 1);
   const left = HAND_EDGE_PERCENT + progress * (100 - HAND_EDGE_PERCENT * 2);
-  const spread = progress - 0.5;
-  const rotate = rows === 2 ? 0 : spread * 4.8;
-  const edgeDrop = rows === 2 ? 0 : Math.abs(spread) * 5;
   const rowLift = rows === 2 && row === 0 ? 46 : 0;
   // 选中的牌要一眼看得出来
-  const selectedRise = selected ? (rows === 2 ? 9 : 13) : 0;
+  const selectedRise = selected ? (rows === 2 ? 12 : 18) : 0;
 
   return {
     left: `${left}%`,
-    transform: `translateX(-50%) translateY(${edgeDrop - rowLift - selectedRise}px) rotate(${rotate}deg)`,
+    transform: `translateX(-50%) translateY(${-rowLift - selectedRise}px)`,
     zIndex: row * 100 + indexInRow + 1
   };
 }

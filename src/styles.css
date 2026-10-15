@@ -6503,3 +6503,154 @@ body .ddz-screen .mini-card.is-joker {
     height: 9px;
   }
 }
+
+/* ===== 牌面 v3：参照黄金岛跑得快牌面（官网规则页 pdk-face.jpg）=====
+   纯白牌面、细灰边；左上数字 + 花色竖排，右下同一组倒置；中间留白；窄体数字；平铺不歪 */
+body .ddz-screen .poker-card,
+body.is-doudizhu-table .ddz-screen .poker-card {
+  border: 1px solid #c9c9c9;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow:
+    -1px 0 2px rgba(0, 0, 0, 0.16),
+    0 3px 8px rgba(0, 0, 0, 0.26);
+}
+
+body .ddz-screen .poker-card.is-red {
+  color: #e3141f;
+}
+
+body .ddz-screen .poker-card.is-selected,
+body.is-doudizhu-table .ddz-screen .poker-card.is-selected {
+  border-color: #f2b632;
+  background: #fff;
+  box-shadow:
+    0 0 0 2px #f2b632,
+    0 10px 16px rgba(0, 0, 0, 0.32);
+}
+
+body .ddz-screen .poker-card .poker-card__corner,
+body .ddz-screen .poker-card .poker-card__index-br {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  width: calc(var(--hand-card-edge) - 4px);
+  font-family: 'Helvetica Neue', Arial, 'Roboto', sans-serif;
+}
+
+body .ddz-screen .poker-card .poker-card__corner {
+  left: 3px;
+  top: 4px;
+}
+
+body .ddz-screen .poker-card .poker-card__index-br {
+  position: absolute;
+  right: 3px;
+  bottom: 4px;
+  transform: rotate(180deg);
+}
+
+body .ddz-screen .poker-card .poker-card__corner b,
+body .ddz-screen .poker-card .poker-card__index-br b {
+  display: block;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.06em;
+  line-height: 0.92;
+  /* 窄体：Arial/Helvetica 横向压一点，接近牌桌常用的细长数字 */
+  transform: scaleX(0.84);
+}
+
+body .ddz-screen .poker-card .poker-card__corner .poker-card__suit,
+body .ddz-screen .poker-card .poker-card__index-br .poker-card__suit {
+  width: 15px;
+  height: 15px;
+}
+
+/* 两行手牌、竖屏小牌：数字跟着缩 */
+body.is-doudizhu-table .ddz-screen .player-hand--two-rows .poker-card .poker-card__corner b,
+body.is-doudizhu-table .ddz-screen .player-hand--two-rows .poker-card .poker-card__index-br b {
+  font-size: 22px;
+}
+
+body.is-doudizhu-table .ddz-screen .player-hand--two-rows .poker-card .poker-card__suit {
+  width: 13px;
+  height: 13px;
+}
+
+body .ddz-screen .poker-card.is-joker {
+  background: #fff;
+}
+
+/* 出牌区 / 底牌小牌：同一套——数字在上、花色紧贴其下，白底细灰边 */
+body .ddz-screen .mini-card {
+  border: 1px solid #c9c9c9;
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.28);
+}
+
+body .ddz-screen .mini-card.is-red {
+  color: #e3141f;
+}
+
+body .ddz-screen .mini-card .mini-card__rank {
+  font-family: 'Helvetica Neue', Arial, 'Roboto', sans-serif;
+  font-weight: 600;
+}
+
+body .ddz-screen .mini-card:not(.is-joker) .mini-card__rank {
+  left: 3px;
+  top: 3px;
+  width: 1.1em;
+  text-align: center;
+  font-size: 17px;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  transform: scaleX(0.86);
+  transform-origin: left top;
+}
+
+body .ddz-screen .mini-card:not(.is-joker) svg.mini-card__suit {
+  left: 5px;
+  top: 21px;
+  bottom: auto;
+  width: 11px;
+  height: 11px;
+}
+
+body .ddz-screen .mini-card-strip--center .mini-card:not(.is-joker) .mini-card__rank {
+  font-size: 20px;
+}
+
+body .ddz-screen .mini-card-strip--center .mini-card:not(.is-joker) svg.mini-card__suit {
+  left: 6px;
+  top: 25px;
+  width: 13px;
+  height: 13px;
+}
+
+body .ddz-screen .mini-card.is-joker {
+  background: #fff;
+}
+
+@media (orientation: portrait) {
+  body .ddz-screen .ddz-topbar__kitty .mini-card:not(.is-joker) .mini-card__rank {
+    left: 2px;
+    top: 2px;
+    font-size: 14px;
+  }
+
+  body .ddz-screen .ddz-topbar__kitty .mini-card:not(.is-joker) svg.mini-card__suit {
+    left: 4px;
+    top: 17px;
+    bottom: auto;
+    width: 9px;
+    height: 9px;
+  }
+}
+
+/* 两行手牌：上排只露上半张，右下角倒置角标会从下排牌缝里漏出来，藏掉 */
+body .ddz-screen .poker-card.is-upper-row .poker-card__index-br {
+  display: none;
+}
