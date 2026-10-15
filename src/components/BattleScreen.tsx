@@ -9,7 +9,8 @@ import { ConquestMap } from './ConquestMap';
 import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
-import { daysUntilNextOrder, LOSS_PENALTY_RATE, type BattleMode } from '../types';
+import { LOSS_PENALTY_RATE, type BattleMode } from '../types';
+import { formatWait, orderMsFor } from '../lib/clock';
 import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
 import { GameButton } from './common/GameButton';
@@ -38,6 +39,8 @@ interface BattleScreenProps {
   farm: { current: FarmLevel; next: FarmLevel | null; gold: number; homeIncome: number };
   orders: number;
   orderCap: number;
+  /** 军令回复锚点（v2.3 按真实分钟回军令，显示「下一道约 N 分」） */
+  orderClockAt?: number;
   /** 国号专属缴获倍率与屯田折扣 */
   realmScale: (mode: string) => number;
   farmCost: number;
@@ -188,6 +191,7 @@ export function BattleScreen({
   frontier = NO_FRONTIER,
   orders,
   orderCap,
+  orderClockAt = Date.now(),
   realmScale,
   farmCost,
   day,
@@ -223,6 +227,15 @@ export function BattleScreen({
 }: BattleScreenProps) {
   const settledRef = useRef(false);
   const startedRef = useRef(false);
+  // 下一道军令倒计时（按锚点算，15 秒刷新一次显示）
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const orderWait = orders >= orderCap ? '' : formatWait(Math.max(0, orderClockAt + orderMsFor(homeLevel) - now));
+  // 切磋局：不耗军令、不给缴获、不计战绩
+  const [practice, setPractice] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
   const entryRegion: RegionId = initialRegion && !RETIRED_REGIONS.includes(initialRegion) ? initialRegion : 'jingzhou';
@@ -509,6 +522,29 @@ export function BattleScreen({
     );
   }
 
+  if (doudizhuOpen && practice) {
+    return (
+      <DouDizhuGame
+        key={`practice-${ddzKey}`}
+        practice
+        perks={perks}
+        onPlayAgain={() => setDdzKey((key) => key + 1)}
+        playAgainLabel="再切磋一局 · 不耗军令"
+        lord={lord}
+        wins={wins}
+        losses={losses}
+        rewardGold={0}
+        aiSkill={selectedVenue.aiSkill}
+        lossGold={0}
+        onSfx={onSfx}
+        escort={escort}
+        // 切磋不记缴获、战绩与随行统计；牌桌上伴侣技能照常生效
+        onResolved={() => undefined}
+        onReturnHome={onReturnHome}
+      />
+    );
+  }
+
   if (doudizhuOpen) {
     return (
       <DouDizhuGame
@@ -543,7 +579,7 @@ export function BattleScreen({
       <main className={`screen battle-screen expedition-screen ${showRegions ? '' : 'is-ddz-only'}`}>
         <header className="screen-header">
           <div>
-            <span className="eyebrow">{showRegions ? '出征地图' : '荆州'} · 军令 {orders}/{orderCap}{orders < orderCap ? `（${daysUntilNextOrder(day, homeLevel)} 日后 +1）` : ''}</span>
+            <span className="eyebrow">{showRegions ? '出征地图' : '荆州'} · 军令 {orders}/{orderCap}{orderWait ? `（下一道${orderWait}）` : ''}</span>
             <h2>{showRegions ? '其他战场' : '出征'}</h2>
           </div>
           <div className="expedition-header__actions">
@@ -762,10 +798,26 @@ export function BattleScreen({
             setMapOpen(false);
           }}
         >
-          {outOfOrders ? `军令不足 · 回府处理政务，${daysUntilNextOrder(day, homeLevel)} 日后 +1` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
+          {outOfOrders ? `军令不足 · 下一道${orderWait}` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
         </GameButton>
         )}
-        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（守城除外），府邸前每日回 1 道、之后每 2 日回 1 道，最多存 {orderCap} 道（整军封地可提高上限）。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
+        {selectedRegion.mode === 'doudizhu' && (
+          <GameButton
+            block
+            variant="secondary"
+            className="practice-button"
+            disabled={selectedVenueLocked}
+            onClick={() => {
+              onSfx('audio/sfx/sfx_button.mp3', 0.3);
+              setPractice(true);
+              setDoudizhuOpen(true);
+              setMapOpen(false);
+            }}
+          >
+            切磋 · 不耗军令<small className="game-button__sub">不给缴获、不计战绩，随行伴侣技能照常</small>
+          </GameButton>
+        )}
+        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（守城、切磋除外），府邸前约 20 分钟回 1 道、府邸起约 2 小时回 1 道，最多存 {orderCap} 道（整军封地可提高上限）。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
       </main>
     );
   }

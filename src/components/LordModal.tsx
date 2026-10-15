@@ -65,7 +65,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
             return (
               <div key={`${entry.generation}-${index}`} className={`chronicle-row ${entry.ambitionDone ? 'is-done' : ''}`}>
                 <strong>第 {entry.generation} 代 · {name}</strong>
-                <span>{entry.days} 日 · {entry.wins} 胜 · 存金 {entry.gold.toLocaleString()}{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ' · 未定志向'}</span>
+                <span>{entry.openDays ? `开府 ${entry.openDays} 天（第 ${entry.days} 日）` : `${entry.days} 日`} · {entry.wins} 胜 · 存金 {entry.gold.toLocaleString()}{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ' · 未定志向'}</span>
               </div>
             );
           })}
@@ -106,7 +106,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           {state.pastDynasties.map((entry) => (
             <div key={entry.dynasty} className="chronicle-row is-done">
               <strong>第 {entry.dynasty} 朝{entry.realm ? ` · ${findRealm(entry.realm)?.name}` : ' · 开国'} · 天下归心</strong>
-              <span>{entry.generations} 代 · {entry.days.toLocaleString()} 日 · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
+              <span>{entry.generations} 代 · {entry.openDays ? `开府 ${entry.openDays.toLocaleString()} 天（第 ${entry.days.toLocaleString()} 日）` : `${entry.days.toLocaleString()} 日`} · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
             </div>
           ))}
         </section>

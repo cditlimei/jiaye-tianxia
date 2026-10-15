@@ -37,6 +37,8 @@ interface DouDizhuGameProps {
   /** 结算后「再来一局」；不传则只有返回家业 */
   onPlayAgain?: () => void;
   playAgainLabel?: string;
+  /** 切磋局（v2.3）：不耗军令、不给缴获、不计战绩，随行伴侣技能照常；离席不扣金 */
+  practice?: boolean;
 }
 
 interface PlayedMove {
@@ -128,7 +130,7 @@ const TWO_ROW_THRESHOLD = 12;
 // 平板竖屏也用两行手牌：样式里平板竖屏整桌 zoom 放大，排布按手机竖屏算
 const PORTRAIT_QUERY = '(orientation: portrait)';
 
-export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, aiSkill, lossGold, onSfx, onResolved, onStakeChange, onReturnHome, perks = [], conquest, onPlayAgain, playAgainLabel, escort: escortProp }: DouDizhuGameProps) {
+export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, aiSkill, lossGold, onSfx, onResolved, onStakeChange, onReturnHome, perks = [], conquest, onPlayAgain, playAgainLabel, escort: escortProp, practice = false }: DouDizhuGameProps) {
   // 缴获按开局时定：练兵之策的翻倍在结算入账后就清掉，不冻结的话横幅会跟着掉回一半
   const [rewardGold] = useState(rewardGoldProp);
   // 随行伴侣与等级开局冻结
@@ -241,7 +243,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   const forfeitMultiplier = lossMultOf(table.multiplier);
   const forfeitGold = Math.round(lossGold * forfeitMultiplier * share);
   // 糜夫人「舍身」：失手倍数到 ×4 返还本局军令；攻郡不返军令，改退军资
-  const refundOrder = skillId === 'mifuren' && !conquest && table.winner !== null && !playerWins && lossMultiplier >= MIFUREN_REFUND_MULTIPLIER;
+  const refundOrder = skillId === 'mifuren' && !conquest && !practice && table.winner !== null && !playerWins && lossMultiplier >= MIFUREN_REFUND_MULTIPLIER;
   const mifurenCut = skillId === 'mifuren' && skillVal > 0 && !conquest;
   // 本局技能发动次数：主动技能按次，开局即生效的被动（闭月、胡笳辨音）记一次，舍身在失手时记一次
   const settleUses = (win: boolean) => table.skill.uses
@@ -276,6 +278,10 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
       ? playerWins
         ? `击败守将${conquest.garrison}，${conquest.fiefName}归府下`
         : `${playerNames[table.winner]}先走完，军资没入敌手${conquest.stakeRefund ? `（舍身护回 ${conquest.stakeRefund.toLocaleString()} 金）` : ''}`
+      : practice
+      ? playerWins
+        ? `切磋得胜 · 不计缴获与战绩（×${formatMult(winMultiplier)}）`
+        : `${playerNames[table.winner]}先走完 · 切磋不计得失`
       : playerWins
       ? `胜 +${winGold.toLocaleString()} 金${multTag}`
       : `${playerNames[table.winner]}先走完 −${loseGold.toLocaleString()} 金${multTag}`
@@ -564,6 +570,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
       onReturnHome();
       return;
     }
+    // 切磋局：离席不扣金、不计战绩
+    if (practice) {
+      onReturnHome();
+      return;
+    }
     if (table.winner === null && !window.confirm(`认输将损失 ${forfeitGold.toLocaleString()} 金（当前 ×${formatMult(Math.min(MAX_MULTIPLIER, table.multiplier * doubled))}${share < 1 ? ' · 农民半份' : ''}${doubled > 1 ? ` · 赤壁对赌，付缴获 ×${payRatio(forfeitGold)}` : ''}），确定回府？`)) {
       return;
     }
@@ -689,7 +700,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
     <main className="screen ddz-screen">
       <header className="ddz-topbar">
         {table.winner === null ? (
-          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>{defend ? '弃城' : conquest ? '撤兵' : `认输 −${forfeitGold.toLocaleString()}`}</button>
+          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>{defend ? '弃城' : conquest ? '撤兵' : practice ? '离席' : `认输 −${forfeitGold.toLocaleString()}`}</button>
         ) : (
           <span className="ddz-topbar__quit is-idle">牌局结束</span>
         )}
@@ -699,7 +710,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
           <MiniCardStrip cards={bidding ? table.landlordCards.slice(0, kittyVisible) : table.landlordCards} emptyLabel="叫完地主后亮出" center />
         </div>
         <div className="ddz-topbar__stake">
-          <h2>{conquest ? `${defend ? '守卫' : '攻取'}${conquest.fiefName}` : '斗地主牌局'}</h2>
+          <h2>{conquest ? `${defend ? '守卫' : '攻取'}${conquest.fiefName}` : practice ? '斗地主切磋' : '斗地主牌局'}</h2>
           <span className="ddz-multiplier">倍数 ×{formatMult(finalMultiplier)}</span>
           <span>胜 {wins} · 负 {losses}</span>
         </div>
@@ -769,7 +780,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
 
       {table.winner !== null && (
         <div className={`doudizhu-result-banner ${playerWins ? 'is-win' : 'is-loss'}`} role="status">
-          <strong>{defend && conquest ? (playerWins ? `守住${conquest.fiefName}` : '守城未克') : conquest ? (playerWins ? `${conquest.fiefName}归附` : '攻城未克') : playerWins ? '牌局得胜' : '下局再战'}</strong>
+          <strong>{defend && conquest ? (playerWins ? `守住${conquest.fiefName}` : '守城未克') : conquest ? (playerWins ? `${conquest.fiefName}归附` : '攻城未克') : practice ? (playerWins ? '切磋得胜' : '再切磋一局') : playerWins ? '牌局得胜' : '下局再战'}</strong>
           <span>{statusCopy}</span>
         </div>
       )}

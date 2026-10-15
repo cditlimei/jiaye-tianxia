@@ -13,6 +13,9 @@ import { RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { expireSiege, reconcileSiege, releaseStaleSiege, sanitizeSiege, sanitizeTimeMap } from '../lib/siege';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
 import { defaultEscort } from '../data/partnerSkills';
+import { advanceClock, advanceOrders, clockManual, CLOCK_VERSION, collectTreasury, DAY_MS, MAX_CATCHUP_DAYS, TREASURY_HARD_CAP_DAYS } from './clock';
+
+const ANCHOR_FUTURE_LIMIT_MS = MAX_CATCHUP_DAYS * DAY_MS;
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -69,7 +72,12 @@ export const defaultGameState: GameState = {
   tutorialDone: false,
   lastScreen: 'title',
   eventLog: [],
-  lastSavedAt: Date.now()
+  lastSavedAt: Date.now(),
+  clockAt: Date.now(),
+  orderClockAt: Date.now(),
+  treasury: { gold: 0, days: 0 },
+  clockVersion: CLOCK_VERSION,
+  foundedAt: Date.now()
 };
 
 export function loadGameState(): GameState {
@@ -84,8 +92,12 @@ export function loadGameState(): GameState {
 
   try {
     const parsed = JSON.parse(raw) as Partial<GameState>;
-    const restored = normalizeGameState(parsed);
-    return settleExpiredSiege(applyOfflineIncome(settleAbandonedBattle(restored)));
+    const now = Date.now();
+    const restored = settleAbandonedBattle(normalizeGameState(parsed, now));
+    // 老存档（没有 clockVersion）第一次读入：先按旧规则把离线补足（钱直接入账），再切真实时间口径；
+    // 之后只有 advanceClock 一条推进路径（旧的每次读档补算已删掉，免得同一段时间算两次）
+    const caughtUp = restored.clockVersion === CLOCK_VERSION ? catchUpOnLoad(restored, now) : migrateLegacyClock(restored, now);
+    return settleExpiredSiege(caughtUp);
   } catch {
     return defaultGameState;
   }
@@ -109,11 +121,16 @@ export function parseImportedGameState(raw: string): GameState {
   }
 
   const screen = normalized.ownedPartnerIds.length > 0 ? 'home' : 'partnerSelect';
+  const now = Date.now();
+  // 导入不补离线：计时锚点一律从导入这一刻起算
   return {
     ...normalized,
     screen,
     lastScreen: screen,
-    lastSavedAt: Date.now()
+    lastSavedAt: now,
+    clockAt: now,
+    orderClockAt: now,
+    clockVersion: CLOCK_VERSION
   };
 }
 
@@ -123,7 +140,9 @@ export function parseSyncedGameState(raw: string | null): GameState | null {
   }
   try {
     const normalized = normalizeGameState(JSON.parse(raw) as Partial<GameState>);
-    return normalized.selectedLordId ? normalized : null;
+    if (!normalized.selectedLordId) return null;
+    // 另一标签页是旧版本写的存档：不补算，锚点从现在起
+    return normalized.clockVersion === CLOCK_VERSION ? normalized : { ...normalized, clockVersion: CLOCK_VERSION, clockAt: Date.now(), orderClockAt: Date.now() };
   } catch {
     return null;
   }
@@ -267,7 +286,15 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     tutorialDone: Boolean(parsed.tutorialDone),
     lastScreen: safeScreen,
     eventLog: sanitizeEventLog(parsed.eventLog),
-    lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now
+    lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now,
+    // 真实时间锚点：非法置为当下，在未来（改过系统时间）保留原值、拒绝回拨（见 sanitizeAnchor）；老存档没有 clockVersion，读档时先补足再切
+    clockVersion: parsed.clockVersion === CLOCK_VERSION ? CLOCK_VERSION : 0,
+    clockAt: sanitizeAnchor(parsed.clockAt, now),
+    orderClockAt: sanitizeAnchor(parsed.orderClockAt, now),
+    treasury: sanitizeTreasury(parsed.treasury),
+    foundedAt: typeof parsed.foundedAt === 'number' && Number.isFinite(parsed.foundedAt) && parsed.foundedAt <= now && parsed.foundedAt > 0
+      ? parsed.foundedAt
+      : now - sanitizeNumber(parsed.day, 1, 1) * 3600 * 1000
   };
   // 城防、得郡时刻、反攻计时按现有封地补齐（老存档的郡先有 72 小时保护，48 小时后才起第一次反攻）
   const withSiege = releaseStaleSiege(reconcileSiege(restored, now), now);
@@ -275,6 +302,51 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
   return collectEarnedTitles(hadRaid
     ? { ...withSiege, eventLog: [{ id: `raid-retired-${now}`, day: withSiege.day, title: '北疆已靖', detail: '北疆已靖，边军调往诸郡。往后留意邻郡反攻，守城不耗军令。' }, ...withSiege.eventLog].slice(0, MAX_EVENT_LOG) }
     : withSiege);
+}
+
+/**
+ * 计时锚点：非法值置为当下；在未来（系统时间调快后又调回）不再置为当下，原样保留，等真实时间追上才继续推进，
+ * 否则「调快→读档→调回→读档」每一轮都能白拿府库与军令。离谱的未来值（超过一次补算上限 240 日）截到上限，免得永远卡住。
+ */
+function sanitizeAnchor(value: unknown, now: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return now;
+  return Math.min(value, now + ANCHOR_FUTURE_LIMIT_MS);
+}
+
+function sanitizeTreasury(value: unknown): GameState['treasury'] {
+  const t = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  return { gold: sanitizeNumber(t.gold, 0, 0), days: Math.min(TREASURY_HARD_CAP_DAYS, sanitizeNumber(t.days, 0, 0)) };
+}
+
+/** 老存档第一次读入：按旧规则补一次离线（1 小时 1 日、钱直接入账、最多 240 日），然后锚点置为当下、府库清零、写入 clockVersion */
+function migrateLegacyClock(state: GameState, now: number): GameState {
+  const caught = legacyOfflineIncome(state, now);
+  return { ...caught, clockAt: now, orderClockAt: now, treasury: { gold: 0, days: 0 }, clockVersion: CLOCK_VERSION };
+}
+
+/** 新口径读档：按锚点补算日子（进府库）与军令；测试开关 jiaye-clock-manual 下补算后自动按钱粮入账、军令按日回 */
+function catchUpOnLoad(state: GameState, now: number): GameState {
+  const manual = clockManual();
+  const { state: advanced, tally, away } = advanceClock(state, now, { dayOrders: manual });
+  if (!manual) return advanceOrders(advanced, now);
+  if (tally.days === 0) return advanced;
+  const collected = collectTreasury(advanced, 'treasury');
+  const gained = collected.gold - advanced.gold;
+  const waiting = collected.pendingChoice && collected.pendingChoice !== state.pendingChoice;
+  return {
+    ...collected,
+    orderClockAt: now,
+    eventLog: [
+      {
+        id: `offline-${now}`,
+        day: collected.day,
+        title: '离线经营',
+        detail: `离开 ${away >= 3600e3 ? `${Math.floor(away / 3600e3)} 小时` : `${Math.round(away / 60000)} 分钟`}，宅邸照常运转，折算 ${tally.days} 天收益${tally.eventCount > 0 ? `，另有 ${tally.eventCount} 桩府中喜事` : ''}${waiting ? '；有一桩尚待主公决断' : ''}。`,
+        goldDelta: gained
+      },
+      ...collected.eventLog
+    ].slice(0, MAX_EVENT_LOG)
+  };
 }
 
 function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
@@ -421,7 +493,7 @@ function sanitizePastDynasties(value: unknown): GameState['pastDynasties'] {
     .filter((entry) => entry && typeof entry === 'object')
     .map((entry) => {
       const e = entry as Record<string, unknown>;
-      return { dynasty: 0, realm: isRealmId(e.realm) ? e.realm : null, generations: Math.min(99, sanitizeNumber(e.generations, 1, 1)), days: Math.min(999999, sanitizeNumber(e.days, 0, 0)), wins: Math.min(999999, sanitizeNumber(e.wins, 0, 0)), ambitions: Math.min(99, sanitizeNumber(e.ambitions, 0, 0)) };
+      return { dynasty: 0, realm: isRealmId(e.realm) ? e.realm : null, generations: Math.min(99, sanitizeNumber(e.generations, 1, 1)), days: Math.min(999999, sanitizeNumber(e.days, 0, 0)), wins: Math.min(999999, sanitizeNumber(e.wins, 0, 0)), ambitions: Math.min(99, sanitizeNumber(e.ambitions, 0, 0)), ...(typeof e.openDays === 'number' && Number.isFinite(e.openDays) && e.openDays >= 1 ? { openDays: Math.min(99999, Math.floor(e.openDays)) } : {}) };
     })
     .slice(-20)
     // 朝代号按顺序重编，脏档的重复/乱序号不信
@@ -458,7 +530,8 @@ function sanitizeChronicle(value: unknown): GameState['chronicle'] {
         wins: sanitizeNumber(e.wins, 0, 0),
         fiefs: sanitizeNumber(e.fiefs, 0, 0),
         ambition: isAmbitionId(e.ambition) ? e.ambition : null,
-        ambitionDone: e.ambitionDone === true
+        ambitionDone: e.ambitionDone === true,
+        ...(typeof e.openDays === 'number' && Number.isFinite(e.openDays) && e.openDays >= 1 ? { openDays: Math.min(99999, Math.floor(e.openDays)) } : {})
       };
     });
   return trimChronicle(entries);
@@ -573,12 +646,13 @@ function settleExpiredSiege(state: GameState): GameState {
   };
 }
 
-function applyOfflineIncome(state: GameState): GameState {
+/** 旧版离线补算（v2.3 前每次读档都调）：现在只在老存档第一次读入时调一次，之后走 advanceClock */
+function legacyOfflineIncome(state: GameState, now: number): GameState {
   if (!state.selectedLordId) {
     return state;
   }
 
-  const elapsed = Date.now() - state.lastSavedAt;
+  const elapsed = now - state.lastSavedAt;
   if (elapsed < OFFLINE_MIN_MS) {
     return state;
   }

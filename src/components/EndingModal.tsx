@@ -31,7 +31,7 @@ export function EndingModal({ state, dailyIncome, onClose, onFound }: EndingModa
     <ModalShell title="天下归心" onClose={onClose}>
       <div className="ending-sheet">
         <p className="ending-sheet__scroll">
-          六郡尽归府下，王城巍峨，家业点已满。自开国至{lordName}，共 {summary.generations} 代、{summary.days.toLocaleString()} 日，{summary.wins.toLocaleString()} 场胜利，{summary.ambitions} 代志向达成。天下归心，可开创新朝。
+          六郡尽归府下，王城巍峨，家业点已满。自开国至{lordName}，共 {summary.generations} 代、{summary.openDays ? `开府 ${summary.openDays.toLocaleString()} 天（第 ${summary.days.toLocaleString()} 日）` : `${summary.days.toLocaleString()} 日`}，{summary.wins.toLocaleString()} 场胜利，{summary.ambitions} 代志向达成。天下归心，可开创新朝。
         </p>
         <section className="fief-claim" aria-label="开创新朝">
           <div className="section-title">
@@ -64,7 +64,7 @@ export function EndingModal({ state, dailyIncome, onClose, onFound }: EndingModa
             {state.pastDynasties.map((entry) => (
               <div key={entry.dynasty} className="chronicle-row is-done">
                 <strong>第 {entry.dynasty} 朝{entry.realm ? ` · ${findRealm(entry.realm)?.name}` : ' · 开国'}</strong>
-                <span>{entry.generations} 代 · {entry.days.toLocaleString()} 日 · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
+                <span>{entry.generations} 代 · {entry.openDays ? `开府 ${entry.openDays.toLocaleString()} 天（第 ${entry.days.toLocaleString()} 日）` : `${entry.days.toLocaleString()} 日`} · {entry.wins.toLocaleString()} 胜 · {entry.ambitions} 代志向达成</span>
               </div>
             ))}
           </section>

@@ -97,9 +97,13 @@ export function isEndingReached(state: GameState) {
 }
 
 /** 终局卷轴上的本朝总账（含本代） */
-export function dynastySummary(state: GameState) {
+export function dynastySummary(state: GameState, now = Date.now()) {
   const past = state.chronicle;
+  // 开府天数（真实天数）：各代相加；v2.3 前传位的代没有这项，就不写
+  const current = Number.isFinite(state.foundedAt) && state.foundedAt <= now ? Math.floor((now - state.foundedAt) / 86400000) + 1 : 1;
+  const openDays = past.every((entry) => typeof entry.openDays === 'number') ? past.reduce((sum, entry) => sum + (entry.openDays ?? 0), 0) + current : undefined;
   return {
+    openDays,
     generations: state.generation,
     days: past.reduce((sum, entry) => sum + entry.days, 0) + state.day,
     wins: past.reduce((sum, entry) => sum + entry.wins, 0) + state.battleWins,

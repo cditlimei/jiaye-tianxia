@@ -259,7 +259,7 @@ export function getChoiceEvent(day: number, dailyIncome: number): ChoiceEvent | 
       prompt: '往来商旅愿在府前开市，如何安置？',
       options: [
         { id: 'gold', label: '收取市税', detail: `当下入账 ${(dailyIncome * 3).toLocaleString()} 金。` },
-        { id: 'incomeBuff', label: '减税招商', detail: `此后 ${INCOME_BUFF_DAYS} 日处理政务收入 +${INCOME_BUFF_PERCENT}%。` }
+        { id: 'incomeBuff', label: '减税招商', detail: `此后 ${INCOME_BUFF_DAYS} 日（约 ${INCOME_BUFF_DAYS} 小时）政务收入 +${INCOME_BUFF_PERCENT}%。` }
       ]
     };
   }

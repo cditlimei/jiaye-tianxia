@@ -33,7 +33,8 @@ export const ambitions: Ambition[] = [
     name: '富国',
     motto: '仓廪实而知礼节',
     target: (generation) => 500000 + (gen(generation) - 2) * 250000,
-    progress: (state) => state.gold,
+    // 传位时府库里没收的金子先并入再结算，所以进度也算上府库
+    progress: (state) => state.gold + (state.treasury?.gold ?? 0),
     unit: '金',
     describe: (target) => `传位时府库存金达 ${target.toLocaleString()} 金`,
     hint: (_state, target) => `约 ${Math.floor(target / 100000)} 点家业点的钱，难度${target >= 500000 ? '高' : '中'}`
@@ -46,7 +47,7 @@ export const ambitions: Ambition[] = [
     progress: (state) => state.battleWins,
     unit: '胜',
     describe: (target) => `本代累计 ${target} 场胜利`,
-    hint: (_state, target) => `军令 2 日回 1 道，约 ${target * 2} 日，难度中`
+    hint: (_state, target) => `军令约 2 小时回 1 道，攒够约 ${target * 2} 小时，难度中`
   },
   {
     id: 'expansion',

@@ -1,4 +1,5 @@
 // 经济节奏模拟：四个战场 + 屯田 + 兵器 + 封地。每个游玩日：N 次政务、每道军令打期望最高的战场（75% 胜）、邻郡反攻每 2 个游玩日一次（v2.2，替代北疆边患），花钱优先级 修城→宅邸→屯田→兵器→伴侣→封地
+// v2.3 起默认先跑真实时间（MODE=realtime，见文件末 runRealtime）再跑旧的按游玩日模型（MODE=day 只跑旧模型）
 // 用法: node scripts/econ-sim.mjs   环境变量 DAYS=240 POLICY=military|schooling RW=缴获倍率 CM=造价倍率 SIEGE=0 关反攻对照 REPAIR=0 不修城；新系统/调数值前先跑一遍
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from 'node:fs'; import { createRequire } from 'node:module'; import { pathToFileURL, fileURLToPath } from 'node:url'; import { join, dirname } from 'node:path'; import { tmpdir } from 'node:os';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..'); const require = createRequire(join(ROOT, 'package.json')); const ts = require('typescript');
@@ -8,6 +9,15 @@ const tr = (src, dst) => writeFileSync(dst, ts.transpileModule(readFileSync(src,
 const { readdirSync } = await import('node:fs');
 const modules = ['types', ...['data', 'lib'].flatMap((dir) => readdirSync(join(ROOT, 'src', dir)).filter((name) => name.endsWith('.ts')).map((name) => `${dir}/${name.slice(0, -3)}`))];
 for (const f of modules) tr(join(ROOT, `src/${f}.ts`), `${D}/${f}.mjs`);
+// 真实时间调参对照（只改模拟用的转译副本，不改源码）：RT_FACTOR=收入系数 RT_ORDER_LATE=府邸起军令间隔（分） RT_ORDER_EARLY RT_CAPS=12,12,12,20,20,24
+{
+  const file = `${D}/lib/clock.mjs`; let src = readFileSync(file, 'utf8');
+  if (process.env.RT_FACTOR) src = src.replace(/REALTIME_INCOME_FACTOR = [\d.]+/, `REALTIME_INCOME_FACTOR = ${Number(process.env.RT_FACTOR)}`);
+  if (process.env.RT_ORDER_LATE) src = src.replace(/ORDER_MS_LATE = [^;]+;/, `ORDER_MS_LATE = ${Number(process.env.RT_ORDER_LATE)} * 60 * 1000;`);
+  if (process.env.RT_ORDER_EARLY) src = src.replace(/ORDER_MS_EARLY = [^;]+;/, `ORDER_MS_EARLY = ${Number(process.env.RT_ORDER_EARLY)} * 60 * 1000;`);
+  if (process.env.RT_CAPS) { const c = process.env.RT_CAPS.split(',').map(Number); src = src.replace(/TREASURY_CAP_DAYS = \{[^}]+\}/, `TREASURY_CAP_DAYS = { 1: ${c[0]}, 2: ${c[1]}, 3: ${c[2]}, 4: ${c[3]}, 5: ${c[4]}, 6: ${c[5]} }`); }
+  writeFileSync(file, src);
+}
 const g = await import(pathToFileURL(D + '/data/gameData.mjs').href), pr = await import(pathToFileURL(D + '/data/progression.mjs').href), b = await import(pathToFileURL(D + '/lib/battle.mjs').href), sg = await import(pathToFileURL(D + '/lib/siege.mjs').href), ff = await import(pathToFileURL(D + '/data/fiefs.mjs').href), vn = await import(pathToFileURL(D + '/data/venues.mjs').href);
 // 斗地主每道军令按 venues.ts 的随战力缴获与净期望（笨玩家实测系数）；DDZ=0 关掉斗地主
 const DDZ = process.env.DDZ !== '0';
@@ -94,7 +104,9 @@ function run(lordId, clicksPerDay) {
   return { ms, gold, income, spent, wins, conquestTries, siegeStat, repairSpent };
 }
 const med = (a) => a.sort((x, y) => x - y)[a.length >> 1];
-for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
+const MODE = process.env.MODE ?? 'both';
+if (MODE !== 'day') await runRealtime();
+if (MODE !== 'realtime') for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
   const R = []; for (let i = 0; i < 100; i++) R.push(run(lordId, clicks));
   const k = (key) => { const v = R.map((r) => r.ms[key]).filter(Boolean); return v.length === R.length ? med(v) : v.length ? `${med(v)}(${v.length}%)` : '-'; };
   const inc = R.map((r) => r.income); const tot = inc.map((i) => i.battle + i.work + i.quest + i.ddz + i.bounty);
@@ -102,4 +114,108 @@ for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
   const shareF = (f) => (100 * med(inc.map((i, j) => i[f] / tot[j]))).toFixed(2);
   const avg = (f) => (R.reduce((sum, r) => sum + r.siegeStat[f], 0) / R.length).toFixed(1);
   console.log(`PARTNER_EV=${PARTNER_EV} RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 伴侣10 第${k('partners10')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 收入占比 政务${share('work')}% 斗地主${share('ddz')}% 自动战${share('battle')}% | 中/高级场 第${k('ddz_middle')}/${k('ddz_high')}日 | 攻郡 ${med(R.map((r) => r.conquestTries))} 次${SIEGE ? ` | 反攻 ${avg('sieges')} 次：守住 ${avg('held')} · 告急 ${avg('fell')} · 失郡 ${avg('lost')} · 修城 ${avg('repaired')} · 收复 ${avg('reclaimed')}（平均每局）| 犒赏占收入 ${shareF('bounty')}%，扣修城后净 ${(100 * med(R.map((r, j) => (r.income.bounty - r.repairSpent) / tot[j]))).toFixed(2)}%` : ' | 反攻关'}`);
+}
+
+// ===== v2.3 真实时间模型（MODE=realtime）=====
+// 按真实小时推进，直接调 src/lib/clock.ts 的 stepDay / advanceOrders / collectTreasury（府库上限、半价溢出、48 日封顶、军令按分钟回都与游戏同一份代码）。
+// 玩家按 LOGINS 表每天上线 N 次：先定夺待决事件（拿现钱，心事选第一项）→ 收取府库（积满 4 日且智谋没练满时办「治理」，否则钱粮）
+// → 领任务 → 守城（反攻到期就守）→ 攻郡 → 剩下军令全打斗地主 → 花钱（修城→宅邸→屯田→兵器→伴侣）。
+// 环境变量：LOGINS=1,2,3,6（每天上线次数，可多选）REAL_DAYS=30 RUNS=100 TRAIN=0 不练属性
+async function runRealtime() {
+  const ck = await import(pathToFileURL(D + '/lib/clock.mjs').href), st = await import(pathToFileURL(D + '/lib/storage.mjs').href), pe = await import(pathToFileURL(D + '/data/partnerEvents.mjs').href), me = await import(pathToFileURL(D + '/data/minorEvents.mjs').href);
+  const HOUR = 3600e3, REAL_DAYS = Number(process.env.REAL_DAYS ?? 30), RUNS = Number(process.env.RUNS ?? 100), TRAIN = process.env.TRAIN !== '0';
+  // 上线时刻（点钟）：1 次晚上 21 点；3 次早中晚；6 次白天每 2~4 小时
+  const SCHEDULE = { 1: [21], 2: [12, 21], 3: [8, 13, 21], 4: [8, 12, 17, 21], 6: [8, 10, 12, 14, 18, 22] };
+  const CONQ_WIN = { novice: 0.65, veteran: 0.5, master: 0.54 };
+  const PROTECT_H = sg.FIEF_PROTECT_MS / HOUR, RECLAIM_H = sg.RECLAIM_WINDOW_MS / HOUR, SIEGE_GAP_H = sg.SIEGE_INTERVAL_MS / HOUR;
+  const lordId = 'caocao';
+  const lord = g.lords.find((l) => l.id === lordId);
+  function run(logins) {
+    let s = { ...st.defaultGameState, screen: 'home', selectedLordId: lordId, ownedPartnerIds: [(g.partners.find((p) => p.bestMatchLordId === lordId) ?? g.partners[0]).id], clockAt: 0, orderClockAt: 0, foundedAt: 0, eventLog: [] };
+    const owned = ['xuanjian']; const claimed = new Set();
+    const walls = {}, takenAt = {}, lostAt = {}; let nextSiege = 0; const siegeStat = { sieges: 0, held: 0, lost: 0 };
+    const income = { work: 0, fold: 0, ddz: 0, quest: 0, bounty: 0, event: 0 }; let foldPending = 0; const ms = {}; const mark = (k, h) => { if (ms[k] === undefined) ms[k] = +(h / 24).toFixed(1); };
+    let games = 0, overflowDays = 0, cappedLogins = 0, collects = 0;
+    const gamesByDay = new Array(REAL_DAYS).fill(0);
+    for (let day = 0; day < REAL_DAYS; day++) for (const hourOfDay of SCHEDULE[logins]) {
+      const h = day * 24 + hourOfDay; const now = h * HOUR;
+      // 府库里的钱分两笔记：政务收入（work）与自动折现进库的府中事件（fold：乡望、被顶掉/自动结算的二选一与小事）
+      const adv = ck.advanceClock(s, now); foldPending += adv.tally.eventGold;
+      s = ck.advanceOrders(adv.state, now);
+      // 待决事件：二选一拿现钱，小事拿现钱，心事选第一项（加成照给）
+      if (s.pendingChoice) {
+        const p = s.pendingChoice;
+        if (p.eventId.startsWith('partner:')) {
+          const key = p.eventId.slice(8); const ev = pe.findPartnerEvent(key); const pid = pe.partnerIdOfKey(key); const boost = ev?.options[0].boost ?? {};
+          const cur = s.partnerBoosts[pid] ?? {};
+          s = { ...s, resolvedPartnerEvents: { ...s.resolvedPartnerEvents, [key]: 'a' }, partnerBoosts: { ...s.partnerBoosts, [pid]: { strength: (cur.strength ?? 0) + (boost.strength ?? 0) || undefined, intelligence: (cur.intelligence ?? 0) + (boost.intelligence ?? 0) || undefined, charisma: (cur.charisma ?? 0) + (boost.charisma ?? 0) || undefined } } };
+        } else {
+          const gold = p.eventId.startsWith('minor:') ? me.minorGoldValue(p.dailyIncome) : pr.choiceGoldValue(pr.getChoiceEvent(p.day, p.dailyIncome), p.dailyIncome);
+          s = { ...s, gold: s.gold + gold }; income.event += gold;
+        }
+        s = { ...s, pendingChoice: null };
+      }
+      // 收取府库
+      const cap = ck.treasuryCapDays(s.homeLevel);
+      if (s.treasury.days > cap) { overflowDays += s.treasury.days - cap; cappedLogins++; }
+      if (s.treasury.days > 0 || s.treasury.gold > 0) {
+        const kind = TRAIN && s.treasury.days >= ck.TRAIN_MIN_DAYS && s.affairTraining.civil < 15 ? 'civil' : 'treasury';
+        const before = s.gold; s = ck.collectTreasury(s, kind); const got = s.gold - before; const fold = Math.min(got, foldPending); income.fold += fold; income.work += got - fold; foldPending = 0; collects++;
+      }
+      const partners = g.partners.filter((p) => s.ownedPartnerIds.includes(p.id)).map((p) => pe.mergePartnerBoost(p, s.partnerBoosts[p.id]));
+      const weapon = g.weapons.find((w) => w.id === s.equippedWeaponId);
+      const H = g.findHomeLevel(s.homeLevel);
+      const extra = ff.fiefStatBonus(s.fiefs);
+      const power = b.calculateTotalPower(lord, partners, weapon, H, extra + s.affairTraining.strength);
+      const qs = { fiefs: s.fiefs, resolvedPartnerEvents: s.resolvedPartnerEvents, generation: 1, legacyPoints: 0, homeLevel: s.homeLevel, farmLevel: s.farmLevel, ownedPartnerIds: s.ownedPartnerIds, equippedWeaponId: s.equippedWeaponId, battleWins: s.battleWins, navalWins: 0, courtWins: 0, frontierWins: s.frontierWins };
+      for (const q of pr.quests) if (!claimed.has(q.id) && q.isComplete(qs, { totalPower: power })) { claimed.add(q.id); s = { ...s, gold: s.gold + q.rewardGold }; income.quest += q.rewardGold; }
+      // 邻郡反攻：上线时到期就守（守城不耗军令）
+      if (s.homeLevel >= 5 && ff.ownedFiefCount(s.fiefs) > 0 && nextSiege && h >= nextSiege) {
+        const target = sg.exposedFiefs(s.fiefs).filter((f) => h - takenAt[f.id] >= PROTECT_H).sort((x, y) => walls[x.id] - walls[y.id] || takenAt[y.id] - takenAt[x.id])[0];
+        if (!target) nextSiege = h + 6;
+        else {
+          siegeStat.sieges++; nextSiege = h + SIEGE_GAP_H;
+          if (Math.random() < DEFEND_WIN[sg.siegeSkill(target, s.fiefs[target.id])]) { const bounty = sg.siegeBounty(target); s = { ...s, gold: s.gold + bounty, frontierWins: s.frontierWins + 1, battleWins: s.battleWins + 1 }; income.bounty += bounty; walls[target.id] = sg.FIEF_WALLS; siegeStat.held++; }
+          else if (--walls[target.id] <= 0) { const fiefs = { ...s.fiefs }; delete fiefs[target.id]; delete walls[target.id]; lostAt[target.id] = h; s = { ...s, fiefs, orders: Math.min(s.orders, ff.orderCapFor(fiefs)) }; siegeStat.lost++; if (ff.ownedFiefCount(fiefs) === 0) nextSiege = 0; }
+        }
+      }
+      // 攻郡
+      while (s.orders > 0 && s.homeLevel >= 5) {
+        const target = ff.nextFief(s.fiefs); if (!target) break;
+        const reclaim = lostAt[target.id] !== undefined && h - lostAt[target.id] < RECLAIM_H;
+        const stake = Math.round(target.cost * (reclaim ? sg.RECLAIM_STAKE_RATE : ff.CONQUEST_STAKE_RATE)); if (s.gold < stake) break;
+        s = { ...s, orders: s.orders - 1, gold: s.gold - stake }; gamesByDay[day]++; games++;
+        if (Math.random() < CONQ_WIN[target.skill]) { s = { ...s, fiefs: { ...s.fiefs, [target.id]: process.env.POLICY ?? 'farming' } }; walls[target.id] = sg.FIEF_WALLS; takenAt[target.id] = h; delete lostAt[target.id]; if (!nextSiege) nextSiege = h + SIEGE_GAP_H; mark('fief' + ff.ownedFiefCount(s.fiefs), h); }
+      }
+      // 斗地主
+      const venue = [...vn.VENUES].reverse().find((v) => power >= v.requiredPower);
+      const ddzEv = vn.venueReward(venue, vn.venueRewardScale({ land: power, naval: b.calculateNavalPower(lord, partners, H), court: b.calculateCourtPower(lord, partners, H) }, s.homeLevel)) * vn.DDZ_NET_VALUE[venue.aiSkill] * PARTNER_EV;
+      while (s.orders > 0) { const ev = Math.round(ddzEv * (0.4 + 1.2 * Math.random())); s = { ...s, orders: s.orders - 1, gold: Math.max(0, s.gold + ev), battleWins: s.battleWins + 1 }; income.ddz += Math.max(0, ev); games++; gamesByDay[day]++; }
+      // 花钱
+      for (;;) {
+        const cracked = ff.fiefs.find((f) => s.fiefs[f.id] && walls[f.id] < sg.FIEF_WALLS && s.gold >= sg.wallRepairCost(f));
+        if (cracked) { s = { ...s, gold: s.gold - sg.wallRepairCost(cracked) }; walls[cracked.id] = sg.FIEF_WALLS; continue; }
+        const nh = g.homeLevels.find((x) => x.level === s.homeLevel + 1); if (nh && s.gold >= nh.upgradeCost) { s = { ...s, gold: s.gold - nh.upgradeCost, homeLevel: nh.level }; mark('home' + nh.level, h); continue; }
+        const nf = s.homeLevel >= 3 ? g.farmLevels.find((x) => x.level === s.farmLevel + 1) : null; if (nf && s.gold >= nf.cost) { s = { ...s, gold: s.gold - nf.cost, farmLevel: nf.level }; mark('farm' + nf.level, h); continue; }
+        const bw = g.weapons.filter((w) => !owned.includes(w.id) && s.gold >= w.price).sort((x, y) => b.weaponBonusForLord(y, lordId) - b.weaponBonusForLord(x, lordId))[0];
+        if (bw && b.weaponBonusForLord(bw, lordId) > b.weaponBonusForLord(weapon, lordId)) { s = { ...s, gold: s.gold - bw.price, equippedWeaponId: bw.id }; owned.push(bw.id); continue; }
+        const cand = g.partners.find((p) => !s.ownedPartnerIds.includes(p.id)); const cost = cand ? b.effectiveRecruitCost(cand.recruitCost, b.calculateCharisma(lord, partners, extra + s.affairTraining.civil)) : Infinity;
+        if (cand && s.gold >= cost) { s = { ...s, gold: s.gold - cost, ownedPartnerIds: [...s.ownedPartnerIds, cand.id] }; mark('partners' + s.ownedPartnerIds.length, h); continue; }
+        break;
+      }
+    }
+    return { ms, s, income, games, gamesByDay, overflowDays, cappedLogins, collects, siegeStat };
+  }
+  console.log(`真实时间（v2.3）：1 小时 = 1 日，府库上限 ${[1, 2, 3, 4, 5, 6].map((l) => ck.treasuryCapDays(l)).join('/')} 日（超出半价、封顶 ${ck.TREASURY_HARD_CAP_DAYS}），军令 ${ck.ORDER_MS_EARLY / 60000}/${ck.ORDER_MS_LATE / 60000} 分一道、上限 ${ff.orderCapFor({})}，收入系数 ${ck.REALTIME_INCOME_FACTOR}，伴侣技能 ×${PARTNER_EV}，${REAL_DAYS} 真实天 × ${RUNS} 局`);
+  for (const logins of (process.env.LOGINS ?? '1,2,3,6').split(',').map(Number)) {
+    const R = []; for (let i = 0; i < RUNS; i++) R.push(run(logins));
+    const k = (key) => { const v = R.map((r) => r.ms[key]).filter((x) => x !== undefined); return v.length === R.length ? med(v) : v.length ? `${med(v)}(${v.length}%)` : '-'; };
+    const tot = R.map((r) => r.income.work + r.income.fold + r.income.ddz + r.income.quest + r.income.bounty + r.income.event);
+    const shSum = (fs) => Math.round(100 * med(R.map((r, j) => fs.reduce((a, f) => a + r.income[f], 0) / tot[j])));
+    const sh = (f) => Math.round(100 * med(R.map((r, j) => r.income[f] / tot[j])));
+    const six = R.filter((r) => r.ms.fief6 !== undefined).length;
+    const gamesPerDay = med(R.map((r) => r.games / REAL_DAYS)).toFixed(1);
+    const lateGames = med(R.map((r) => r.gamesByDay.slice(-10).reduce((a, x) => a + x, 0) / 10)).toFixed(1);
+    console.log(`上线 ${logins} 次/天 | 府邸 ${k('home4')} 侯府 ${k('home5')} 王城 ${k('home6')} 天 | 封地 1/3/6 郡 ${k('fief1')}/${k('fief3')}/${k('fief6')} 天 · ${REAL_DAYS} 天六郡 ${Math.round((100 * six) / RUNS)}% | 牌局 ${gamesPerDay} 局/天（后 10 天 ${lateGames}） | 收入占比 纯政务${sh('work')}% 府中折现${sh('fold')}% 手动事件${sh('event')}% 斗地主${sh('ddz')}% 任务${sh('quest')}%（政务+折现 ${shSum(['work', 'fold'])}%，政务+全部事件 ${shSum(['work', 'fold', 'event'])}%） | 府库溢出 ${med(R.map((r) => r.overflowDays))} 日、满额回来 ${med(R.map((r) => r.cappedLogins))} 次 | 第 ${med(R.map((r) => r.s.day))} 日`);
+  }
 }

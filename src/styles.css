@@ -8006,3 +8006,155 @@ body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-car
   0%, 100% { box-shadow: 0 0 0 0 rgba(225, 80, 60, 0.0); }
   50% { box-shadow: 0 0 14px 1px rgba(225, 80, 60, 0.45); }
 }
+
+/* ===== v2.3 真实时间府库与军令 ===== */
+/* 主按钮「收取府库」连同下方府库进度条占左列，升级宅邸在右列 */
+.home-v2 .home-actions .home-actions__collect {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.home-v2 .home-actions .home-actions__collect > .game-button {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.home-v2 .home-actions .home-actions__main:disabled {
+  opacity: 0.62;
+  filter: grayscale(0.35);
+}
+
+.home-v2 .home-actions .home-actions__main .game-button__sub {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.home-v2 .home-actions .home-actions__main.is-full {
+  background: linear-gradient(180deg, #ffd690, #d0782c);
+}
+
+/* 按钮是切角的（clip-path），红点往里收，免得被切掉 */
+.home-v2 .home-actions .home-actions__main .treasury-dot {
+  top: 8px;
+  right: 24px;
+}
+
+.home-v2 .treasury-meter {
+  display: grid;
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.home-v2 .treasury-meter .treasury-meter__bar {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(212, 168, 67, 0.22);
+}
+
+.home-v2 .treasury-meter .treasury-meter__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a87b2a, #e6c066);
+  transition: width 0.4s ease;
+}
+
+.home-v2 .treasury-meter.is-full .treasury-meter__bar i {
+  background: linear-gradient(90deg, #d66a3a, #ffb07a);
+}
+
+.home-v2 .treasury-meter .treasury-meter__text {
+  overflow: hidden;
+  color: rgba(245, 230, 200, 0.72);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-v2 .treasury-meter.is-full .treasury-meter__text {
+  color: #ffb38a;
+}
+
+/* 顶栏：军令「下一道约 N 分」、开府天数两行小字 */
+.home-v2 .home-hud__chips .home-hud__orders span,
+.home-v2 .home-hud__chips .home-hud__days span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 出征页「切磋」：次要按钮，紧跟进入斗地主 */
+.expedition-screen .game-button.practice-button {
+  margin-top: 8px;
+  min-height: 48px;
+}
+
+.expedition-screen .game-button.practice-button .game-button__sub {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .home-v2 .treasury-meter .treasury-meter__text {
+    font-size: 10px;
+  }
+
+  .expedition-screen .game-button.practice-button {
+    min-height: 40px;
+  }
+}
+
+/* 军令格写「下一道约 N 分」，比金币、天数格宽一些 */
+.home-v2 .home-hud__chips:has(.home-hud__orders) {
+  grid-template-columns: 1.15fr 0.85fr 1.35fr 0.9fr;
+}
+
+/* 满额提示可折两行，别把「再放只得半数」截掉；切磋按钮留出副标题的高度 */
+.home-v2 .treasury-meter .treasury-meter__text {
+  white-space: normal;
+}
+
+.expedition-screen .game-button.practice-button {
+  min-height: 62px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 1.25;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .expedition-screen .game-button.practice-button {
+    min-height: 54px;
+  }
+}
+
+/* v2.3 复核：主按钮「收取府库」与金额分两段，金额「+4,200金」整体不拆行；满额红点挪到右侧中线（切角在中线处最宽），按钮两侧留出红点位 */
+.home-v2 .home-actions .home-actions__main .treasury-label,
+.home-v2 .home-actions .home-actions__main .treasury-amount {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.home-v2 .home-actions .home-actions__main.is-full {
+  padding-inline: 26px;
+}
+
+.home-v2 .home-actions .home-actions__main.is-full .treasury-dot {
+  top: 50%;
+  right: 10px;
+  margin-top: -4px;
+}
+
+.home-v2 .treasury-meter.is-hard .treasury-meter__text {
+  color: #ffb07a;
+}

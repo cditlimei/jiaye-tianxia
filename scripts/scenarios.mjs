@@ -22,7 +22,7 @@ const save = (extra = {}) => ({
 const browser = await chromium.launch({ headless: true });
 
 async function open(state, contextOptions = {}) {
-  const { bidding = false, turnSeconds = 0, affairs = false, ls = null, ...rest } = contextOptions;
+  const { bidding = false, turnSeconds = 0, affairs = false, ls = null, realtime = false, dayMs = 2000, ...rest } = contextOptions;
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...rest });
   // 额外的 localStorage 开关（如 jiaye-ddz-seed 复现牌局、jiaye-escort 指定随行伴侣）
   if (ls) await ctx.addInitScript((pairs) => { try { for (const [k, v] of Object.entries(pairs)) localStorage.setItem(k, v); } catch { /* 存储被禁用的用例 */ } }, ls);
@@ -32,6 +32,9 @@ async function open(state, contextOptions = {}) {
   await ctx.addInitScript((sec) => { try { localStorage.setItem('jiaye-ddz-turn-seconds', String(sec)); } catch { /* 存储被禁用的用例 */ } }, turnSeconds);
   // 「处理政务」默认一键办钱粮（旧用例按点一次拿足额政务收入写）；府中三件事弹层单独测（affairs: true）
   if (!affairs) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-affair-quick', '1'); } catch { /* 存储被禁用的用例 */ } });
+  // v2.3 真实时间：旧用例按「点处理政务推进一日」写，默认开 jiaye-clock-manual；真实时间用例传 realtime: true，日长缩到 dayMs（默认 2 秒）
+  if (!realtime) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-clock-manual', '1'); } catch { /* 存储被禁用的用例 */ } });
+  else if (dayMs) await ctx.addInitScript((ms) => { try { localStorage.setItem('jiaye-day-ms', String(ms)); } catch { /* 存储被禁用的用例 */ } }, dayMs);
   const page = await ctx.newPage();
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   if (state) {
@@ -129,7 +132,7 @@ await scenario('存档安全', async () => {
 
 await scenario('多标签页', async () => {
   const ctx = await browser.newContext();
-  await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-affair-quick', '1'); } catch { /* ignore */ } });
+  await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-affair-quick', '1'); localStorage.setItem('jiaye-clock-manual', '1'); } catch { /* ignore */ } });
   const a = await ctx.newPage();
   await a.goto(URL, { waitUntil: 'domcontentloaded' });
   await a.evaluate(([k, s]) => localStorage.setItem(k, JSON.stringify(s)), [KEY, save({ ownedPartnerIds: [] })]);
@@ -553,10 +556,12 @@ await scenario('军令', async () => {
   const page = await open(save({ day: 10, orders: 0, homeLevel: 5, fiefs: { nanyang: 'farming' }, fiefTakenAt: { nanyang: now - 100 * 3600e3 }, nextSiegeAt: now + 3600e3, siege: { fiefId: 'nanyang', attacker: '张绣', skill: 'novice', startedAt: now, dueAt: now + 3600e3 } }));
   await page.getByRole('button', { name: '出征', exact: true }).click();
   await openMap(page);
-  check('出征页标题显示军令', (await page.locator('.screen-header').first().innerText()).includes('军令 0/6'));
+  // v2.3 军令上限 6 → 8
+  check('出征页标题显示军令', (await page.locator('.screen-header').first().innerText()).includes('军令 0/8'));
   await page.locator('.map-node').filter({ hasText: '荆州' }).click();
   const go = page.getByRole('button', { name: /军令不足/ });
-  check('军令为 0 时不能进斗地主', (await go.isDisabled()) && (await go.innerText()).includes('2 日后'));
+  // v2.3 军令按真实时间回：按钮写「下一道约 N 分 / 约 N 小时」
+  check('军令为 0 时不能进斗地主', (await go.isDisabled()) && /下一道约 [\d.]+ (分|小时)/.test(await go.innerText()), await go.innerText());
   await page.getByRole('button', { name: '斗地主', exact: true }).click();
   await page.locator('.conquest-map g.conquest-node').filter({ hasText: '南阳' }).click({ force: true });
   await page.getByRole('button', { name: /迎战守城/ }).click();
@@ -591,13 +596,14 @@ await scenario('流民归附', async () => {
   check('募为乡勇：军令 +1 且不给钱', s.orders === o0 + 1 && s.gold === g0 && s.pendingChoice === null, `orders ${o0} → ${s.orders} gold ${g0} → ${s.gold}`);
   await page.context().close();
   // 军令已满时选「募为乡勇」：不增加，纪事写明已满而不是 +1
-  const full = await open(save({ day: 19, gold: 5000, homeLevel: 2, ownedPartnerIds: [], orders: 6 }));
+  // v2.3 军令上限 6 → 8：满额存档改成 8 道
+  const full = await open(save({ day: 19, gold: 5000, homeLevel: 2, ownedPartnerIds: [], orders: 8 }));
   await full.getByRole('button', { name: /^处理政务/ }).click();
   await full.waitForTimeout(400);
   await full.locator('.choice-card__options button').nth(1).click();
   await full.waitForTimeout(300);
   s = await read(full);
-  check('军令已满时募为乡勇纪事写明未增加', s.orders === 6 && s.eventLog[0]?.detail.includes('军令已满，未增加') && !s.eventLog[0]?.detail.includes('+1'), `orders=${s.orders} ${s.eventLog[0]?.detail}`);
+  check('军令已满时募为乡勇纪事写明未增加', s.orders === 8 && s.eventLog[0]?.detail.includes('军令已满，未增加') && !s.eventLog[0]?.detail.includes('+1'), `orders=${s.orders} ${s.eventLog[0]?.detail}`);
   await full.context().close();
 });
 
@@ -672,6 +678,26 @@ await scenario('第五轮修复（离线与兵器）', async () => {
   await armory.context().close();
 });
 
+await scenario('传位并入府库未收的金子', async () => {
+  // v2.3 复核修复：府库里没收的金子传位时先按钱粮全额并入再折家业点，界面写明（原先静默清零）
+  const page = await open(save({ homeLevel: 6, gold: 150000, ownedPartnerIds: ['diaochan'], clockVersion: 1, clockAt: Date.now(), orderClockAt: Date.now(), treasury: { gold: 120000, days: 5 } }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(300);
+  const chips = (await page.locator('.home-v2').textContent()) ?? '';
+  check('首页传位提示按手上加府库算并写明含府库', /可传位换 2 点家业点/.test(chips) && chips.includes('含府库未收 120,000 金'), chips.replace(/\n/g, ' ').slice(0, 300));
+  await page.getByRole('button', { name: '设置与存档' }).click();
+  await page.getByText('当前存档').first().waitFor();
+  const panel = await page.locator('.succession-panel').innerText();
+  check('传位面板写明府库尚有多少未收、可得点数含府库', panel.includes('府库尚有 120,000 金未收取') && panel.includes('可得 2 点'), panel.replace(/\n/g, ' '));
+  let dialogText = '';
+  page.on('dialog', (d) => { dialogText = d.message(); d.accept(); });
+  await page.getByRole('button', { name: '传位给下一代' }).click();
+  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  const s = await read(page);
+  check('确认框提示府库先并入', dialogText.includes('府库尚有 120,000 金未收取'), dialogText);
+  check('传位按手上加府库折点，家谱记 27 万金', s.legacyPoints === 2 && s.treasury.gold === 0 && s.chronicle.at(-1)?.gold === 270000, JSON.stringify({ lp: s.legacyPoints, t: s.treasury, c: s.chronicle.at(-1) }));
+  await page.context().close();
+});
+
 await scenario('传位后刷新不丢世代', async () => {
   const page = await open(save({ homeLevel: 6, gold: 250000, ownedPartnerIds: ['diaochan'] }));
   page.on('dialog', (d) => d.accept());
@@ -706,7 +732,7 @@ await scenario('封地经略', async () => {
   check('攻郡提示直达疆域图并选中南阳', (await page.locator('.conquest-panel').innerText()).includes('南阳郡 · 守将 张绣'));
   await page.context().close();
   const held = await open(save({ homeLevel: 5, gold: 160000, fiefs: { nanyang: 'military' }, claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third', 'first-win', 'power-200', 'naval-first-win', 'court-first-win', 'farm-first'] }));
-  check('整军后军令上限 7', (await held.locator('.home-hud__chips').innerText()).includes('/7'));
+  check('整军后军令上限 9（v2.3 基础 8）', (await held.locator('.home-hud__chips').innerText()).includes('/9'));
   await openGoals(held);
   check('任务「初封一郡」可领赏', await held.locator('.quest-item').filter({ hasText: '初封一郡' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
   await held.context().close();
@@ -722,13 +748,14 @@ await scenario('封地经略', async () => {
   await schooling.context().close();
 
   // 改方略：在疆域图上点已有的郡；整军 → 劝农收一成费，超出上限的军令收回
-  const change = await open(save({ homeLevel: 5, gold: 20000, orders: 7, fiefs: { nanyang: 'military' } }));
+  // v2.3 军令上限 6 → 8：整军郡上限 9，存 9 道改劝农后收回到 8
+  const change = await open(save({ homeLevel: 5, gold: 20000, orders: 9, fiefs: { nanyang: 'military' } }));
   await change.getByRole('button', { name: '出征', exact: true }).click();
   await change.locator('.conquest-map g.conquest-node').filter({ hasText: '南阳' }).click({ force: true });
   await change.getByRole('button', { name: /改行劝农 · 15,000 金/ }).click();
   await change.waitForTimeout(400);
   s = await read(change);
-  check('改方略扣一成费并收回超额军令', s.gold === 5000 && s.fiefs.nanyang === 'farming' && s.orders === 6, JSON.stringify({ gold: s.gold, fiefs: s.fiefs, orders: s.orders }));
+  check('改方略扣一成费并收回超额军令', s.gold === 5000 && s.fiefs.nanyang === 'farming' && s.orders === 8, JSON.stringify({ gold: s.gold, fiefs: s.fiefs, orders: s.orders }));
   await change.context().close();
 
   // 存档断档：没有南阳却有汝南（汝南只与南阳相邻）→ 作废
@@ -870,7 +897,7 @@ await scenario('天下归心与新朝', async () => {
 
   // 国号魏：军令上限 +1
   const wei = await open(save({ realms: { wei: 1, shu: 0, wu: 0 } }));
-  check('国号魏军令上限 7', (await wei.locator('.home-hud__chips').innerText()).includes('/7'));
+  check('国号魏军令上限 9（v2.3 基础 8）', (await wei.locator('.home-hud__chips').innerText()).includes('/9'));
   await wei.context().close();
 });
 
@@ -924,7 +951,7 @@ await scenario('家声跨朝与家业点满', async () => {
   const page = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, fiefs: six, chronicle: [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: null, ambitionDone: false }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: 'wealth', ambitionDone: true }] }));
   const before = await lineageCount(page);
   await page.getByRole('button', { name: '展开卷轴 →' }).click();
-  check('终局卷轴写明新朝是第 2 朝、魏按新朝口径 6 → 7', (await page.locator('.ending-sheet').innerText()).includes('第 2 朝') && (await page.getByRole('radio', { name: /魏/ }).innerText()).includes('6 → 7'));
+  check('终局卷轴写明新朝是第 2 朝、魏按新朝口径 8 → 9（v2.3 基础 8）', (await page.locator('.ending-sheet').innerText()).includes('第 2 朝') && (await page.getByRole('radio', { name: /魏/ }).innerText()).includes('8 → 9'));
   page.on('dialog', (d) => d.accept());
   await page.getByRole('button', { name: /开创新朝 · 国号魏/ }).click();
   await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
@@ -983,9 +1010,9 @@ await scenario('家风', async () => {
   await might.getByText('良缘入府').first().waitFor({ timeout: 8000 });
   await might.getByRole('button', { name: '携美人，共创家业' }).click();
   await might.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
-  check('强兵家风开局军令满', (await read(might)).orders === 6, `orders=${(await read(might)).orders}`);
+  check('强兵家风开局军令满（v2.3 军令上限 6 → 8）', (await read(might)).orders === 8, `orders=${(await read(might)).orders}`);
   await might.context().close();
-  // 带整军封地传位：第三代开局军令按含整军加成的上限满额（7/7）
+  // 带整军封地传位：第三代开局军令按含整军加成的上限满额（v2.3 基础 8，9/9）
   const mightFief = await open(save({ generation: 2, homeLevel: 6, gold: 250000, battleWins: 31, fiefs: { nanyang: 'military' }, ambition: { id: 'might', target: 30, baseFiefs: 0 }, chronicle: [two('might')[0]] }));
   await mightFief.getByRole('button', { name: '设置与存档' }).click();
   await mightFief.getByText('当前存档').first().waitFor();
@@ -997,7 +1024,7 @@ await scenario('家风', async () => {
   await mightFief.getByRole('button', { name: '携美人，共创家业' }).click();
   await mightFief.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
   const mf = await read(mightFief);
-  check('强兵家风带整军郡开局军令等于上限 7', mf.orders === 7 && (await mightFief.locator('.home-hud__chips').innerText()).includes('7/7'), `orders=${mf.orders}`);
+  check('强兵家风带整军郡开局军令等于上限 9（v2.3 军令上限 6 → 8）', mf.orders === 9 && (await mightFief.locator('.home-hud__chips').innerText()).includes('9/9'), `orders=${mf.orders}`);
   await mightFief.context().close();
   // 断档：两代志向不同不成家风；志向卡提示再成一次即家风
   const broken = await open(save({ generation: 3, chronicle: [two('wealth')[0], { ...two('might')[1] }] }));
@@ -1063,11 +1090,13 @@ await scenario('四十日试玩修复', async () => {
   // 新手期败损封顶三成原是官道档位的规则，自动战 10-15 收起后不再测
   // 军令 0：主城出征按钮写明几日后回复；威震一郡显示进度
   // 前置任务都领过，「威震一郡」才排进面板前四条
-  const zero = await open(save({ orders: 0, day: 11, claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third'] }));
-  check('军令为 0 时顶栏写明回复', (await zero.locator('.home-hud__chips').innerText()).includes('1 日后 +1'));
+  // v2.3：军令按真实时间回，顶栏写「下一道约 N 分」；改用真实时间模式（木屋 20 分一道）
+  const zero = await open(save({ orders: 0, day: 11, claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'first-win', 'estate-third'] }), { realtime: true, dayMs: 0 });
+  check('军令为 0 时顶栏写明回复', /下一道约(20|19)分/.test(await zero.locator('.home-hud__chips').innerText()), await zero.locator('.home-hud__chips').innerText());
   await openGoals(zero);
   check('武力任务显示进度', /\d+\/180/.test(await zero.locator('.quest-item').filter({ hasText: '威震一郡' }).innerText()));
-  check('顶栏日期标签为「日」', (await zero.locator('.home-hud__chips').innerText()).includes('\n日'));
+  // v2.3：日数随真实时间膨胀，顶栏改写「开府 M 天」+「第 N 日」
+  check('顶栏日期写开府天数与第几日', /1 天\s*\n\s*第 11 日/.test(await zero.locator('.home-hud__chips').innerText()) && (await zero.locator('.home-hud__days').getAttribute('title')) === '开府 1 天（第 11 日）', await zero.locator('.home-hud__chips').innerText());
   await zero.context().close();
   // 升侯府：纪事写明新开放攻郡与反攻（v2.2 北疆收起，府邸不再新开放内容）
   const up = await open(save({ homeLevel: 4, gold: 200000, day: 18 }));
@@ -1282,55 +1311,59 @@ await scenario('今日政务回报', async () => {
   await page.context().close();
 });
 
+// v2.3 迁移：府中三件事改为处置府库这一整笔（钱粮全额；军务/治理积满 4 日才练、少拿 1 日收入）。
+// 旧版「每点一次过一天、军务拿一半」的口径作废，改用真实时间存档（府库预先积好几日）验新规则
+const rtSave = (extra = {}) => save({ clockVersion: 1, clockAt: Date.now(), orderClockAt: Date.now(), foundedAt: Date.now() - 3 * 86400e3, ...extra });
+const dailyOf = async (page) => Number((await page.locator('.home-banner__detail summary').innerText()).match(/每日政务 \+([\d,]+) 金/)[1].replace(/,/g, ''));
 await scenario('府中三件事', async () => {
-  const page = await open(save({ homeLevel: 4, day: 12 }), { affairs: true });
-  const base = income(await page.locator('.home-actions__main').innerText());
+  const page = await open(rtSave({ homeLevel: 4, day: 12, treasury: { gold: 3000, days: 5 } }), { affairs: true, realtime: true, dayMs: 0 });
+  const daily = await dailyOf(page);
+  const mainText = await page.locator('.home-actions__main').innerText();
+  check('主按钮改为收取府库并写明积几日', mainText.includes('收取府库') && mainText.includes('+3,000金') && mainText.includes('积 5 日'), mainText.replace(/\n/g, ' '));
   const s0 = await read(page);
   await page.locator('.home-actions__main').click();
   const dialog = page.getByRole('dialog', { name: '府中三件事' });
   await dialog.waitFor();
   const text = await dialog.innerText();
-  check('处理政务先弹出当日三件事：钱粮、军务、治理各一件', text.includes('第 13 日') && ['钱粮', '军务', '治理'].every((t) => text.includes(t)) && (await dialog.locator('.affairs-option').count()) === 3, text.replace(/\n/g, ' ').slice(0, 160));
-  check('弹出时还没过日子、没入账', (await read(page)).day === s0.day && (await read(page)).gold === s0.gold);
-  const half = Math.round(base * 0.5);
-  check('卡片写明各自收益', text.includes(`+${base.toLocaleString()} 金 · 足额政务收入`) && text.includes(`+${half.toLocaleString()} 金 · 武力 +1（本代 0/15）`) && text.includes(`+${half.toLocaleString()} 金 · 智谋、声望 +1（本代 0/15）`), text.replace(/\n/g, ' '));
-  // 钱粮：足额
-  await dialog.locator('.affairs-option--treasury').click();
-  let s = await read(page);
-  check('办钱粮：过一天、足额入账、弹层留着接着办', s.day === s0.day + 1 && s.gold === s0.gold + base && (await dialog.isVisible()) && (await dialog.innerText()).includes('第 14 日'), `day=${s.day} Δ=${s.gold - s0.gold}`);
-  check('弹层写明刚办完哪件', /刚办完「.+」\+[\d,]+ 金/.test(await dialog.locator('.affairs-card__done').innerText()));
-  // 军务：一半金 + 武力 +1，首页武力跟着涨
+  check('收取先弹出三件事：钱粮、军务、治理各一件，写明府库积几日', text.includes('府库积 5 日') && ['钱粮', '军务', '治理'].every((t) => text.includes(t)) && (await dialog.locator('.affairs-option').count()) === 3, text.replace(/\n/g, ' ').slice(0, 160));
+  check('弹出时还没入账', (await read(page)).gold === s0.gold && (await read(page)).treasury.gold === 3000);
+  check('卡片写明各自收益：钱粮全额、军务治理少拿 1 日并练属性', text.includes('+3,000 金 · 全额入账') && text.includes(`+${(3000 - daily).toLocaleString()} 金 · 少拿 1 日 · 武力 +1（本代 0/15）`) && text.includes(`+${(3000 - daily).toLocaleString()} 金 · 少拿 1 日 · 智谋、声望 +1（本代 0/15）`), `日收 ${daily} | ${text.replace(/\n/g, ' ')}`);
   const power0 = Number((await page.locator('.home-hud__chips').innerText()).match(/(\d+)\s*\n?\s*武力|武力\s*\n?\s*(\d+)/)?.slice(1).find(Boolean) ?? NaN);
-  const g1 = s.gold;
   await dialog.locator('.affairs-option--military').click();
-  s = await read(page);
-  check('办军务：一半政务收入、本代武力 +1', s.gold === g1 + half && s.affairTraining?.strength === 1 && (await dialog.locator('.affairs-card__done').innerText()).includes('武力 +1'), `Δ=${s.gold - g1} t=${JSON.stringify(s.affairTraining)}`);
-  // 治理：智谋声望 +1
-  await dialog.locator('.affairs-option--civil').click();
-  s = await read(page);
-  check('办治理：本代智谋声望 +1', s.affairTraining?.civil === 1 && s.affairTraining?.strength === 1);
-  // 连办几天可能撞上府中事件：事件弹窗优先，三件事弹层让位
-  if (await page.getByRole('dialog', { name: /府中事件|伴侣心事|府中小事/ }).isVisible().catch(() => false)) {
-    check('撞上府中事件时三件事弹层让位', (await dialog.count()) === 0);
-    await dismissChoice(page);
-  } else {
-    await dialog.getByRole('button', { name: '回府' }).click();
-  }
+  await page.waitForTimeout(300);
+  let s = await read(page);
+  check('办军务：整笔少拿 1 日、本代武力 +1、府库清空、弹层收起', s.gold === s0.gold + 3000 - daily && s.affairTraining?.strength === 1 && s.treasury.gold === 0 && s.treasury.days === 0 && (await dialog.count()) === 0 && s.day === s0.day, `Δ=${s.gold - s0.gold} t=${JSON.stringify(s.affairTraining)} tr=${JSON.stringify(s.treasury)}`);
+  const report = await page.locator('.affair-report').innerText().catch(() => '');
+  check('回报写明收取府库积几日与入账', report.includes('收取府库 · 积 5 日') && report.includes(`+${(3000 - daily).toLocaleString()} 金`), report.replace(/\n/g, ' '));
   const power1 = Number((await page.locator('.home-hud__chips').innerText()).match(/(\d+)\s*\n?\s*武力|武力\s*\n?\s*(\d+)/)?.slice(1).find(Boolean) ?? NaN);
-  check('回府关闭弹层，顶栏武力 +1', (await dialog.count()) === 0 && power1 === power0 + 1, `${power0} → ${power1}`);
+  check('顶栏武力 +1', power1 === power0 + 1, `${power0} → ${power1}`);
+  const empty = await page.locator('.home-actions__main').innerText();
+  check('府库空了主按钮置灰、写下一日约几分后', (await page.locator('.home-actions__main').isDisabled()) && /下一日约 [\d.]+ (分|小时)后/.test(empty), empty.replace(/\n/g, ' '));
   await page.context().close();
-  // 练满：按足额给金，不再涨；存档里超上限的数会被压回 15
-  const capped = await open(save({ homeLevel: 4, day: 12, affairTraining: { strength: 99, civil: 15 } }), { affairs: true });
+
+  // 不满 4 日：军务不练属性，按全额给
+  const few = await open(rtSave({ homeLevel: 4, day: 12, treasury: { gold: 900, days: 3 } }), { affairs: true, realtime: true, dayMs: 0 });
+  await few.locator('.home-actions__main').click();
+  const d1 = few.getByRole('dialog', { name: '府中三件事' });
+  check('积不满 4 日写明不练、此番全额', (await d1.innerText()).includes('+900 金 · 积满 4 日才练武力，此番全额'), (await d1.innerText()).replace(/\n/g, ' '));
+  const f0 = (await read(few)).gold;
+  await d1.locator('.affairs-option--military').click();
+  await few.waitForTimeout(300);
+  s = await read(few);
+  check('积不满 4 日办军务：全额入账、属性不涨', s.gold === f0 + 900 && s.affairTraining.strength === 0, `Δ=${s.gold - f0} t=${JSON.stringify(s.affairTraining)}`);
+  await few.context().close();
+
+  // 练满：按全额给金，不再涨；存档里超上限的数会被压回 15
+  const capped = await open(rtSave({ homeLevel: 4, day: 12, affairTraining: { strength: 99, civil: 15 }, treasury: { gold: 2000, days: 6 } }), { affairs: true, realtime: true, dayMs: 0 });
   check('读档时练出的属性压回上限 15', (await read(capped)).affairTraining?.strength === 15);
-  // 智谋练满 +15，政务收入也跟着涨：按这份存档自己的收入核对
-  const cappedBase = income(await capped.locator('.home-actions__main').innerText());
   await capped.locator('.home-actions__main').click();
   const d2 = capped.getByRole('dialog', { name: '府中三件事' });
   const text2 = await d2.innerText();
-  check('练满后写明按足额给金', text2.includes(`+${cappedBase.toLocaleString()} 金 · 武力已练满，按足额给金`) && text2.includes('智谋声望已练满'), text2.replace(/\n/g, ' '));
+  check('练满后写明按全额给金', text2.includes('+2,000 金 · 武力已练满，按全额给金') && text2.includes('智谋声望已练满'), text2.replace(/\n/g, ' '));
   const c0 = (await read(capped)).gold;
   await d2.locator('.affairs-option--military').click();
-  check('练满后办军务拿足额、属性不再涨', (await read(capped)).gold === c0 + cappedBase && (await read(capped)).affairTraining.strength === 15);
+  await capped.waitForTimeout(300);
+  check('练满后办军务拿全额、属性不再涨', (await read(capped)).gold === c0 + 2000 && (await read(capped)).affairTraining.strength === 15);
   await capped.context().close();
 });
 
@@ -2255,7 +2288,8 @@ await scenario('守城·失手告急与特权暂停', async () => {
 
 await scenario('守城·再失手失郡', async () => {
   // 城防 1 的汝南（整军）再失手：郡暂归袁术、地图缩回、军令按新上限截断
-  const page = await open(siegeSave({ fiefs: { nanyang: 'farming', runan: 'military' }, fiefWalls: { nanyang: 2, runan: 1 }, orders: 7 }));
+  // v2.3 军令上限 6 → 8：汝南整军时上限 9，存 9 道，失郡后收回到 8
+  const page = await open(siegeSave({ fiefs: { nanyang: 'farming', runan: 'military' }, fiefWalls: { nanyang: 2, runan: 1 }, orders: 9 }));
   page.on('dialog', (d) => d.accept());
   await page.getByRole('button', { name: '去守城 →' }).click();
   await page.locator('.conquest-map').waitFor();
@@ -2263,7 +2297,7 @@ await scenario('守城·再失手失郡', async () => {
   await page.locator('.conquest-panel').getByRole('button', { name: '弃城' }).click();
   await page.waitForTimeout(400);
   const s = await read(page);
-  check('城防归零失郡：删郡与城防、记失郡时刻、军令 7 → 6', !s.fiefs.runan && s.fiefWalls.runan === undefined && s.fiefTakenAt.runan === undefined && near(s.lostFiefs?.runan, Date.now()) && s.orders === 6 && s.siege === null, JSON.stringify({ f: s.fiefs, w: s.fiefWalls, o: s.orders, l: s.lostFiefs }));
+  check('城防归零失郡：删郡与城防、记失郡时刻、军令 9 → 8（v2.3 军令上限 6 → 8）', !s.fiefs.runan && s.fiefWalls.runan === undefined && s.fiefTakenAt.runan === undefined && near(s.lostFiefs?.runan, Date.now()) && s.orders === 8 && s.siege === null, JSON.stringify({ f: s.fiefs, w: s.fiefWalls, o: s.orders, l: s.lostFiefs }));
   check('纪事写暂归，不写负面字', s.eventLog[0]?.title === '汝南郡暂归袁术' && !/[输败亏]/.test(s.eventLog[0]?.detail ?? ''), JSON.stringify(s.eventLog[0]));
   check('地图缩回：连线收回一条、汝南褪色写暂归可半价收复', (await page.locator('.conquest-edge.is-held').count()) === heldBefore - 1 && (await siegeLabel(page, '汝南')).includes('暂归袁术 · 可半价收复') && (await page.locator('.conquest-map g.conquest-node.is-lost').count()) === 1, `${heldBefore} → ${await page.locator('.conquest-edge.is-held').count()} ${await siegeLabel(page, '汝南')}`);
   await page.getByRole('button', { name: '回府' }).click();
@@ -2463,6 +2497,266 @@ await scenario('守城·称号与任务', async () => {
   check('家业目标写守城战绩', (await page.locator('.home-record').innerText()).includes('守城 3'));
   check('任务改为「首守城池」', (await page.locator('.quest-item').filter({ hasText: '首守城池' }).innerText()).includes('守住一次邻郡反攻'));
   await page.context().close();
+});
+
+// ===== v2.3 真实时间府库与军令 =====
+// 时间相关一律写存档时间戳或改页内 Date.now（shiftClock 往后拨并触发一次 tick），不真等
+const HOUR = 3600e3;
+async function shiftClock(page, ms) {
+  await page.evaluate((delta) => {
+    const w = window;
+    if (!w.__realNow) w.__realNow = Date.now.bind(Date);
+    w.__shift = (w.__shift ?? 0) + delta;
+    Date.now = () => w.__realNow() + w.__shift;
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, ms);
+  await page.waitForTimeout(300);
+}
+
+await scenario('真实时间·府库自动推进', async () => {
+  // 日长缩到 1.5 秒：开着页面不点任何东西，日子自己走、钱进府库不进金币
+  const page = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [] }), { realtime: true, dayMs: 1500 });
+  await page.waitForTimeout(3600);
+  // 在线 tick 30 秒一次；切一次前后台立即补算（与真玩家切回前台同一路径）
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForTimeout(300);
+  const s = await read(page);
+  check('开着页面日子按真实时间推进、钱进府库', s.day >= 13 && s.treasury.days === s.day - 11 && s.treasury.gold > 0 && s.gold === 5000, JSON.stringify({ day: s.day, t: s.treasury, g: s.gold }));
+  const text = await page.locator('.home-actions__main').innerText();
+  check('主按钮写收取府库与积几日、进度条写府库 N/12 日', text.includes('收取府库') && /积 \d+ 日/.test(text) && /府库 \d+\/12 日/.test(await page.locator('.treasury-meter').innerText()), text.replace(/\n/g, ' '));
+  const before = await read(page);
+  await page.locator('.home-actions__main').click();
+  await page.waitForTimeout(200);
+  const after = await read(page);
+  check('收取后入账、府库清空', after.gold - before.gold >= before.treasury.gold && after.treasury.gold <= after.gold - before.gold, JSON.stringify({ d: after.gold - before.gold, t0: before.treasury, t1: after.treasury }));
+  await page.context().close();
+});
+
+await scenario('真实时间·府库封顶与半价', async () => {
+  // 木屋上限 12 日：离开 15 小时 = 15 日，后 3 日只得半数；乡望第 15 日（未满）全额、第 25 日（已满）半数，门客献策被流民归附顶掉（第 20 日，未满）按现钱全额入库，流民归附留待定夺
+  const page = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], clockAt: Date.now() - 15 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(400);
+  const s = await read(page);
+  await dismissChoice(page);
+  const inc = await dailyOf(page);
+  const expected = 12 * inc + 3 * Math.round(inc * 0.5) + inc * 2 + Math.round(inc * 2 * 0.5) + 5 * inc;
+  check('满 12 日后政务与事件现钱一律半价积存', s.day === 26 && s.treasury.days === 15 && s.treasury.gold === expected && s.gold === 5000, JSON.stringify({ day: s.day, t: s.treasury, expected, inc }));
+  check('最近一桩二选一留待定夺、被顶掉的折现', s.pendingChoice?.eventId === 'refugees' && s.pendingChoice.day === 20, JSON.stringify(s.pendingChoice));
+  check('离开 6 小时以上只写一条汇总纪事', s.eventLog[0]?.title === '离府归来' && s.eventLog[0].detail.includes('离开 15 小时') && s.eventLog[0].detail.includes('已满') && s.eventLog[0].detail.includes('待定夺') && !s.eventLog.some((e) => e.title === '乡望渐隆'), s.eventLog[0]?.detail);
+  // 先把流民归附定夺掉（主按钮此时是「府中来报」），再看满额红点
+  await page.locator('.home-actions__main').click();
+  await page.locator('.choice-card__options button').first().click();
+  await page.waitForTimeout(300);
+  const meter = await page.locator('.treasury-meter').innerText();
+  check('府库满额：进度条写积几日（满额几日）再放减半、主按钮亮红点', meter.includes('府库 15 日（满额 12）') && meter.includes('再放减半') && (await page.locator('.home-actions__main .treasury-dot').count()) === 1, meter);
+  // 主按钮：「收取府库」与「+金额金」各自不拆行，红点不压字
+  const layout = await page.evaluate(() => {
+    const btn = document.querySelector('.home-actions__main');
+    const amount = btn.querySelector('.treasury-amount');
+    const dot = btn.querySelector('.treasury-dot').getBoundingClientRect();
+    const rects = [...btn.querySelectorAll('.treasury-label, .treasury-amount')].map((el) => el.getBoundingClientRect());
+    const lineH = parseFloat(getComputedStyle(amount).lineHeight) || 24;
+    return { amountOneLine: amount.getClientRects().length === 1 && amount.getBoundingClientRect().height < lineH * 1.5, overlap: rects.some((r) => !(dot.right <= r.left || dot.left >= r.right || dot.bottom <= r.top || dot.top >= r.bottom)) };
+  });
+  check('主按钮金额不拆行、满额红点不压字', layout.amountOneLine && !layout.overlap, JSON.stringify(layout));
+  await page.context().close();
+  // 侯府上限 20：同样 15 日全额
+  const big = await open(rtSave({ day: 11, homeLevel: 5, ownedPartnerIds: [], clockAt: Date.now() - 15 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await big.waitForTimeout(400);
+  await dismissChoice(big);
+  const b = await read(big);
+  const inc5 = await dailyOf(big);
+  check('侯府上限 20 日，15 日全额', b.treasury.gold === 15 * inc5 + 4 * inc5 + 5 * inc5 && /府库 15\/20 日/.test(await big.locator('.treasury-meter').innerText()), JSON.stringify({ t: b.treasury, inc5 }));
+  await big.context().close();
+});
+
+await scenario('真实时间·48 日硬顶', async () => {
+  const page = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], clockAt: Date.now() - 100 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(400);
+  const s = await read(page);
+  const inc = 32;
+  // 第 48 日以后不再积政务收入（只剩事件现钱）：比较离开 48 小时与 100 小时的政务部分
+  const incomePart = 12 * inc + 36 * Math.round(inc * 0.5);
+  check('离开 100 小时：日子照走，府库封顶 48 日', s.day === 111 && s.treasury.days === 48 && s.treasury.gold >= incomePart, JSON.stringify({ day: s.day, t: s.treasury }));
+  const meter = await page.locator('.treasury-meter').innerText();
+  check('48 日硬顶：进度条写积满 48 日、不再积存（不写减半）', meter.includes('府库积满 48 日') && meter.includes('不再积存') && !meter.includes('减半'), meter);
+  await page.context().close();
+  // 事件现钱同受 48 日硬顶：离开 60 小时与 240 小时，前 48 日完全相同，之后一文不进，府库金额应一致
+  const short = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], clockAt: Date.now() - 60 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await short.waitForTimeout(400);
+  const a = await read(short);
+  await short.context().close();
+  const long = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], clockAt: Date.now() - 240 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await long.waitForTimeout(400);
+  const z = await read(long);
+  check('满 48 日后乡望与折现事件也不再进府库', a.treasury.days === 48 && z.treasury.days === 48 && z.day === 251 && a.treasury.gold === z.treasury.gold && z.eventLog[0]?.detail.includes('已积满 48 日') && Number(z.eventLog[0].detail.match(/(\d+) 桩府中喜事/)?.[1] ?? 0) === Number(a.eventLog[0]?.detail.match(/(\d+) 桩府中喜事/)?.[1] ?? 0), JSON.stringify({ a: a.treasury, z: z.treasury, log: z.eventLog[0]?.detail }));
+  await long.context().close();
+});
+
+await scenario('真实时间·军令按分钟回复', async () => {
+  const now = Date.now();
+  // 府邸前 20 分钟一道：离开 1 小时 + 30 秒回 3 道，顶栏写下一道约几分
+  const early = await open(rtSave({ homeLevel: 2, orders: 0, orderClockAt: now - 60 * 60e3 - 30e3 }), { realtime: true, dayMs: 0 });
+  await early.waitForTimeout(300);
+  const e = await read(early);
+  check('府邸前 20 分钟回 1 道', e.orders === 3 && /下一道约(19|20)分/.test(await early.locator('.home-hud__chips').innerText()), `orders=${e.orders} ${(await early.locator('.home-hud__chips').innerText()).replace(/\n/g, ' ')}`);
+  await early.context().close();
+  // 府邸起 120 分钟一道：离开 10 小时 + 1 分回 5 道
+  const late = await open(rtSave({ homeLevel: 4, orders: 0, orderClockAt: now - 10 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await late.waitForTimeout(300);
+  const l = await read(late);
+  check('府邸起 120 分钟回 1 道', l.orders === 5 && /下一道约(9\d|1[01]\d|120)分/.test(await late.locator('.home-hud__chips').innerText()), `orders=${l.orders} ${(await late.locator('.home-hud__chips').innerText()).replace(/\n/g, ' ')}`);
+  await late.context().close();
+  // 上限 8：离开 30 小时只到 8；满额时从耗用那一刻起重新计时
+  const full = await open(rtSave({ homeLevel: 4, orders: 0, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], orderClockAt: now - 30 * HOUR }), { realtime: true, dayMs: 0 });
+  await full.waitForTimeout(300);
+  check('军令上限 8', (await read(full)).orders === 8 && (await full.locator('.home-hud__chips').innerText()).includes('8/8'));
+  await full.getByRole('button', { name: '出征', exact: true }).click();
+  await full.getByRole('button', { name: /初级场/ }).click();
+  check('出征页写军令 8/8', (await full.locator('.screen-header').first().innerText()).includes('军令 8/8'));
+  await full.getByRole('button', { name: /^进入斗地主 · 耗 1 军令/ }).click();
+  await full.getByText('斗地主牌局').first().waitFor();
+  const spent = await read(full);
+  check('满额耗 1 道后从当下起算', spent.orders === 7 && Math.abs(spent.orderClockAt - Date.now()) < 5000, `orders=${spent.orders} Δ=${spent.orderClockAt - Date.now()}`);
+  await shiftClock(full, 2 * HOUR + 5e3);
+  check('2 小时后回满 8 道', (await read(full)).orders === 8, `orders=${(await read(full)).orders}`);
+  await full.context().close();
+});
+
+await scenario('真实时间·在线跨日弹心事', async () => {
+  // 差 10 秒到第 5 日：tick 跨日后首页直接弹出甄姬心事
+  const page = await open(rtSave({ day: 4, homeLevel: 2, ownedPartnerIds: ['zhenji'], clockAt: Date.now() - HOUR + 10e3 }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(300);
+  check('跨日前没有心事', (await read(page)).pendingChoice === null && (await page.locator('[aria-label="伴侣心事"]').count()) === 0);
+  await shiftClock(page, 20e3);
+  const s = await read(page);
+  check('在线跨日弹出心事卡', s.day === 5 && s.pendingChoice?.eventId === 'partner:zhenji' && (await page.locator('[aria-label="伴侣心事"]').isVisible()), JSON.stringify({ day: s.day, p: s.pendingChoice }));
+  await page.context().close();
+});
+
+await scenario('真实时间·心事不被自动结算', async () => {
+  // 甄姬心事待回应时离开 20 小时：心事留着，期间的商旅、门客、流民按现钱入府库
+  const page = await open(rtSave({ day: 5, homeLevel: 2, ownedPartnerIds: ['zhenji', 'daqiao'], pendingChoice: { eventId: 'partner:zhenji', day: 5, dailyIncome: 32 }, clockAt: Date.now() - 20 * HOUR - 60e3 }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(400);
+  const s = await read(page);
+  check('心事永不自动结算', s.day === 25 && s.pendingChoice?.eventId === 'partner:zhenji' && Object.keys(s.resolvedPartnerEvents ?? {}).length === 0 && (await page.locator('[aria-label="伴侣心事"]').isVisible()), JSON.stringify({ day: s.day, p: s.pendingChoice, r: s.resolvedPartnerEvents }));
+  check('同期二选一折现入府库并写进汇总', /\d+ 桩府中喜事折现入库/.test(s.eventLog[0]?.detail ?? '') && s.treasury.gold > 20 * 32, s.eventLog[0]?.detail);
+  await page.context().close();
+});
+
+await scenario('真实时间·老存档迁移不双算', async () => {
+  // 没有 clockVersion 的老存档离开 5.5 小时：按旧规则补 5 日、钱直接入账，写入 clockVersion
+  const page = await open(save({ day: 11, homeLevel: 2, ownedPartnerIds: [], lastSavedAt: Date.now() - 5.5 * HOUR }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(500);
+  const s = await read(page);
+  check('老存档按旧规则补足并切到新口径', s.day === 16 && s.gold > 5000 && s.clockVersion === 1 && s.treasury.gold === 0 && s.treasury.days === 0 && s.eventLog[0]?.title === '离线经营' && Math.abs(s.clockAt - Date.now()) < 10000, JSON.stringify({ day: s.day, g: s.gold, v: s.clockVersion, t: s.treasury }));
+  // 读档后立刻 tick：金额与日子不变
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForTimeout(300);
+  const t = await read(page);
+  check('读档后立刻 tick 不重复结算', t.day === 16 && t.gold === s.gold && t.treasury.gold === 0);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(500);
+  const r = await read(page);
+  check('再次读档不再补算', r.day === 16 && r.gold === s.gold && r.eventLog.filter((e) => e.title === '离线经营').length === 1, JSON.stringify({ day: r.day, g: r.gold }));
+  await page.context().close();
+});
+
+await scenario('真实时间·时间回拨不推进', async () => {
+  // 存档锚点在未来（系统时间调快后又调回）：读档保留未来锚点、不补算，等真实时间追上才继续走（复核修复：原先置为当下，可反复调钟刷府库）
+  const future = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], clockAt: Date.now() + 5 * HOUR, orderClockAt: Date.now() + 5 * HOUR, orders: 0 }), { realtime: true, dayMs: 0 });
+  await future.waitForTimeout(300);
+  const f = await read(future);
+  check('未来锚点读档保留、不补算', f.day === 11 && f.treasury.days === 0 && f.clockAt > Date.now() + 4 * HOUR && f.orderClockAt > Date.now() + 4 * HOUR && f.orders === 0, JSON.stringify({ day: f.day, c: f.clockAt - Date.now() }));
+  // 在线把时钟往回拨 3 小时：不推进；拨到比读档时晚 4 小时，仍早于锚点，不推进；拨到晚 7 小时 10 秒，只补锚点之后的 2 日
+  await shiftClock(future, -3 * HOUR);
+  check('时钟回拨不推进', (await read(future)).day === 11 && (await read(future)).treasury.days === 0);
+  await shiftClock(future, 7 * HOUR);
+  check('真实时间没追上锚点不推进', (await read(future)).day === 11 && (await read(future)).orders === 0);
+  await shiftClock(future, 3 * HOUR + 10e3);
+  const g = await read(future);
+  check('追上锚点后只补锚点之后的日子与军令', g.day === 13 && g.treasury.days === 2 && g.orders === 6, JSON.stringify({ day: g.day, t: g.treasury, o: g.orders }));
+  await future.context().close();
+  // 离谱的未来锚点（> 240 小时）截到 240 小时，免得永远卡住
+  const far = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], clockAt: Date.now() + 1000 * HOUR }), { realtime: true, dayMs: 0 });
+  await far.waitForTimeout(300);
+  const fa = await read(far);
+  check('超远未来锚点截到 240 小时内', fa.clockAt <= Date.now() + 240 * HOUR && fa.clockAt > Date.now() + 239 * HOUR, String((fa.clockAt - Date.now()) / HOUR));
+  await far.context().close();
+});
+
+await scenario('真实时间·调钟刷府库不生效', async () => {
+  // 「调快 12 小时→读档→调回→读档」重复两轮：只有第一轮算数（第一轮本来就是调快后的真实读数），第二轮起锚点在未来，不再补算
+  const page = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], orders: 0 }), { realtime: true, dayMs: 0 });
+  await page.context().addInitScript(() => {
+    const off = Number(localStorage.getItem('__test-shift') || 0);
+    if (off) { const real = Date.now.bind(Date); Date.now = () => real() + off; }
+  });
+  const reloadAt = async (offset) => {
+    await page.evaluate((o) => localStorage.setItem('__test-shift', String(o)), offset);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(400);
+    return read(page);
+  };
+  const r1 = await reloadAt(12 * HOUR + 30e3);
+  await reloadAt(0);
+  const r2 = await reloadAt(12 * HOUR + 30e3);
+  await reloadAt(0);
+  const r3 = await reloadAt(12 * HOUR + 30e3);
+  check('调快后读档推进一次', r1.day === 23 && r1.treasury.days === 12, JSON.stringify({ d: r1.day, t: r1.treasury }));
+  check('调回再调快：不再重复推进府库与日子', r2.day === r1.day && r3.day === r1.day && r3.treasury.gold === r1.treasury.gold, JSON.stringify({ d2: r2.day, d3: r3.day, t3: r3.treasury }));
+  await page.context().close();
+});
+
+await scenario('真实时间·后台多小时回来一次性结算', async () => {
+  const page = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [] }), { realtime: true, dayMs: 0 });
+  await page.waitForTimeout(300);
+  // 后台被节流、一次 tick 都没跑：切回前台那一下按锚点一次补齐 7 日
+  await shiftClock(page, 7 * HOUR + 30e3);
+  const s = await read(page);
+  check('后台 7 小时回来一次补 7 日、写汇总', s.day === 18 && s.treasury.days === 7 && s.eventLog[0]?.title === '离府归来' && s.eventLog[0].detail.includes('离开 7 小时'), JSON.stringify({ day: s.day, t: s.treasury, log: s.eventLog[0]?.detail }));
+  await shiftClock(page, 0);
+  check('同一段时间不会算两次', (await read(page)).day === 18 && (await read(page)).treasury.days === 7);
+  await page.context().close();
+});
+
+await scenario('真实时间·切磋局', async () => {
+  const page = await open(rtSave({ homeLevel: 4, gold: 20000, orders: 2, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], battleWins: 3, battleLosses: 1 }), { realtime: true, dayMs: 0 });
+  const s0 = await read(page);
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  const practice = page.getByRole('button', { name: /^切磋 · 不耗军令/ });
+  check('出征页有切磋入口，写明不耗军令、不给缴获', (await practice.isVisible()) && (await practice.innerText()).includes('不给缴获、不计战绩'));
+  await practice.click();
+  await page.getByText('斗地主切磋').first().waitFor();
+  const s1 = await read(page);
+  check('切磋不耗军令、不记进行中的牌局', s1.orders === 2 && s1.activeBattle === null, JSON.stringify({ o: s1.orders, a: s1.activeBattle }));
+  check('切磋局随行伴侣技能照常', await page.locator('.ddz-skillbar').isVisible().catch(() => false));
+  await playOut(page);
+  await page.waitForTimeout(400);
+  const banner = await page.locator('.doudizhu-result-banner').innerText();
+  const s2 = await read(page);
+  check('切磋不给缴获、不计战绩', s2.gold === s0.gold && s2.battleWins === 3 && s2.battleLosses === 1 && s2.orders === 2 && /切磋得胜|再切磋一局/.test(banner) && !/输|败|亏/.test(banner), `${banner.replace(/\n/g, ' ')} g=${s2.gold - s0.gold}`);
+  await page.getByRole('button', { name: /再切磋一局/ }).click();
+  await page.getByText('斗地主切磋').first().waitFor();
+  check('再切磋一局仍不耗军令', (await read(page)).orders === 2);
+  await page.getByRole('button', { name: '离席' }).click();
+  await page.locator('.home-actions__main').waitFor();
+  check('切磋中途离席不扣金', (await read(page)).gold === s0.gold && (await read(page)).battleLosses === 1);
+  await page.context().close();
+});
+
+await scenario('真实时间·多标签页同步', async () => {
+  // A 页收取府库，B 页同步后府库为空，不能再收一次
+  const a = await open(rtSave({ day: 11, homeLevel: 2, ownedPartnerIds: [], treasury: { gold: 640, days: 6 } }), { realtime: true, dayMs: 0 });
+  const b = await a.context().newPage();
+  await b.goto(URL, { waitUntil: 'domcontentloaded' });
+  await b.locator('.home-actions__main').waitFor();
+  check('两页都显示府库积存', (await b.locator('.home-actions__main').innerText()).includes('+640金'));
+  await a.locator('.home-actions__main').click();
+  await a.waitForTimeout(800);
+  const bText = await b.locator('.home-actions__main').innerText();
+  check('另一页同步后府库已空、按钮置灰', (await b.locator('.home-actions__main').isDisabled()) && !bText.includes('+640') && (await read(b)).gold === 5640, bText.replace(/\n/g, ' '));
+  await a.context().close();
 });
 
 await browser.close();

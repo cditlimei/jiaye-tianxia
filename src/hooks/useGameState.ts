@@ -1,29 +1,29 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
-import { affairOutcome, type AffairKind } from '../data/affairs';
+import type { AffairKind } from '../data/affairs';
 import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
-import { findPartnerEvent, isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
-import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, collectEarnedTitles, getChoiceEvent, getDailyEvent, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
+import { findPartnerEvent, mergePartnerBoost, partnerIdOfKey } from '../data/partnerEvents';
+import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, collectEarnedTitles, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
-import { isOrderDay } from '../types';
+import { advanceClock, advanceOrders, CLOCK_TICK_MS, clockManual, CLOCK_VERSION, collectTreasury, dayIncomeOf, foundedDays, stepDay } from '../lib/clock';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
 import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmConquestDiscount, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
-import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
+import { minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
 import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, ownedFiefCount, type Fief, type FiefPolicyId } from '../data/fiefs';
 import { RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 import { advanceSiege, canLoseFief, FIEF_WALLS, RECLAIM_STAKE_RATE, reclaimRemainingMs, reconcileSiege, releaseStaleSiege, SIEGE_FIRST_DELAY_MS, SIEGE_INTERVAL_MS, siegeBounty, siegeTestFlags, wallRepairCost, wallsOf } from '../lib/siege';
 
 const HEARTBEAT_MS = 15000;
-const SIEGE_TICK_MS = 60000;
 
 type Action =
   | { type: 'setScreen'; screen: Screen }
   | { type: 'selectLord'; lordId: string }
   | { type: 'selectStarterPartner'; partner: Partner }
-  | { type: 'collectIncome'; amount: number; kind?: AffairKind }
+  | { type: 'collectTreasury'; kind: AffairKind; advance?: boolean }
+  | { type: 'clockTick'; now: number }
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
@@ -78,7 +78,15 @@ function findPartnerName(partnerId: string) {
 function reducer(state: GameState, action: Action): GameState {
   // 反攻字段跟着封地走：得郡补城防与得郡时刻、失郡清掉，有郡没计时补 48 小时（见 reconcileSiege）
   // 天下归心或被围郡成了腹地：进行中的反攻作罢（见 releaseStaleSiege）
-  return collectEarnedTitles(releaseStaleSiege(reconcileSiege(baseReducer(state, action))));
+  return collectEarnedTitles(releaseStaleSiege(reconcileSiege(resetOrderClock(state, baseReducer(state, action)))));
+}
+
+/** 军令从满额跌下来（出征耗用、上限变化）的那一刻起计时；满额期间锚点不动，免得每个 tick 都改存档 */
+function resetOrderClock(prev: GameState, next: GameState): GameState {
+  if (next === prev || !next.selectedLordId) return next;
+  const wasFull = prev.orders >= orderCapFor(prev.fiefs, prev.realms);
+  const isFull = next.orders >= orderCapFor(next.fiefs, next.realms);
+  return wasFull && !isFull ? { ...next, orderClockAt: Math.max(next.orderClockAt, Date.now()) } : next;
 }
 
 /** 失郡：删掉该郡与城防、得郡时刻，记下失郡时刻；军令按新上限截断 */
@@ -117,6 +125,12 @@ function baseReducer(state: GameState, action: Action): GameState {
       return {
         ...defaultGameState,
         selectedLordId: action.lordId,
+        // 开府：计时锚点、府库、开府时刻都从这一刻起
+        clockAt: Date.now(),
+        orderClockAt: Date.now(),
+        foundedAt: Date.now(),
+        treasury: { gold: 0, days: 0 },
+        clockVersion: CLOCK_VERSION,
         screen: 'partnerSelect',
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
@@ -173,56 +187,17 @@ function baseReducer(state: GameState, action: Action): GameState {
           ...state.eventLog
         ].slice(0, 18)
       };
-    case 'collectIncome': {
-      const nextDay = state.day + 1;
-      const dailyEvent = getDailyEvent(nextDay, action.amount);
-      // 减税招商：政务收入加成
-      // 府中三件事：军务/治理只拿一半政务收入，换本代属性 +1（练满后按足额）
-      const outcome = affairOutcome(action.kind ?? 'treasury', action.amount, state.affairTraining);
-      const affairTraining = outcome.trains
-        ? { ...state.affairTraining, ...(action.kind === 'military' ? { strength: state.affairTraining.strength + 1 } : { civil: state.affairTraining.civil + 1 }) }
-        : state.affairTraining;
-      // 先算减税招商加成，再按所办之事折算，与首页三件事卡片上显示的金额同一算法
-      const buffedBase = state.incomeBuff && nextDay <= state.incomeBuff.untilDay
-        ? Math.round(action.amount * (1 + state.incomeBuff.percent / 100))
-        : action.amount;
-      const buffed = affairOutcome(action.kind ?? 'treasury', buffedBase, state.affairTraining).gold;
-      const incomeBuff = state.incomeBuff && nextDay <= state.incomeBuff.untilDay ? state.incomeBuff : null;
-      const buffExpired = Boolean(state.incomeBuff) && !incomeBuff;
-      const calendarChoice = getChoiceEvent(nextDay, action.amount);
-      // 伴侣心事日：轮到一位还没了却心事的伴侣（没有待决事件时才起）
-      const partnerDue = !calendarChoice && !state.pendingChoice && isPartnerEventDay(nextDay) ? nextPartnerForEvent(state.ownedPartnerIds, state.resolvedPartnerEvents) : null;
-      const partnerChoice = partnerDue ? findPartnerEvent(partnerDue) : null;
-      // 府中小事：每 30 日轮一位伴侣，日历事件与心事都不在时才起
-      const minor = !calendarChoice && !partnerChoice && !state.pendingChoice ? minorEventFor(nextDay, state.ownedPartnerIds) : null;
-      const minorPartner = minor ? findPartnerName(minor.partnerId) : '';
-      const choice = calendarChoice ?? (partnerChoice ? { id: `partner:${partnerDue}`, title: partnerChoice.title, prompt: partnerChoice.prompt } : minor ? { id: minor.key, title: minor.template.title, prompt: minor.template.prompt(minorPartner) } : null);
-      // 上一个二选一还没决断又来新的：旧的按「拿现钱」自动结算（伴侣心事无现钱，按第一项处理在 resolve 里不做，此处直接作废）
-      const staleChoice = choice && state.pendingChoice ? resolvePendingEvent(state.pendingChoice) : null;
-      const staleGold = staleChoice ? choiceGoldValue(staleChoice, state.pendingChoice!.dailyIncome) : 0;
-      const pendingChoice = choice ? { eventId: choice.id, day: nextDay, dailyIncome: action.amount } : state.pendingChoice;
-      const goldAfterIncome = state.gold + buffed + (dailyEvent?.goldDelta ?? 0) + staleGold;
-      // 北疆边患 v2.2 收起：政务不再推进边患（反攻按真实时间，由 siegeTick 推进）
-      const eventLog = [
-        ...(choice ? [{ id: `choice-${nextDay}`, day: nextDay, title: choice.title, detail: `${choice.prompt} 请在主城决断。` }] : []),
-        ...(buffExpired ? [{ id: `buff-end-${nextDay}`, day: nextDay, title: '减税招商到期', detail: '十日之期已满，政务收入恢复常例。' }] : []),
-        ...(staleChoice && staleChoice.id.startsWith('partner:') ? [{ id: `choice-skip-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（搁置）`, detail: '心事未及回应，她不再提起。' }] : []),
-        ...(staleChoice ? [{ id: `choice-auto-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（自动）`, detail: '未及决断，按现钱入账。', goldDelta: staleGold }] : []),
-        ...(dailyEvent
-          ? [{ id: `daily-${nextDay}`, day: nextDay, title: dailyEvent.title, detail: dailyEvent.detail, goldDelta: dailyEvent.goldDelta }]
-          : []),
-        ...state.eventLog
-      ].slice(0, 18);
-      return {
-        ...state,
-        gold: goldAfterIncome,
-        day: nextDay,
-        orders: isOrderDay(nextDay, state.homeLevel) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
-        incomeBuff,
-        pendingChoice,
-        affairTraining,
-        eventLog
-      };
+    case 'collectTreasury': {
+      // 有待决事件先去定夺（首页主按钮改成「府中来报 · 去定夺」）
+      if (state.pendingChoice || !state.selectedLordId) return state;
+      // 测试开关 jiaye-clock-manual：先推进 1 日（军令按日回），再当场收取这一日
+      const base = action.advance ? stepDay(state, { log: true, dayOrders: true }) : state;
+      return collectTreasury(base, action.kind, { log: !action.advance });
+    }
+    case 'clockTick': {
+      // 真实时间：按锚点推进日子（钱进府库）与军令；后台节流、tick 漏几次都不少算，时间回拨不推进
+      if (!state.selectedLordId) return state;
+      return advanceOrders(advanceClock(state, action.now).state, action.now);
     }
     case 'resolveChoice': {
       if (!state.pendingChoice) return state;
@@ -692,51 +667,54 @@ function baseReducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     case 'succeed': {
-      const gained = legacyPointsFor(state.gold, legacyGoldPerPointFor(state));
-      if (state.homeLevel < SUCCESSION_HOME_LEVEL || gained < 1) {
+      // 府库里没收的金子先按钱粮全额并入，再按手上的金子折家业点（v2.3 起府库可积 48 日，不能随传位清零）
+      const heir = state.treasury.gold > 0 || state.treasury.days > 0 ? collectTreasury(state, 'treasury') : state;
+      const gained = legacyPointsFor(heir.gold, legacyGoldPerPointFor(heir));
+      if (heir.homeLevel < SUCCESSION_HOME_LEVEL || gained < 1) {
         return state;
       }
-      const legacyPoints = Math.min(LEGACY_MAX_POINTS, state.legacyPoints + gained);
-      const status = ambitionStatus(state);
+      const legacyPoints = Math.min(LEGACY_MAX_POINTS, heir.legacyPoints + gained);
+      const status = ambitionStatus(heir);
       const entry = {
-        generation: state.generation,
-        lordId: state.selectedLordId ?? '',
-        days: state.day,
-        gold: state.gold,
-        wins: state.battleWins,
-        fiefs: ownedFiefCountOf(state.fiefs),
-        ambition: state.ambition?.id ?? null,
-        ambitionDone: Boolean(status?.done)
+        generation: heir.generation,
+        lordId: heir.selectedLordId ?? '',
+        days: heir.day,
+        gold: heir.gold,
+        wins: heir.battleWins,
+        fiefs: ownedFiefCountOf(heir.fiefs),
+        ambition: heir.ambition?.id ?? null,
+        ambitionDone: Boolean(status?.done),
+        openDays: foundedDays(heir.foundedAt, Date.now())
       };
       return {
         ...defaultGameState,
-        chronicle: trimChronicle([...state.chronicle, entry]),
-        realm: state.realm,
-        realms: state.realms,
-        pastDynasties: state.pastDynasties,
-        earnedTitles: collectEarnedTitles(state).earnedTitles,
+        chronicle: trimChronicle([...heir.chronicle, entry]),
+        realm: heir.realm,
+        realms: heir.realms,
+        pastDynasties: heir.pastDynasties,
+        earnedTitles: collectEarnedTitles(heir).earnedTitles,
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
-        soundEnabled: state.soundEnabled,
+        soundEnabled: heir.soundEnabled,
         tutorialDone: true,
-        generation: state.generation + 1,
+        generation: heir.generation + 1,
         legacyPoints,
         // 屯田与封地是田产，随家业传给下一代
-        farmLevel: state.farmLevel,
-        fiefs: state.fiefs,
+        farmLevel: heir.farmLevel,
+        fiefs: heir.fiefs,
         // 城防与得郡时刻随封地传下；进行中的反攻随传位作罢，下一代升到侯府时反攻计时至少重给 48 小时（见 upgradeHome）
-        fiefWalls: state.fiefWalls,
-        fiefTakenAt: state.fiefTakenAt,
-        lostFiefs: state.lostFiefs,
-        nextSiegeAt: state.nextSiegeAt,
-        peakFiefs: ownedFiefCount(state.fiefs),
-        claimedQuestIds: inheritedQuestIds(state.farmLevel, state.fiefs),
+        fiefWalls: heir.fiefWalls,
+        fiefTakenAt: heir.fiefTakenAt,
+        lostFiefs: heir.lostFiefs,
+        nextSiegeAt: heir.nextSiegeAt,
+        peakFiefs: ownedFiefCount(heir.fiefs),
+        claimedQuestIds: inheritedQuestIds(heir.farmLevel, heir.fiefs),
         eventLog: [
           {
             id: `succeed-${Date.now()}`,
             day: 1,
             title: '传位',
-            detail: `第 ${state.generation} 代以 ${state.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - state.legacyPoints}，累计 ${legacyPoints}${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}${status ? `；志向「${status.ambition.name}」${status.done ? '达成，载入家谱' : '未竟'}` : ''}。`
+            detail: `第 ${heir.generation} 代以 ${heir.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - heir.legacyPoints}，累计 ${legacyPoints}${heir.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(heir.fiefs).length > 0 ? '，封地随之传下' : ''}${status ? `；志向「${status.ambition.name}」${status.done ? '达成，载入家谱' : '未竟'}` : ''}。`
           }
         ]
       };
@@ -756,7 +734,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         tutorialDone: true,
         realm: realm.id,
         realms,
-        pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions }].slice(-20),
+        pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions, ...(summary.openDays ? { openDays: summary.openDays } : {}) }].slice(-20),
         // 家声跨朝保留：天下归心等称号不随世代/封地重置被收回（先按重置前的存档补记一次，读档后未经任何操作就开新朝也不漏）
         earnedTitles: collectEarnedTitles(state).earnedTitles,
         eventLog: [
@@ -825,15 +803,18 @@ export function useGameState() {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // 邻郡反攻：读档后检查一次，开着页面每分钟一次，切回前台再检查；只在页面可见时起反攻（离线不起）
+  // 真实时间府库与军令 + 邻郡反攻：同一个 tick。读档后立刻一次，开着页面每 30 秒一次，切回前台再一次；
+  // 计时只按锚点算（clockAt / orderClockAt），后台节流、漏几次 tick 都不少算。反攻只在页面可见时起（离线不起）
+  // 测试开关 jiaye-clock-manual 下不起时间 tick（日子靠「处理政务」推进）
   useEffect(() => {
     const tick = () => {
+      if (!clockManual()) dispatch({ type: 'clockTick', now: Date.now() });
       if (document.visibilityState !== 'visible') return;
       const flags = siegeTestFlags();
       dispatch({ type: 'siegeTick', now: Date.now(), force: flags.force, target: flags.target });
     };
     tick();
-    const timer = window.setInterval(tick, SIEGE_TICK_MS);
+    const timer = window.setInterval(tick, CLOCK_TICK_MS);
     document.addEventListener('visibilitychange', tick);
     return () => {
       window.clearInterval(timer);
@@ -870,15 +851,20 @@ export function useGameState() {
   // 再开一郡行劝农，每次政务多多少金（给封地弹窗算账用）
   const farmingGain = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent + FIEF_INCOME_PERCENT) - dailyIncome;
   const buffActive = Boolean(state.incomeBuff && state.day + 1 <= state.incomeBuff.untilDay);
-  const displayedIncome = buffActive && state.incomeBuff ? Math.round(dailyIncome * (1 + state.incomeBuff.percent / 100)) : dailyIncome;
+  // 下一日的政务收入（含减税招商与真实时间校准系数），与 stepDay 同一算法
+  const displayedIncome = dayIncomeOf(state, state.day + 1, dailyIncome);
   const recruitDiscount = recruitDiscountPercent(charisma);
   const recruitCostFor = useCallback((partner: Partner) => effectiveRecruitCost(partner.recruitCost, charisma), [charisma]);
 
-  /** 办一件政务，返回实际入账（含减税招商加成） */
+  /** 收取府库（按所办之事处置整笔），返回实际入账；测试开关 jiaye-clock-manual 下先推进 1 日再收 */
   const collectIncome = useCallback((kind: AffairKind = 'treasury') => {
-    dispatch({ type: 'collectIncome', amount: dailyIncome, kind });
-    return affairOutcome(kind, displayedIncome, state.affairTraining).gold;
-  }, [dailyIncome, displayedIncome, state.affairTraining]);
+    const current = stateRef.current;
+    if (current.pendingChoice) return 0;
+    const advance = clockManual();
+    const preview = collectTreasury(advance ? stepDay(current, { log: true, dayOrders: true }) : current, kind);
+    dispatch({ type: 'collectTreasury', kind, advance });
+    return preview.gold - current.gold;
+  }, []);
 
   const upgradeHome = useCallback(() => {
     if (!nextHome || state.gold < nextHome.upgradeCost) {

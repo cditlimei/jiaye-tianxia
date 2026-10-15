@@ -205,7 +205,8 @@ export function App() {
 
   const succeed = () => {
     const note = ambitionSummary(game.state);
-    if (!confirmReset(`${note && !note.includes('已达成') ? `${note}\n\n` : ''}传位后金币、主公、伴侣、兵器与宅邸全部重来，屯田与封地传给下一代，换取永久收入加成。`)) {
+    const stored = game.state.treasury.gold;
+    if (!confirmReset(`${note && !note.includes('已达成') ? `${note}\n\n` : ''}${stored > 0 ? `府库尚有 ${stored.toLocaleString()} 金未收取，传位时先并入再折家业点。\n\n` : ''}传位后金币、主公、伴侣、兵器与宅邸全部重来，屯田与封地传给下一代，换取永久收入加成。`)) {
       return;
     }
     audio.unlock();
@@ -281,6 +282,7 @@ export function App() {
           farm={{ current: game.currentFarm, next: game.nextFarm, gold: game.state.gold, homeIncome: game.currentHome.dailyIncome }}
           orders={game.state.orders}
           orderCap={game.orderCap}
+          orderClockAt={game.state.orderClockAt}
           realmScale={(mode) => realmRewardScale(game.state.realms, mode) * bountyScale(game.state.day, mode)}
           farmCost={game.nextFarm ? realmFarmCost(game.state.realms, game.nextFarm.cost) : 0}
           battleBonus={game.state.nextBattleBonus}

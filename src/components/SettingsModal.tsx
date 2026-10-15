@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { openDaysLabel } from '../lib/clock';
 import type { GameState } from '../types';
 import { LEGACY_GOLD_PER_POINT, LEGACY_MAX_POINTS, legacyIncomeMultiplier, legacyPointsFor, legacyPointsGainable, SUCCESSION_HOME_LEVEL } from '../lib/battle';
 import { GameButton } from './common/GameButton';
@@ -33,8 +34,11 @@ export function SettingsModal({
   onSucceed
 }: SettingsModalProps) {
   const goldPerPoint = legacyGoldPerPointFor(state);
-  const gainedPoints = legacyPointsGainable(state.gold, state.legacyPoints, goldPerPoint);
-  const wastedPoints = legacyPointsFor(state.gold, goldPerPoint) - gainedPoints;
+  // 传位时府库里没收的金子先按钱粮全额并入，再折家业点
+  const heirGold = state.gold + state.treasury.gold;
+  const treasuryNote = state.treasury.gold > 0 ? `府库尚有 ${state.treasury.gold.toLocaleString()} 金未收取，传位时先并入。` : '';
+  const gainedPoints = legacyPointsGainable(heirGold, state.legacyPoints, goldPerPoint);
+  const wastedPoints = legacyPointsFor(heirGold, goldPerPoint) - gainedPoints;
   const canSucceed = state.homeLevel >= SUCCESSION_HOME_LEVEL && gainedPoints >= 1 && state.legacyPoints < LEGACY_MAX_POINTS;
   const successionHint = state.homeLevel < SUCCESSION_HOME_LEVEL
     ? `宅邸升至王城（${SUCCESSION_HOME_LEVEL} 级）后可传位。`
@@ -44,7 +48,7 @@ export function SettingsModal({
       ? '家业点已达上限，传位不再增加加成。'
       : gainedPoints < 1
         ? `至少需 ${goldPerPoint.toLocaleString()} 金才能换到 1 点家业点。`
-        : `现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
+        : `${treasuryNote}现在传位可得 ${gainedPoints} 点家业点，累计 ${state.legacyPoints + gainedPoints} 点，下一代收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints + gainedPoints) - 1) * 100)}%${state.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(state.fiefs).length > 0 ? '，封地随之传下' : ''}。${wastedPoints > 0 ? `累计上限 ${LEGACY_MAX_POINTS} 点，多出的 ${wastedPoints} 点换不到。` : ''}`;
   // 家业点已满时传位不可行，不再提志向结算/传位承诺，只提示离天下归心还差什么
   const maxedHint = legacyMaxedHint(state);
   const ambitionNote = isEndingReached(state) || maxedHint ? null : ambitionSummary(state);
@@ -83,13 +87,13 @@ export function SettingsModal({
       <div className="settings-panel">
         <section>
           <span>当前存档</span>
-          <strong>第 {state.day} 日 · {state.gold.toLocaleString()} 金</strong>
+          <strong>{openDaysLabel(state.foundedAt, state.day, Date.now())} · {state.gold.toLocaleString()} 金</strong>
           <p>胜 {state.battleWins}（讨伐 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 守城 {state.frontierWins}）· 负 {state.battleLosses}</p>
         </section>
         <section className="succession-panel">
           <span>传位 · 第 {state.generation} 代</span>
           <strong>家业点 {state.legacyPoints}/{LEGACY_MAX_POINTS} · 收入 +{Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%</strong>
-          <p>把全部金币换成家业点（每 {goldPerPoint.toLocaleString()} 金 1 点{goldPerPoint < LEGACY_GOLD_PER_POINT ? '，富国家风优惠' : ''}），每点让处理政务与屯田收入永久 +5%，并让之后每一代开局多 3,000 金。主公、伴侣、兵器、宅邸与任务从头再来，屯田与封地传给下一代。</p>
+          <p>把全部金币换成家业点（每 {goldPerPoint.toLocaleString()} 金 1 点{goldPerPoint < LEGACY_GOLD_PER_POINT ? '，富国家风优惠' : ''}），每点让政务与屯田收入永久 +5%，并让之后每一代开局多 3,000 金。主公、伴侣、兵器、宅邸与任务从头再来，屯田与封地传给下一代。</p>
           <p className={canSucceed ? 'is-ok' : ''}>{successionHint}</p>
           {ambitionNote && <p className={ambitionNote.includes('已达成') ? 'is-ok' : 'is-warn'}>{ambitionNote}</p>}
           {nearEnding && <p className="is-ok">{nearEnding}</p>}

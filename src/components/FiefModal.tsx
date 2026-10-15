@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ORDER_CAP } from '../types';
 import { FIEF_ORDER_BONUS, FIEF_STAT_BONUS, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefPolicies, fiefStatBonus, fiefs, findFiefPolicy, nextFief, orderCapFor, ownedFiefCount, type FiefPolicyId } from '../data/fiefs';
 import { findHomeLevel } from '../data/gameData';
 import { fiefCostFor, policyChangeCostFor, traditionOf } from '../data/traditions';
@@ -60,7 +61,7 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
       <div className="fief-sheet">
         {owned > 0 && (
           <p className="fief-sheet__summary">
-            已开拓 {owned}/{fiefs.length} 郡 · 劝农 +{fiefIncomePercent(state.fiefs)}% 收入 · 整军军令 +{orderCapFor(state.fiefs) - 6} · 教化三项 +{fiefStatBonus(state.fiefs)}
+            已开拓 {owned}/{fiefs.length} 郡 · 劝农 +{fiefIncomePercent(state.fiefs)}% 收入 · 整军军令 +{orderCapFor(state.fiefs) - ORDER_CAP} · 教化三项 +{fiefStatBonus(state.fiefs)}
           </p>
         )}
         <p className="fief-sheet__intro">

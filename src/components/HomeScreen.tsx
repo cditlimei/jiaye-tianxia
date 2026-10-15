@@ -13,7 +13,7 @@ import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
 import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
 import { bountyScale, dynastyCount, endingHint, findRealm, isEndingReached, legacyMaxedHint, realmIncomePercent } from '../data/dynasty';
-import { daysUntilNextOrder } from '../types';
+import { clockManual, formatWait, foundedDays, nextDayInMs, nextOrderInMs, TRAIN_MIN_DAYS, TREASURY_HARD_CAP_DAYS, treasuryCapDays, treasuryOutcome } from '../lib/clock';
 import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
 import { legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
@@ -115,8 +115,23 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const [floating, setFloating] = useState<FloatingIncome[]>([]);
   // 今日政务回报：点一次政务弹一条「这天忙了什么、入账多少」，3 秒后收起
-  const [report, setReport] = useState<(Affair & { id: number; day: number; amount: number }) | null>(null);
+  const [report, setReport] = useState<(Affair & { id: number; day: number; amount: number; days: number }) | null>(null);
   const reportTimer = useRef<number | null>(null);
+  // 真实时间（v2.3）：测试开关 jiaye-clock-manual 下退回「处理政务」推进一日
+  const [manualClock] = useState(() => clockManual());
+  const realtime = !manualClock;
+  const [clock, setClock] = useState(() => Date.now());
+  const treasuryCap = treasuryCapDays(state.homeLevel);
+  const treasuryDays = state.treasury.days;
+  const treasuryFull = treasuryDays >= treasuryCap;
+  // 三段：未满 / 已满再放半数 / 已积满 48 日不再积存
+  const treasuryHard = treasuryDays >= TREASURY_HARD_CAP_DAYS;
+  const canCollect = treasuryDays >= 1 || state.treasury.gold > 0;
+  const nextDayWait = formatWait(nextDayInMs(state, clock));
+  const orderWaitMs = nextOrderInMs(state, clock);
+  // 顶栏格子窄：军令倒计时一律写分钟（府邸起最多 120 分）
+  const orderWait = orderWaitMs === null ? '' : `约${Math.max(1, Math.ceil(orderWaitMs / 60000))}分`;
+  const openDays = foundedDays(state.foundedAt, clock);
   const ambition = ambitionStatus(state);
   // 家业点已满：传位不再可行，志向无从结算，志向卡/进度改提示还差几郡
   const maxedHint = legacyMaxedHint(state);
@@ -149,8 +164,8 @@ export function HomeScreen({
   // 开局引导：四步，每步指向一个按钮；钱不够时先指向「处理政务」
   const starterOrders = useMemo(
     () => [
-      { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
-      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < cheapestPartner ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府：伴侣随你上牌桌，各有一招，还加战力、智谋或声望。' },
+      { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「${realtime ? '收取府库' : '处理政务'}」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
+      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < cheapestPartner ? '金币不够招人：先领上方任务奖励、收取府库或去打一局斗地主攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府：伴侣随你上牌桌，各有一招，还加战力、智谋或声望。' },
       { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑。第 5 日伴侣会来说心事，了却后任务「良缘佳话」正好奖 1,500 金。' },
       { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点底栏「出征」，进斗地主初级场打一局，赢了缴获比处理政务多得多。' }
     ],
@@ -179,7 +194,7 @@ export function HomeScreen({
   const guideReason = !currentOrder
     ? ''
     : currentOrder.target === 'upgrade'
-      ? `${currentHome.name}升成${nextHome?.name ?? ''}，每次政务收入从 ${currentHome.dailyIncome} 金涨到 ${nextHome?.dailyIncome ?? ''} 金。`
+      ? `${currentHome.name}升成${nextHome?.name ?? ''}，${realtime ? '每日' : '每次'}政务收入从 ${currentHome.dailyIncome} 金涨到 ${nextHome?.dailyIncome ?? ''} 金。`
       : currentOrder.target === 'partner'
         ? '伴侣随你上牌桌，各有一招（技能为主、属性为辅），最便宜的一位 ' + (Number.isFinite(cheapestPartner) ? cheapestPartner.toLocaleString() : '') + ' 金。'
         : currentOrder.target === 'weapon'
@@ -191,8 +206,14 @@ export function HomeScreen({
       ? { label: `先领任务奖励 +${claimableGold.toLocaleString()} 金`, run: () => claimableQuests.forEach((quest) => onClaimQuest(quest.id)) }
       : weaponViaBattle
         ? { label: '去打一局斗地主 →', run: () => onBattleAt('jingzhou') }
-      : shortOf > 0
+      : shortOf > 0 && !realtime
         ? { label: `过一天 · +${dailyIncome.toLocaleString()} 金（还差 ${shortOf.toLocaleString()}）`, run: () => handleCollectIncome() }
+      : shortOf > 0 && canCollect
+        ? { label: `收取府库 · +${state.treasury.gold.toLocaleString()} 金（还差 ${shortOf.toLocaleString()}）`, run: () => handleCollectIncome() }
+      : shortOf > 0 && state.orders >= 1
+        ? { label: '去打一局斗地主攒钱 →', run: () => onBattleAt('jingzhou') }
+      : shortOf > 0
+        ? { label: `府库积存中 · 下一日${nextDayWait}后`, run: () => undefined }
         : currentOrder.target === 'upgrade'
           ? { label: `立即升级 · ${(nextHome?.upgradeCost ?? 0).toLocaleString()} 金`, run: () => handleUpgrade() }
           : currentOrder.target === 'partner'
@@ -225,29 +246,35 @@ export function HomeScreen({
   const [sheet, setSheet] = useState<'goals' | 'log' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const [clock, setClock] = useState(() => Date.now());
   // 告急条：反攻中 > 城防不满 > 失郡可半价收复（同时只显示一条，最急的那条）
   const siegeFief = SIEGE_ENABLED && state.siege ? fiefs.find((fief) => fief.id === state.siege?.fiefId && state.fiefs[fief.id]) ?? null : null;
   const wallAlertFief = SIEGE_ENABLED ? fiefs.find((fief) => state.fiefs[fief.id] && (state.fiefWalls[fief.id] ?? FIEF_WALLS) < FIEF_WALLS) ?? null : null;
   const reclaimFief = SIEGE_ENABLED ? fiefs.find((fief) => reclaimRemainingMs(state, fief.id, clock) > 0) ?? null : null;
-  const needsClock = Boolean(siegeFief || reclaimFief);
+  // 真实时间：府库「下一日约 N 分」、军令「下一道约 N 分」、告急倒计时都靠它刷新
+  const needsClock = Boolean(siegeFief || reclaimFief) || realtime;
   useEffect(() => {
     if (!needsClock) return undefined;
     setClock(Date.now());
-    const timer = window.setInterval(() => setClock(Date.now()), 60000);
+    const timer = window.setInterval(() => setClock(Date.now()), realtime ? 15000 : 60000);
     return () => window.clearInterval(timer);
-  }, [needsClock]);
+  }, [needsClock, realtime]);
+  // 状态一变（tick 推进了日子、收取了府库）就把显示用的时钟对齐，免得倒计时停在旧值
+  useEffect(() => {
+    if (realtime) setClock(Date.now());
+  }, [realtime, state.clockAt, state.orderClockAt, state.treasury.days]);
 
   // 府中三件事：点「处理政务」先弹出今日三件事挑一件办；办完留在弹层里接着办下一日
   const [affairsOpen, setAffairsOpen] = useState(false);
   const [lastAffair, setLastAffair] = useState<{ title: string; amount: number; gain: string } | null>(null);
-  const affairChoices = affairChoicesFor(state.day + 1, state.homeLevel);
+  // 真实时间：三件事按当日轮换、处置的是府库这一整笔；测试开关下仍是「下一日」的三件事
+  const affairChoices = affairChoicesFor(realtime ? state.day : state.day + 1, state.homeLevel);
   const handleCollectIncome = (kind?: AffairKind) => {
     if (state.pendingChoice) {
       setAffairsOpen(false);
       setChoiceHiddenKey('');
       return;
     }
+    if (realtime && !canCollect) return;
     if (!kind && !quickAffairs()) {
       setLastAffair(null);
       setAffairsOpen(true);
@@ -255,12 +282,16 @@ export function HomeScreen({
     }
     const chosenKind = kind ?? 'treasury';
     const chosen = affairChoices.find((item) => item.kind === chosenKind) ?? affairChoices[0];
-    const { trains } = affairOutcome(chosenKind, dailyIncome, state.affairTraining);
+    // 测试开关下每次只收 1 日，积不满 4 日，不练属性
+    const { trains } = treasuryOutcome(state, chosenKind);
+    const collectedDays = treasuryDays;
     const amount = onCollectIncome(chosenKind);
     const id = Date.now();
     onIncomeSfx();
     setLastAffair({ title: chosen.title, amount, gain: trains ? (chosenKind === 'military' ? '武力 +1' : '智谋、声望 +1') : '' });
-    setReport({ ...chosen, id, day: state.day + 1, amount });
+    // 真实时间下一次收完府库就空了，弹层收起；测试开关下留着接着办下一日
+    if (realtime) setAffairsOpen(false);
+    setReport({ ...chosen, id, day: realtime ? state.day : state.day + 1, amount, days: realtime ? collectedDays : 0 });
     if (reportTimer.current !== null) window.clearTimeout(reportTimer.current);
     reportTimer.current = window.setTimeout(() => setReport(null), 3000);
     setFloating((items) => [...items, { id, amount }].slice(-3));
@@ -274,6 +305,8 @@ export function HomeScreen({
     }
   };
 
+  // 传位前府库会先按钱粮并入，传位提示按手上 + 府库算
+  const heirGold = state.gold + state.treasury.gold;
   // 机会栏：封郡 / 传位 / 志向未定 / 天下归心 等非阻塞选择合成一行，首屏只留真正要决断的事
   const claimable = questStatuses.filter((quest) => quest.complete && !quest.claimed).length;
   // 钱够就亮：比手上更强、买得起的兵器里最强的一把；屯田下一级
@@ -296,8 +329,8 @@ export function HomeScreen({
     ...goalChip,
     ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => setSheet('goals') }] : []),
     ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可攻${nextFiefToClaim.name}`, detail: `押 ${nextFiefCost.toLocaleString()} 金军资，和守将${nextFiefToClaim.garrison}打一局斗地主`, onClick: onOpenFief }] : []),
-    ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
-      ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [endingHint(state)?.replace(/。$/, '') ?? `下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state)))) - 1) * 100)}%、开局 ${(1000 + Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))) * 3000).toLocaleString()} 金`, ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
+    ...(state.homeLevel >= 6 && heirGold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
+      ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(heirGold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [state.treasury.gold > 0 ? `含府库未收 ${state.treasury.gold.toLocaleString()} 金` : '', endingHint(state)?.replace(/。$/, '') ?? `下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(20, state.legacyPoints + legacyPointsGainable(heirGold, state.legacyPoints, legacyGoldPerPointFor(state)))) - 1) * 100)}%、开局 ${(1000 + Math.min(20, state.legacyPoints + legacyPointsGainable(heirGold, state.legacyPoints, legacyGoldPerPointFor(state))) * 3000).toLocaleString()} 金`, ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
       : []),
     ...(state.generation >= 2 && !state.ambition && ambitionOpen && ambitionDeferred ? [{ key: 'ambition', label: '本代志向未定', detail: '定下志向才有传位结算', onClick: () => setAmbitionDeferred(false) }] : []),
     // 家业点已满：传位不再加点，首页直接告诉玩家离天下归心还差什么
@@ -339,13 +372,13 @@ export function HomeScreen({
             <strong>{totalPower}</strong>
             <span>武力</span>
           </div>
-          <div>
+          <div className="home-hud__orders">
             <strong>{state.orders}/{orderCap}</strong>
-            <span title="每场出征耗 1 道军令（守城除外）；府邸前每日回 1 道，之后每 2 日回 1 道">{state.orders < 1 ? `${daysUntilNextOrder(state.day, state.homeLevel)} 日后 +1` : '军令'}</span>
+            <span title="每场出征耗 1 道军令（守城、切磋除外）；府邸前约 20 分钟回 1 道，府邸起约 2 小时回 1 道">{realtime && orderWait ? `下一道${orderWait}` : '军令'}</span>
           </div>
-          <div>
-            <strong>{state.day}</strong>
-            <span>日</span>
+          <div className="home-hud__days" title={`开府 ${openDays} 天（第 ${state.day} 日）`}>
+            <strong>{openDays} 天</strong>
+            <span>第 {state.day} 日</span>
           </div>
         </div>
       </header>
@@ -376,7 +409,7 @@ export function HomeScreen({
         </div>
         {report && (
           <div key={report.id} className="affair-report" role="status">
-            <span>第 {report.day} 日 · 今日政务</span>
+            <span>{report.days > 0 ? `收取府库 · 积 ${report.days} 日` : `第 ${report.day} 日 · 今日政务`}</span>
             <strong>{report.title}<b>+{report.amount.toLocaleString()} 金</b></strong>
             <small>{report.detail}</small>
           </div>
@@ -384,7 +417,7 @@ export function HomeScreen({
         <div className="home-banner__text">
           <h2>Lv.{currentHome.level} {currentHome.name}</h2>
           <details className="home-banner__detail">
-            <summary>每次政务 +{dailyIncome.toLocaleString()} 金 ⓘ</summary>
+            <summary>{realtime ? `每日政务 +${dailyIncome.toLocaleString()} 金（1 小时 1 日）` : `每次政务 +${dailyIncome.toLocaleString()} 金`} ⓘ</summary>
             <p>{incomeDetail}；声望让招募伴侣便宜 {recruitDiscount}%。</p>
           </details>
         </div>
@@ -403,7 +436,7 @@ export function HomeScreen({
           </div>
           {starterOrders.indexOf(currentOrder) < 2 && (
             <ol className="starter-howto" aria-label="怎么玩">
-              <li><b>赚钱</b>：点「处理政务」过一天，宅邸给你收入。</li>
+              <li><b>赚钱</b>：{realtime ? '宅邸每小时把一日收入积进府库，回来点「收取府库」入账。' : '点「处理政务」过一天，宅邸给你收入。'}</li>
               <li><b>变强</b>：用金币升宅邸、招伴侣、买兵器。</li>
               <li><b>出征</b>：战力够了去打仗，缴获比政务多得多。</li>
             </ol>
@@ -461,7 +494,7 @@ export function HomeScreen({
       {affairsOpen && !state.pendingChoice && (
         <div className="modal-backdrop choice-modal affairs-modal">
           <section role="dialog" aria-modal="true" aria-label="府中三件事" className="choice-card affairs-card">
-            <em className="choice-card__eyebrow">第 {state.day + 1} 日 · 府中三件事 · 挑一件去办</em>
+            <em className="choice-card__eyebrow">{realtime ? `府库积 ${treasuryDays} 日 · 府中三件事 · 挑一件处置这一笔` : `第 ${state.day + 1} 日 · 府中三件事 · 挑一件去办`}</em>
             {lastAffair && (
               <p className="affairs-card__done" role="status">
                 刚办完「{lastAffair.title}」+{lastAffair.amount.toLocaleString()} 金{lastAffair.gain ? ` · ${lastAffair.gain}` : ''}
@@ -469,13 +502,19 @@ export function HomeScreen({
             )}
             <div className="choice-card__options affairs-card__options">
               {affairChoices.map((item) => {
-                const { gold, trains } = affairOutcome(item.kind, dailyIncome, state.affairTraining);
+                // 真实时间：处置府库这一整笔——钱粮全额；军务/治理积满 4 日才练（少拿 1 日收入），不满 4 日或练满按全额
+                // 测试开关下每次只推进 1 日：同一套规则，积不满 4 日，不练属性
+                const outcome = realtime ? treasuryOutcome(state, item.kind) : { ...treasuryOutcome({ ...state, treasury: { gold: dailyIncome, days: 1 } }, item.kind), gold: dailyIncome };
+                const { gold, trains, trainable } = outcome;
                 const trained = item.kind === 'military' ? state.affairTraining.strength : state.affairTraining.civil;
+                const statName = item.kind === 'military' ? '武力' : '智谋、声望';
                 const gain = item.kind === 'treasury'
-                  ? '足额政务收入'
+                  ? realtime ? '全额入账' : '足额政务收入'
                   : trains
-                    ? `${item.kind === 'military' ? '武力' : '智谋、声望'} +1（本代 ${trained}/${AFFAIR_TRAINING_CAP}）`
-                    : `${item.kind === 'military' ? '武力' : '智谋声望'}已练满，按足额给金`;
+                    ? `少拿 1 日 · ${statName} +1（本代 ${trained}/${AFFAIR_TRAINING_CAP}）`
+                    : trainable
+                      ? `积满 ${TRAIN_MIN_DAYS} 日才练${item.kind === 'military' ? '武力' : '智谋声望'}，此番全额`
+                      : `${item.kind === 'military' ? '武力' : '智谋声望'}已练满，按全额给金`;
                 return (
                   <button key={item.kind} type="button" className={`affairs-option affairs-option--${item.kind}`} onClick={() => handleCollectIncome(item.kind)}>
                     <span className="affairs-option__tag">{AFFAIR_KIND_LABEL[item.kind]}</span>
@@ -550,9 +589,34 @@ export function HomeScreen({
       )}
 
       <section className="home-actions" ref={actionRef}>
-        <GameButton onClick={() => handleCollectIncome()} className={`home-actions__main ${state.pendingChoice ? 'is-guided' : guided('income')}`}>
-          {state.pendingChoice ? '府中来报 · 去定夺' : `处理政务 · +${dailyIncome.toLocaleString()}金`}
-        </GameButton>
+        <div className="home-actions__collect">
+          <GameButton
+            onClick={() => handleCollectIncome()}
+            disabled={realtime && !state.pendingChoice && !canCollect}
+            className={`home-actions__main ${state.pendingChoice ? 'is-guided' : guided('income')} ${realtime && treasuryFull && !state.pendingChoice ? 'is-full' : ''}`}
+          >
+            {state.pendingChoice
+              ? '府中来报 · 去定夺'
+              : !realtime
+                ? `处理政务 · +${dailyIncome.toLocaleString()}金`
+                : canCollect
+                  ? (<><span className="treasury-label">收取府库</span> <span className="treasury-amount">+{state.treasury.gold.toLocaleString()}金</span><small className="game-button__sub">积 {treasuryDays} 日</small></>)
+                  : (<>收取府库<small className="game-button__sub">下一日{nextDayWait}后</small></>)}
+            {realtime && treasuryFull && !state.pendingChoice && <i className="home-dot treasury-dot" aria-hidden="true" />}
+          </GameButton>
+          {realtime && (
+            <div className={`treasury-meter ${treasuryFull ? 'is-full' : ''} ${treasuryHard ? 'is-hard' : ''}`} role="progressbar" aria-label="府库积存" aria-valuemin={0} aria-valuemax={treasuryCap} aria-valuenow={Math.min(treasuryDays, treasuryCap)}>
+              <span className="treasury-meter__bar"><i style={{ width: `${Math.min(100, (treasuryDays / treasuryCap) * 100)}%` }} /></span>
+              <span className="treasury-meter__text">
+                {treasuryHard
+                  ? `府库积满 ${TREASURY_HARD_CAP_DAYS} 日 · 不再积存`
+                  : treasuryFull
+                    ? `府库 ${treasuryDays} 日（满额 ${treasuryCap}）· 再放减半`
+                    : `府库 ${treasuryDays}/${treasuryCap} 日 · 下一日${nextDayWait}后`}
+              </span>
+            </div>
+          )}
+        </div>
         <GameButton variant="secondary" onClick={handleUpgrade} disabled={!canUpgrade} className={guided('upgrade')}>
           {nextHome ? (<>升级宅邸<small className="game-button__sub">{nextHome.upgradeCost.toLocaleString()} 金{!canUpgrade ? ` · 差 ${(nextHome.upgradeCost - state.gold).toLocaleString()}` : ''}</small></>) : '宅邸已满'}
         </GameButton>

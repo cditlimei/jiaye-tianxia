@@ -193,7 +193,7 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
     const blocker = homeLevel < FIEF_UNLOCK_HOME_LEVEL
       ? '宅邸升至侯府后可出兵攻郡'
       : orders < 1
-        ? '军令不足，回府处理政务'
+        ? '军令不足，稍候回复（可先切磋）'
         : gold < stake
           ? `军资还差 ${(stake - gold).toLocaleString()} 金`
           : '';

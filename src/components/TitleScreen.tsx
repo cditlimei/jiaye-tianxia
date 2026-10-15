@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { openDaysLabel } from '../lib/clock';
 import type { GameState } from '../types';
 import { getTitleStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
@@ -33,7 +34,7 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
           {lordName ? (
             <>
               <span>{lordName} · 「{getTitleStatus(state).current.name}」</span>
-              <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}第 {state.day} 日 · {state.gold.toLocaleString()} 金</strong>
+              <strong>{state.generation > 1 ? `第 ${state.generation} 代 · ` : ''}{openDaysLabel(state.foundedAt, state.day, Date.now())} · {state.gold.toLocaleString()} 金</strong>
             </>
           ) : (
             // 传位后还没选新主公

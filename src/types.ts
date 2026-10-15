@@ -59,7 +59,7 @@ export interface GameState {
   /** 斗地主另记当前倍数与份额（农民 0.5），刷新逃局按 lossGold×multiplier×share 扣，与认输一致 */
   /** conquest：攻郡牌局（军资出兵时已扣，胜则得郡；中途离开按败；refundRate 是糜夫人「舍身」未克退还比例，出兵时记下，撤兵与刷新离开同样退） */
   activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number; conquest?: { fiefId: string; policyId: FiefPolicyId; stake: number; refundRate?: number; kind?: ConquestKind } } | null;
-  /** 军令：出征消耗，每 2 个游戏日回 1 道，上限随整军封地增加 */
+  /** 军令：出征消耗（守城、切磋不耗），v2.3 起按真实时间回（府邸前 20 分、府邸起 120 分一道，见 lib/clock.ts），上限 8 随整军封地增加 */
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */
   fiefs: FiefHoldings;
@@ -80,6 +80,16 @@ export interface GameState {
   lastScreen: Screen;
   eventLog: GameEvent[];
   lastSavedAt: number;
+  /** v2.3 真实时间：按日结算的锚点（每满 DAY_MS 推进一日，余数保留；见 lib/clock.ts） */
+  clockAt: number;
+  /** 军令回复的锚点（府邸前 20 分、府邸起 120 分回 1 道） */
+  orderClockAt: number;
+  /** 府库：推进的日子把政务收入与府中现钱积在这里，收取才入账（days 封顶 48） */
+  treasury: { gold: number; days: number };
+  /** 1 = 真实时间口径；老存档没有，第一次读入先按旧规则补足离线再切 */
+  clockVersion: number;
+  /** 本代开府时刻（显示「开府 M 天」；老存档取读档时刻减 day × 1 小时） */
+  foundedAt: number;
 }
 
 export interface DynastyEntry {
@@ -90,6 +100,8 @@ export interface DynastyEntry {
   days: number;
   wins: number;
   ambitions: number;
+  /** v2.3 起记：本朝开府多少天（各代相加，老记录没有） */
+  openDays?: number;
 }
 
 export interface ChronicleEntry {
@@ -101,18 +113,20 @@ export interface ChronicleEntry {
   fiefs: number;
   ambition: AmbitionId | null;
   ambitionDone: boolean;
+  /** v2.3 起记：本代开府多少天（真实天数） */
+  openDays?: number;
 }
 
 export type BattleOutcome = 'win' | 'loss' | 'retreat';
 export const LOSS_PENALTY_RATE = 0.2;
-export const ORDER_CAP = 6;
+export const ORDER_CAP = 8;
 export const ORDER_START = 3;
 export const ORDER_REGEN_DAYS = 2;
-/** 推进到第 day 日是否回一道军令 */
+/** 推进到第 day 日是否回一道军令（v2.3 起玩家按真实时间回军令，见 lib/clock.ts；按日回复只剩老存档补算与测试开关 jiaye-clock-manual） */
 /** 府邸以前军令每日回 1 道（新手期每天都想出征），之后每 2 日回 1 道 */
 export const ORDER_FAST_HOME_LEVEL = 4;
 export const isOrderDay = (day: number, homeLevel = ORDER_FAST_HOME_LEVEL) => homeLevel < ORDER_FAST_HOME_LEVEL || day % ORDER_REGEN_DAYS === 0;
-export const daysUntilNextOrder = (day: number, homeLevel = ORDER_FAST_HOME_LEVEL) => (homeLevel < ORDER_FAST_HOME_LEVEL ? 1 : ORDER_REGEN_DAYS - (day % ORDER_REGEN_DAYS));
+// daysUntilNextOrder（「N 日后 +1」）v2.3 起由 lib/clock.ts 的 nextOrderInMs（「下一道约 N 分」）取代
 export type BattleMode = 'land' | 'naval' | 'court' | 'frontier';
 
 export interface GameEvent {

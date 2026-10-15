@@ -157,7 +157,9 @@ try {
   await page.getByRole('button', { name: '出牌' }).click();
   await expectText(page, '19 张');
   await page.getByRole('button', { name: /^认输/ }).click();
-  await expectText(page, '处理政务');
+  // v2.3 真实时间：首页主按钮改为「收取府库」（下方府库进度条）
+  await expectText(page, '收取府库');
+  await page.locator('.treasury-meter').waitFor({ state: 'visible', timeout: 5000 });
   await assertSiegeAlert(page);
   assertOptimizedImages(imageRequests);
 
