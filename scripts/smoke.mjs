@@ -126,7 +126,7 @@ try {
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '出征', exact: true }).click();
-  // 出征页：疆域图 + 斗地主选场；屯田、北疆收在「其他战场」
+  // 出征页：疆域图 + 斗地主选场；屯田收在「其他战场」（北疆 v2.2 收起）
   await page.getByRole('button', { name: /^进入斗地主/ }).waitFor({ state: 'visible', timeout: 7000 });
   await page.locator('.conquest-map').waitFor({ state: 'visible', timeout: 5000 });
   await page.getByRole('button', { name: '其他战场 ›' }).click();
@@ -158,6 +158,7 @@ try {
   await expectText(page, '19 张');
   await page.getByRole('button', { name: /^认输/ }).click();
   await expectText(page, '处理政务');
+  await assertSiegeAlert(page);
   assertOptimizedImages(imageRequests);
 
   console.log('smoke_ok');
@@ -413,11 +414,13 @@ async function assertPortraitDoudizhuFits(page) {
 }
 
 async function assertExpeditionModes(page) {
-  // 官道/江东/许都自动战 10-15 收起；其他战场只剩荆州（斗地主）、西蜀屯田、北疆
+  // 官道/江东/许都自动战 10-15 收起，北疆边患 v2.2 收起（改为疆域图守城）；其他战场只剩荆州（斗地主）、西蜀屯田
   const doudizhu = page.locator('.map-node').filter({ hasText: '荆州' });
-  const frontier = page.locator('.map-node').filter({ hasText: '北疆' });
   await doudizhu.waitFor({ state: 'visible', timeout: 5000 });
-  await frontier.waitFor({ state: 'visible', timeout: 5000 });
+
+  if ((await page.locator('.map-node').filter({ hasText: '北疆' }).count()) > 0) {
+    throw new Error('smoke_retired_frontier_region_still_shown');
+  }
 
   if (!(await doudizhu.isEnabled())) {
     throw new Error('smoke_doudizhu_region_should_be_available');
@@ -426,6 +429,27 @@ async function assertExpeditionModes(page) {
   if ((await page.locator('.map-node').filter({ hasText: /官道|江东|许都/ }).count()) > 0) {
     throw new Error('smoke_retired_auto_battle_regions_still_shown');
   }
+}
+
+// v2.2 邻郡反攻：首页告急条「去守城」直达疆域图，被围的郡节点标告急、面板可迎战守城
+async function assertSiegeAlert(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const now = Date.now();
+  await setSave(page, {
+    screen: 'home', selectedLordId: 'caocao', gold: 300000, homeLevel: 5, equippedWeaponId: 'qinglong', ownedPartnerIds: ['diaochan'],
+    day: 40, battleWins: 6, battleLosses: 1, soundEnabled: false, tutorialDone: true, lastScreen: 'home', eventLog: [], lastSavedAt: now,
+    fiefs: { nanyang: 'farming', runan: 'farming' }, fiefWalls: { nanyang: 2, runan: 2 }, fiefTakenAt: { nanyang: now - 200 * 3600e3, runan: now - 200 * 3600e3 },
+    nextSiegeAt: now + 3600e3, siege: { fiefId: 'runan', attacker: '袁术', skill: 'novice', startedAt: now, dueAt: now + 18 * 3600e3 }
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expectText(page, '汝南告急');
+  await page.getByRole('button', { name: '去守城 →' }).click();
+  const node = page.locator('.conquest-map g.conquest-node.is-besieged');
+  await node.waitFor({ state: 'visible', timeout: 5000 });
+  if (!((await node.getAttribute('aria-label')) ?? '').includes('告急')) {
+    throw new Error('smoke_besieged_node_missing_alert_label');
+  }
+  await expectEnabled(page.getByRole('button', { name: /迎战守城/ }));
 }
 
 async function assertVenueGate(page) {

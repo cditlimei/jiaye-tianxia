@@ -10,8 +10,7 @@ import { minorGoldValue, parseMinorKey } from './minorEvents';
 /** 宅邸升到某级时新开放的内容（升阶画面与纪事用） */
 export const HOME_UNLOCKS: Record<number, string> = {
   3: '西蜀屯田',
-  4: '北疆边患（三日后起）',
-  5: '攻郡开疆'
+  5: '攻郡开疆（诸郡会遭反攻）'
 };
 
 export interface Quest {
@@ -102,8 +101,8 @@ export const quests: Quest[] = [
   },
   {
     id: 'frontier-first-win',
-    title: '北疆靖边',
-    description: '击退一次北疆边患。',
+    title: '首守城池',
+    description: '守住一次邻郡反攻。',
     rewardGold: 4000,
     isComplete: (state) => state.frontierWins >= 1
   },
@@ -156,7 +155,7 @@ export const titles: Title[] = [
   { id: 'marquis-house', name: '侯门显贵', requirement: '宅邸升至侯府', isEarned: (s) => s.homeLevel >= 5 },
   { id: 'river-tiger', name: '百战之将', requirement: '累计 20 场胜利', isEarned: (s) => s.battleWins >= 20 },
   { id: 'court-star', name: '坐拥两郡', requirement: '封地两郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 2 },
-  { id: 'north-general', name: '镇北将军', requirement: '击退 3 次边患', isEarned: (s) => s.frontierWins >= 3 },
+  { id: 'north-general', name: '金汤之将', requirement: '守住 3 次邻郡反攻', isEarned: (s) => s.frontierWins >= 3 },
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
   { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => partnersWithResolvedEvent(s.resolvedPartnerEvents) >= 5 },
   { id: 'confidant', name: '知心人', requirement: '了却 5 位伴侣的第二段心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).filter((k) => k.endsWith('#2')).length >= 5 },

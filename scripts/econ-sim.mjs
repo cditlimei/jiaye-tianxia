@@ -1,5 +1,5 @@
-// 经济节奏模拟：四个战场 + 屯田 + 兵器 + 封地。每个游玩日：N 次政务、每道军令打期望最高的战场（75% 胜）、边患到期必打，花钱优先级 宅邸→屯田→兵器→伴侣→封地
-// 用法: node scripts/econ-sim.mjs   环境变量 DAYS=240 POLICY=military|schooling RW=缴获倍率 CM=造价倍率；新系统/调数值前先跑一遍
+// 经济节奏模拟：四个战场 + 屯田 + 兵器 + 封地。每个游玩日：N 次政务、每道军令打期望最高的战场（75% 胜）、邻郡反攻每 2 个游玩日一次（v2.2，替代北疆边患），花钱优先级 修城→宅邸→屯田→兵器→伴侣→封地
+// 用法: node scripts/econ-sim.mjs   环境变量 DAYS=240 POLICY=military|schooling RW=缴获倍率 CM=造价倍率 SIEGE=0 关反攻对照 REPAIR=0 不修城；新系统/调数值前先跑一遍
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from 'node:fs'; import { createRequire } from 'node:module'; import { pathToFileURL, fileURLToPath } from 'node:url'; import { join, dirname } from 'node:path'; import { tmpdir } from 'node:os';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..'); const require = createRequire(join(ROOT, 'package.json')); const ts = require('typescript');
 const D = mkdtempSync(join(tmpdir(), 'jiaye-econ-')); mkdirSync(D + '/data', { recursive: true }); mkdirSync(D + '/lib', { recursive: true });
@@ -8,7 +8,7 @@ const tr = (src, dst) => writeFileSync(dst, ts.transpileModule(readFileSync(src,
 const { readdirSync } = await import('node:fs');
 const modules = ['types', ...['data', 'lib'].flatMap((dir) => readdirSync(join(ROOT, 'src', dir)).filter((name) => name.endsWith('.ts')).map((name) => `${dir}/${name.slice(0, -3)}`))];
 for (const f of modules) tr(join(ROOT, `src/${f}.ts`), `${D}/${f}.mjs`);
-const g = await import(pathToFileURL(D + '/data/gameData.mjs').href), pr = await import(pathToFileURL(D + '/data/progression.mjs').href), b = await import(pathToFileURL(D + '/lib/battle.mjs').href), fr = await import(pathToFileURL(D + '/lib/frontier.mjs').href), ff = await import(pathToFileURL(D + '/data/fiefs.mjs').href), vn = await import(pathToFileURL(D + '/data/venues.mjs').href);
+const g = await import(pathToFileURL(D + '/data/gameData.mjs').href), pr = await import(pathToFileURL(D + '/data/progression.mjs').href), b = await import(pathToFileURL(D + '/lib/battle.mjs').href), sg = await import(pathToFileURL(D + '/lib/siege.mjs').href), ff = await import(pathToFileURL(D + '/data/fiefs.mjs').href), vn = await import(pathToFileURL(D + '/data/venues.mjs').href);
 // 斗地主每道军令按 venues.ts 的随战力缴获与净期望（笨玩家实测系数）；DDZ=0 关掉斗地主
 const DDZ = process.env.DDZ !== '0';
 // 官道/江东/许都 10-15 起收起：有斗地主时军令全用在斗地主与攻郡（AUTO=1 恢复旧的自动战对照）
@@ -16,10 +16,19 @@ const DDZ_ONLY = DDZ && process.env.AUTO !== '1';
 const RW = Number(process.env.RW ?? 1), CM = Number(process.env.CM ?? 1);
 // v2.1 伴侣上牌桌：随行技能抬高斗地主净期望，按最坏情况（三重上限 +15%，scripts/doudizhu-partner-sim.mjs 校准）乘上；PARTNER_EV=1 是没有伴侣技能的对照
 const PARTNER_EV = Number(process.env.PARTNER_EV ?? 1.15);
+// v2.2 邻郡反攻：一个游玩日按一天真实时间算（48 小时间隔 = 2 日、72 小时保护/半价收复 = 3 日、没目标 6 小时后再看 ≈ 次日）
+const SIEGE = process.env.SIEGE !== '0', REPAIR = process.env.REPAIR !== '0';
+const DAY_MS = 24 * 3600 * 1000;
+// SIEGE_GAP_DAYS / BOUNTY_RATE 只给调参对照用，默认读 siege.ts 的常量
+const SIEGE_GAP = Number(process.env.SIEGE_GAP_DAYS ?? Math.round(sg.SIEGE_INTERVAL_MS / DAY_MS)), PROTECT_DAYS = Math.round(sg.FIEF_PROTECT_MS / DAY_MS), RECLAIM_DAYS = Math.round(sg.RECLAIM_WINDOW_MS / DAY_MS);
+// 守城胜率：城主坐庄时用笨玩家当地主胜率（doudizhu-role-sim 2 万局：对两个生手 67.2%、两个老手 42.0%）；不坐庄时按当农民（65.7% / 58.5%）
+const DEFEND_WIN = sg.DEFENSE_FORCE_LANDLORD ? { novice: 0.672, veteran: 0.42, master: 0.42 } : { novice: 0.657, veteran: 0.585, master: 0.5 };
 function run(lordId, clicksPerDay) {
   const lord = g.lords.find((l) => l.id === lordId);
   let gold = 1000, home = 1, farm = 0, day = 1, partners = [g.partners.find((p) => p.bestMatchLordId === lordId) ?? g.partners[0]], weapon = g.weapons[0], owned = ['xuanjian'], claimed = new Set();
-  let conquestTries = 0; let orders = 3; const holdings = {}; let raid = null, nextRaid = 10, wins = { land: 0, naval: 0, court: 0, frontier: 0, ddz: 0 }, lostRaids = 0, income = { battle: 0, work: 0, quest: 0, ddz: 0 }, spent = 0;
+  let conquestTries = 0; let orders = 3; const holdings = {}; let wins = { land: 0, naval: 0, court: 0, frontier: 0, ddz: 0 }, income = { battle: 0, work: 0, quest: 0, ddz: 0, bounty: 0 }, spent = 0;
+  // 反攻：城防、得郡日、失郡日、下次反攻日
+  const walls = {}, takenDay = {}, lostDay = {}; let nextSiege = 0; const siegeStat = { sieges: 0, held: 0, fell: 0, lost: 0, repaired: 0, reclaimed: 0 }; let repairSpent = 0;
   const ms = {}; const mark = (k, d) => { if (!ms[k]) ms[k] = d; };
   for (let d = 1; d <= Number(process.env.DAYS ?? 120); d++) {
     const H = g.findHomeLevel(home), F = g.findFarmLevel(farm);
@@ -27,8 +36,6 @@ function run(lordId, clicksPerDay) {
     for (let c = 0; c < clicksPerDay; c++) {
       day++; const inc = b.totalDailyIncome(H.dailyIncome, F.incomePercent, 0, intel, F.flatIncome, ff.fiefIncomePercent(holdings)); if (day % 2 === 0 || (process.env.ORDER_EARLY && home < 4)) orders = Math.min(ff.orderCapFor(holdings), orders + 1);
       const ev = pr.getDailyEvent(day, inc)?.goldDelta ?? 0; gold += inc + ev; income.work += inc + ev;
-      const f = fr.advanceFrontier({ gold, homeLevel: home, frontierRaid: raid, nextRaidDay: nextRaid }, day);
-      if (f.goldDelta < 0) { lostRaids++; } gold += f.goldDelta; raid = f.frontierRaid; nextRaid = f.nextRaidDay;
     }
     const power = b.calculateTotalPower(lord, partners, weapon, H);
     const st = { fiefs: holdings, resolvedPartnerEvents: {}, generation: 1, legacyPoints: 0, homeLevel: home, farmLevel: farm, ownedPartnerIds: partners.map((p) => p.id), equippedWeaponId: weapon.id, battleWins: wins.land + wins.naval + wins.court + wins.frontier, navalWins: wins.naval, courtWins: wins.court, frontierWins: wins.frontier };
@@ -45,15 +52,34 @@ function run(lordId, clicksPerDay) {
     const CONQ_WIN = { novice: 0.65, veteran: 0.5, master: 0.54 };
     while (DDZ && orders > 0 && home >= 5) {
       const target = ff.nextFief(holdings); if (!target) break;
-      const stake = Math.round(target.cost * ff.CONQUEST_STAKE_RATE); if (gold < stake) break;
+      const reclaim = lostDay[target.id] !== undefined && d - lostDay[target.id] < RECLAIM_DAYS;
+      const stake = Math.round(target.cost * (reclaim ? sg.RECLAIM_STAKE_RATE : ff.CONQUEST_STAKE_RATE)); if (gold < stake) break;
       orders--; gold -= stake; spent += stake; conquestTries++;
-      if (Math.random() < CONQ_WIN[target.skill]) { holdings[target.id] = process.env.POLICY ?? 'farming'; mark('fief' + ff.ownedFiefCount(holdings), d); }
+      if (Math.random() < CONQ_WIN[target.skill]) {
+        holdings[target.id] = process.env.POLICY ?? 'farming'; walls[target.id] = sg.FIEF_WALLS; takenDay[target.id] = d;
+        if (lostDay[target.id] !== undefined) { siegeStat.reclaimed++; delete lostDay[target.id]; }
+        if (!nextSiege) nextSiege = d + SIEGE_GAP;
+        mark('fief' + ff.ownedFiefCount(holdings), d);
+      }
     }
     while (orders > 0 && venue && (DDZ_ONLY || ddzEv >= autoEv(arenas[0][1]))) { orders--; const ev = Math.round(ddzEv * (0.4 + 1.2 * Math.random())); gold = Math.max(0, gold + ev); income.ddz += Math.max(0, ev); wins.ddz++; mark('ddz_' + venue.id, d); }
     while (orders > 0) { orders--; const [k, e] = arenas[0]; if (Math.random() < 0.75) { gold += Math.round(e.rewardGold * RW); income.battle += Math.round(e.rewardGold * RW); wins[k]++; } else { gold -= Math.min(gold, Math.round(e.rewardGold * b.battleLossRate(0.75))); } }
-    if (raid) { const e = b.matchFrontierEnemy(power); if (Math.random() < 0.75) { gold += e.rewardGold; income.battle += e.rewardGold; wins.frontier++; } else { gold -= fr.raidPenalty(gold); } raid = null; nextRaid = day + 10; }
+    // 邻郡反攻：侯府后、有郡、到期就起，当天应战（不耗军令、不扣金）；只打末端郡，保护期内的不打
+    if (SIEGE && home >= 5 && ff.ownedFiefCount(holdings) > 0 && nextSiege && d >= nextSiege) {
+      const target = sg.exposedFiefs(holdings).filter((f) => d - takenDay[f.id] >= PROTECT_DAYS).sort((x, y) => walls[x.id] - walls[y.id] || takenDay[y.id] - takenDay[x.id])[0];
+      if (!target) nextSiege = d + 1;
+      else {
+        siegeStat.sieges++; nextSiege = d + SIEGE_GAP;
+        if (Math.random() < DEFEND_WIN[sg.siegeSkill(target, holdings[target.id])]) { const bounty = process.env.BOUNTY_RATE ? Math.round(target.cost * Number(process.env.BOUNTY_RATE)) : sg.siegeBounty(target); gold += bounty; income.bounty += bounty; walls[target.id] = sg.FIEF_WALLS; wins.frontier++; siegeStat.held++; }
+        else if (--walls[target.id] <= 0) { delete holdings[target.id]; delete walls[target.id]; delete takenDay[target.id]; lostDay[target.id] = d; orders = Math.min(orders, ff.orderCapFor(holdings)); siegeStat.lost++; if (ff.ownedFiefCount(holdings) === 0) nextSiege = 0; }
+        else siegeStat.fell++;
+      }
+    }
     // 花钱
     for (;;) {
+      // 城防告急先修（再失手就丢郡，收复押金比修城贵得多）
+      const cracked = REPAIR ? ff.fiefs.find((f) => holdings[f.id] && walls[f.id] < sg.FIEF_WALLS && gold >= sg.wallRepairCost(f)) : null;
+      if (cracked) { const c = sg.wallRepairCost(cracked); gold -= c; spent += c; repairSpent += c; walls[cracked.id] = sg.FIEF_WALLS; siegeStat.repaired++; continue; }
       const nh = g.homeLevels.find((h) => h.level === home + 1); if (nh && gold >= nh.upgradeCost * CM) { gold -= nh.upgradeCost * CM; spent += nh.upgradeCost * CM; home++; mark('home' + home, d); continue; }
       const nf = home >= 3 ? g.farmLevels.find((x) => x.level === farm + 1) : null; if (nf && gold >= nf.cost * CM) { gold -= nf.cost * CM; spent += nf.cost * CM; farm++; mark('farm' + farm, d); continue; }
       const bw = g.weapons.filter((w) => !owned.includes(w.id) && gold >= w.price).sort((x, y) => b.weaponBonusForLord(y, lordId) - b.weaponBonusForLord(x, lordId))[0];
@@ -65,13 +91,15 @@ function run(lordId, clicksPerDay) {
     }
     if (home === 6 && farm === 5 && partners.length === 10) { mark('ALL', d); }
   }
-  return { ms, gold, income, spent, lostRaids, wins, conquestTries };
+  return { ms, gold, income, spent, wins, conquestTries, siegeStat, repairSpent };
 }
 const med = (a) => a.sort((x, y) => x - y)[a.length >> 1];
 for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
   const R = []; for (let i = 0; i < 100; i++) R.push(run(lordId, clicks));
   const k = (key) => { const v = R.map((r) => r.ms[key]).filter(Boolean); return v.length === R.length ? med(v) : v.length ? `${med(v)}(${v.length}%)` : '-'; };
-  const inc = R.map((r) => r.income); const tot = inc.map((i) => i.battle + i.work + i.quest + i.ddz);
+  const inc = R.map((r) => r.income); const tot = inc.map((i) => i.battle + i.work + i.quest + i.ddz + i.bounty);
   const share = (f) => Math.round(100 * med(inc.map((i, j) => i[f] / tot[j])));
-  console.log(`PARTNER_EV=${PARTNER_EV} RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 伴侣10 第${k('partners10')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 收入占比 政务${share('work')}% 斗地主${share('ddz')}% 自动战${share('battle')}% | 中/高级场 第${k('ddz_middle')}/${k('ddz_high')}日 | 攻郡 ${med(R.map((r) => r.conquestTries))} 次`);
+  const shareF = (f) => (100 * med(inc.map((i, j) => i[f] / tot[j]))).toFixed(2);
+  const avg = (f) => (R.reduce((sum, r) => sum + r.siegeStat[f], 0) / R.length).toFixed(1);
+  console.log(`PARTNER_EV=${PARTNER_EV} RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 伴侣10 第${k('partners10')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 收入占比 政务${share('work')}% 斗地主${share('ddz')}% 自动战${share('battle')}% | 中/高级场 第${k('ddz_middle')}/${k('ddz_high')}日 | 攻郡 ${med(R.map((r) => r.conquestTries))} 次${SIEGE ? ` | 反攻 ${avg('sieges')} 次：守住 ${avg('held')} · 告急 ${avg('fell')} · 失郡 ${avg('lost')} · 修城 ${avg('repaired')} · 收复 ${avg('reclaimed')}（平均每局）| 犒赏占收入 ${shareF('bounty')}%，扣修城后净 ${(100 * med(R.map((r, j) => (r.income.bounty - r.repairSpent) / tot[j]))).toFixed(2)}%` : ' | 反攻关'}`);
 }

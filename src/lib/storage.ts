@@ -1,4 +1,4 @@
-import type { GameState, Screen } from '../types';
+import type { ConquestKind, GameState, Screen } from '../types';
 import { AFFAIR_TRAINING_CAP } from '../data/affairs';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { choiceGoldValue, collectEarnedTitles, ENDING_LINEAGE_TITLE_IDS, getChoiceEvent, getDailyEvent, quests, titles } from '../data/progression';
@@ -9,7 +9,8 @@ import { connectedHoldings, fiefs as fiefCatalog } from '../data/fiefs';
 import { findAmbition, isAmbitionId, trimChronicle } from '../data/ambitions';
 import { bountyScale, isRealmId, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
-import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
+import { RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
+import { expireSiege, reconcileSiege, releaseStaleSiege, sanitizeSiege, sanitizeTimeMap } from '../lib/siege';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
 import { defaultEscort } from '../data/partnerSkills';
 
@@ -39,6 +40,12 @@ export const defaultGameState: GameState = {
   frontierWins: 0,
   frontierRaid: null,
   nextRaidDay: RAID_INTERVAL_DAYS,
+  siege: null,
+  nextSiegeAt: 0,
+  fiefWalls: {},
+  fiefTakenAt: {},
+  lostFiefs: {},
+  peakFiefs: 0,
   generation: 1,
   legacyPoints: 0,
   pendingChoice: null,
@@ -78,7 +85,7 @@ export function loadGameState(): GameState {
   try {
     const parsed = JSON.parse(raw) as Partial<GameState>;
     const restored = normalizeGameState(parsed);
-    return settleExpiredRaid(applyOfflineIncome(settleAbandonedBattle(restored)));
+    return settleExpiredSiege(applyOfflineIncome(settleAbandonedBattle(restored)));
   } catch {
     return defaultGameState;
   }
@@ -207,7 +214,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     : defaultEscort({ ownedPartnerIds, selectedLordId });
 
   // 家声按读入时的存档即时补记（老存档没有 earnedTitles）
-  return collectEarnedTitles({
+  const restored: GameState = {
     ...defaultGameState,
     screen: safeScreen,
     selectedLordId,
@@ -227,7 +234,14 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     navalWins: sanitizeNumber(parsed.navalWins, defaultGameState.navalWins, 0),
     courtWins: sanitizeNumber(parsed.courtWins, defaultGameState.courtWins, 0),
     frontierWins: sanitizeNumber(parsed.frontierWins, defaultGameState.frontierWins, 0),
-    frontierRaid: sanitizeRaid(parsed.frontierRaid),
+    // 北疆边患 v2.2 收起：旧存档里的边患一律作废，不扣金
+    frontierRaid: null,
+    siege: sanitizeSiege(parsed.siege),
+    nextSiegeAt: typeof parsed.nextSiegeAt === 'number' && Number.isFinite(parsed.nextSiegeAt) && parsed.nextSiegeAt > 0 ? parsed.nextSiegeAt : 0,
+    fiefWalls: sanitizeTimeMap(parsed.fiefWalls),
+    fiefTakenAt: sanitizeTimeMap(parsed.fiefTakenAt),
+    lostFiefs: sanitizeTimeMap(parsed.lostFiefs),
+    peakFiefs: Math.min(6, sanitizeNumber(parsed.peakFiefs, 0, 0)),
     generation: sanitizeNumber(parsed.generation, 1, 1),
     legacyPoints: Math.min(LEGACY_MAX_POINTS, sanitizeNumber(parsed.legacyPoints, 0, 0)),
     pendingChoice: sanitizeChoice(parsed.pendingChoice),
@@ -254,7 +268,13 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     lastScreen: safeScreen,
     eventLog: sanitizeEventLog(parsed.eventLog),
     lastSavedAt: typeof parsed.lastSavedAt === 'number' && Number.isFinite(parsed.lastSavedAt) ? parsed.lastSavedAt : now
-  });
+  };
+  // 城防、得郡时刻、反攻计时按现有封地补齐（老存档的郡先有 72 小时保护，48 小时后才起第一次反攻）
+  const withSiege = releaseStaleSiege(reconcileSiege(restored, now), now);
+  const hadRaid = sanitizeRaid(parsed.frontierRaid) !== null;
+  return collectEarnedTitles(hadRaid
+    ? { ...withSiege, eventLog: [{ id: `raid-retired-${now}`, day: withSiege.day, title: '北疆已靖', detail: '北疆已靖，边军调往诸郡。往后留意邻郡反攻，守城不耗军令。' }, ...withSiege.eventLog].slice(0, MAX_EVENT_LOG) }
+    : withSiege);
 }
 
 function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
@@ -280,11 +300,12 @@ function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
 
 function sanitizeConquest(value: unknown) {
   if (!value || typeof value !== 'object') return null;
-  const c = value as { fiefId?: unknown; policyId?: unknown; stake?: unknown; refundRate?: unknown };
+  const c = value as { fiefId?: unknown; policyId?: unknown; stake?: unknown; refundRate?: unknown; kind?: unknown };
   if (typeof c.fiefId !== 'string' || !fiefCatalog.some((fief) => fief.id === c.fiefId) || !isFiefPolicyId(c.policyId)) return null;
   // refundRate：糜夫人「舍身」未克退还比例（v2.1 新增，老存档没有就不退）
   const refundRate = typeof c.refundRate === 'number' && Number.isFinite(c.refundRate) && c.refundRate > 0 ? Math.min(1, c.refundRate) : 0;
-  return { fiefId: c.fiefId, policyId: c.policyId, stake: typeof c.stake === 'number' && Number.isFinite(c.stake) ? Math.max(0, Math.floor(c.stake)) : 0, ...(refundRate > 0 ? { refundRate } : {}) };
+  const kind: ConquestKind | undefined = c.kind === 'defend' || c.kind === 'reclaim' ? c.kind : undefined;
+  return { fiefId: c.fiefId, policyId: c.policyId, stake: typeof c.stake === 'number' && Number.isFinite(c.stake) ? Math.max(0, Math.floor(c.stake)) : 0, ...(refundRate > 0 ? { refundRate } : {}), ...(kind ? { kind } : {}) };
 }
 
 /** 战斗中途刷新/关页：按认输结算（北疆只是退守，不扣金） */
@@ -314,6 +335,18 @@ function settleAbandonedBattle(state: GameState): GameState {
       ].slice(0, MAX_EVENT_LOG)
     };
   }
+  // 守城局中途离开（关页、刷新、崩溃）：反攻保留，可以重打；主动「弃城」才按失手
+  if (state.activeBattle.conquest?.kind === 'defend') {
+    const fief = fiefCatalog.find((item) => item.id === state.activeBattle?.conquest?.fiefId);
+    return {
+      ...state,
+      activeBattle: null,
+      eventLog: [
+        { id: `abandon-${Date.now()}`, day: state.day, title: '守城暂歇', detail: `守卫${fief?.name ?? '郡城'}时中途离席，反攻仍在，应战期限内可再上牌桌。` },
+        ...state.eventLog
+      ].slice(0, MAX_EVENT_LOG)
+    };
+  }
   // 攻郡牌局：军资出兵时已扣，中途离开按攻城失利
   if (state.activeBattle.conquest) {
     const { fiefId, stake, refundRate = 0 } = state.activeBattle.conquest;
@@ -339,7 +372,7 @@ function settleAbandonedBattle(state: GameState): GameState {
     gold: state.gold - loss,
     battleLosses: state.battleLosses + 1,
     eventLog: [
-      { id: `abandon-${Date.now()}`, day: state.day, title: '中途离阵', detail: mode === 'frontier' ? '战事未了即离开，边患仍在。' : `战事未了即离开，按认输处理，折损军资 ${loss.toLocaleString()} 金。`, goldDelta: loss > 0 ? -loss : undefined },
+      { id: `abandon-${Date.now()}`, day: state.day, title: '中途离阵', detail: mode === 'frontier' ? '战事未了即离开，北疆已靖，不扣金。' : `战事未了即离开，按认输处理，折损军资 ${loss.toLocaleString()} 金。`, goldDelta: loss > 0 ? -loss : undefined },
       ...state.eventLog
     ].slice(0, MAX_EVENT_LOG)
   };
@@ -525,17 +558,17 @@ function sanitizeEventLog(value: unknown) {
     .slice(0, MAX_EVENT_LOG);
 }
 
-/** 关着页面时边患到期：读档即失守扣金一次（离线不会起新边患） */
-function settleExpiredRaid(state: GameState): GameState {
-  const step = expireFrontier(state, state.day);
+/** 关着页面时反攻到期：城防 −1（最低 1），排下一次（离线不起新反攻，读档后的在线检查才起） */
+function settleExpiredSiege(state: GameState): GameState {
+  const step = expireSiege(state);
   if (!step.event) {
     return state;
   }
   return {
     ...state,
-    gold: state.gold + step.goldDelta,
-    frontierRaid: step.frontierRaid,
-    nextRaidDay: step.nextRaidDay,
+    siege: step.siege,
+    nextSiegeAt: step.nextSiegeAt,
+    fiefWalls: step.fiefWalls,
     eventLog: [step.event, ...state.eventLog].slice(0, MAX_EVENT_LOG)
   };
 }

@@ -190,7 +190,7 @@ export const lords: Lord[] = [
     strength: 95,
     intelligence: 60,
     charisma: 78,
-    description: '西凉铁骑之主，冲阵无人能挡，陆战与边患所向披靡，但谋略与人望须靠伴侣补足。',
+    description: '西凉铁骑之主，冲阵无人能挡，陆战守城所向披靡，但谋略与人望须靠伴侣补足。',
     imagePath: 'assets/lords/lord_machao.png'
   },
   {

@@ -168,11 +168,14 @@ export function App() {
 
   // 进出征地图时预选的区域：屯田机会进西蜀、边患告警进北疆、引导出征进官道
   const [battleEntry, setBattleEntry] = useState<RegionId | undefined>(undefined);
-  const handleBattle = (region?: RegionId) => {
+  // 疆域图预选的郡：首页告急条「去守城 / 去修城 / 去收复」直达该郡
+  const [fiefEntry, setFiefEntry] = useState<string | undefined>(undefined);
+  const handleBattle = (region?: RegionId, fiefId?: string) => {
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
     setModal(null);
     setBattleEntry(region);
+    setFiefEntry(fiefId);
     game.setScreen('battle');
   };
 
@@ -282,7 +285,21 @@ export function App() {
           farmCost={game.nextFarm ? realmFarmCost(game.state.realms, game.nextFarm.cost) : 0}
           battleBonus={game.state.nextBattleBonus}
           day={game.state.day}
-          frontier={{ raid: game.state.frontierRaid, nextRaidDay: game.state.nextRaidDay, day: game.state.day }}
+          siege={game.state.siege}
+          fiefWalls={game.state.fiefWalls}
+          lostFiefs={game.state.lostFiefs}
+          initialFiefId={fiefEntry}
+          onStartDefense={game.startDefense}
+          onDefenseResolved={(win) => {
+            game.resolveDefense(win);
+            if (win) audio.playSfx('audio/sfx/sfx_coins.mp3', 0.5);
+          }}
+          onAbandonSiege={game.abandonSiege}
+          onRepairWall={(fiefId) => {
+            if (!game.repairWall(fiefId)) return false;
+            audio.playSfx('audio/sfx/sfx_coins.mp3', 0.4);
+            return true;
+          }}
           onUpgradeFarm={() => {
             if (!game.upgradeFarm()) return false;
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.4);
@@ -350,6 +367,7 @@ export function App() {
           onBattle={() => handleBattle()}
           onOpenFarm={() => handleBattle('xishu')}
           onBattleAt={handleBattle}
+          onOpenSiege={(fiefId) => handleBattle('jingzhou', fiefId)}
           onClaimQuest={(questId) => {
             game.claimQuest(questId);
             audio.playSfx('audio/sfx/sfx_coins.mp3', 0.36);

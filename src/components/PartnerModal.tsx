@@ -56,7 +56,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
         {onTalk && state.ownedPartnerIds.length > 0 && (
           <button type="button" className="partner-market__talk" onClick={onTalk}>与入府伴侣闲话家常 →</button>
         )}
-        <p className="stat-legend">技能为主、属性为辅：伴侣随你上牌桌各有一招（出征页选随行），入府一重，了却两段心事各升一重，良缘再升一重。属性：武力→斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</p>
+        <p className="stat-legend">技能为主、属性为辅：伴侣随你上牌桌各有一招（出征页选随行），入府一重，了却两段心事各升一重，良缘再升一重。属性：武力→斗地主场次 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</p>
         {notice && (
           <p className="partner-market__notice" role="status">
             {notice}

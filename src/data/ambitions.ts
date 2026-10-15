@@ -53,7 +53,8 @@ export const ambitions: Ambition[] = [
     name: '开疆',
     motto: '普天之下，莫非王土',
     target: () => 1,
-    progress: (state) => Math.max(0, ownedFiefCount(state.fiefs) - (state.ambition?.baseFiefs ?? 0)),
+    // 按本代最高郡数算：失郡不倒退，丢了再收复也刷不出进度
+    progress: (state) => Math.max(0, Math.max(state.peakFiefs ?? 0, ownedFiefCount(state.fiefs)) - (state.ambition?.baseFiefs ?? 0)),
     unit: '郡',
     describe: (target) => `本代新开拓 ${target} 郡封地`,
     hint: (state) => {

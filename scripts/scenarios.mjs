@@ -230,17 +230,17 @@ await scenario('兵器与经济', async () => {
 });
 
 await scenario('自动战收起', async () => {
-  // 官道/江东/许都 10-15 收起：其他战场只剩荆州、西蜀屯田、北疆；旧的「引导去官道」入口落到荆州
+  // 官道/江东/许都 10-15 收起，北疆 v2.2 收起：其他战场只剩荆州、西蜀屯田；旧的「引导去官道」入口落到荆州
   const page = await open(save({ homeLevel: 4 }));
   await page.getByRole('button', { name: '出征', exact: true }).click();
   await openMap(page);
   const nodes = await page.locator('.map-node').allInnerTexts();
-  check('其他战场只剩荆州、西蜀、北疆', nodes.length === 3 && !nodes.some((t) => /官道|江东|许都/.test(t)), nodes.join(' / '));
+  check('其他战场只剩荆州、西蜀', nodes.length === 2 && !nodes.some((t) => /官道|江东|许都|北疆/.test(t)), nodes.join(' / '));
   check('不再有今日军功说明', (await page.locator('.map-term-note').count()) === 0);
   await page.context().close();
   const rec = await open(save({ homeLevel: 4, battleWins: 7, frontierWins: 2, battleLosses: 3 }));
   await openGoals(rec);
-  check('战绩改为牌局与攻郡、靖边', (await rec.locator('.home-record').innerText()).includes('胜 7（牌局与攻郡 5 · 靖边 2）· 负 3'), await rec.locator('.home-record').innerText());
+  check('战绩改为牌局与攻郡、守城', (await rec.locator('.home-record').innerText()).includes('胜 7（牌局与攻郡 5 · 守城 2）· 负 3'), await rec.locator('.home-record').innerText());
   await rec.context().close();
 });
 
@@ -275,88 +275,7 @@ await scenario('西蜀屯田', async () => {
   await page.context().close();
 });
 
-await scenario('北疆边患', async () => {
-  // 宅邸 3 级：北疆未开放
-  const locked = await open(save({ homeLevel: 3 }));
-  await locked.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(locked);
-  check('宅邸 3 级时北疆未开放', await locked.getByRole('button', { name: /北疆/ }).isDisabled());
-  await locked.context().close();
-
-  // 第 9 日 → 第 10 日起边患：主城提醒、地图标红
-  const start = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null }));
-  await start.getByRole('button', { name: /^处理政务/ }).click();
-  await start.waitForTimeout(500);
-  let s = await read(start);
-  const win24 = s.frontierRaid ? s.frontierRaid.dueAt - s.frontierRaid.startedAt : 0;
-  check('第 10 日起边患并给 24 小时窗口', s.frontierRaid?.startDay === 10 && win24 === 24 * 3600 * 1000, JSON.stringify(s.frontierRaid));
-  check('主城显示边患提醒', await start.locator('.frontier-alert').isVisible());
-  await dismissChoice(start);
-  await start.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(start);
-  check('地图北疆显示边患', (await start.getByRole('button', { name: /北疆/ }).innerText()).includes('边患'));
-  await start.context().close();
-
-  // 逾期不管：下一次处理政务扣 5%（封顶 5000）
-  const ignore = await open(save({ homeLevel: 4, day: 13, gold: 40000, frontierRaid: { startDay: 10, startedAt: Date.now() - 25 * 3600 * 1000, dueAt: Date.now() - 3600 * 1000 }, nextRaidDay: 10 }));
-  await ignore.waitForTimeout(500);
-  s = await read(ignore);
-  check('读档时逾期边患直接失守扣 5%', s.frontierRaid === null && s.gold === 38000 && s.nextRaidDay === 23 && s.eventLog[0]?.title === '边患失守', `gold=${s.gold} next=${s.nextRaidDay}`);
-
-  // 连点政务烧不掉窗口；离线 20 分钟也不会起新边患
-  const burn = await open(save({ homeLevel: 4, day: 31, nextRaidDay: 32, frontierRaid: null, gold: 40000, ownedPartnerIds: [] }));
-  for (let i = 0; i < 6; i++) { await burn.getByRole('button', { name: /^处理政务/ }).click(); await burn.waitForTimeout(120); }
-  s = await read(burn);
-  check('连续处理政务不会让边患逾期', s.frontierRaid !== null && s.gold > 40000 && s.day === 37, `day=${s.day} raid=${Boolean(s.frontierRaid)}`);
-  await burn.context().close();
-  const offline = await open(save({ homeLevel: 4, day: 9, nextRaidDay: 10, frontierRaid: null, lastSavedAt: Date.now() - 241 * 3600 * 1000 }));
-  await offline.waitForTimeout(500);
-  s = await read(offline);
-  check('离线期间不起新边患也不扣金', s.frontierRaid === null && s.day === 249 && !s.eventLog.some((e) => e.title === '边患失守'));
-  await offline.context().close();
-  await ignore.context().close();
-
-  // 无边患时不能出关
-  const calm = await open(save({ homeLevel: 4, frontierRaid: null, nextRaidDay: 30 }));
-  await calm.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(calm);
-  await calm.getByRole('button', { name: /北疆/ }).click();
-  check('边境安宁时出关按钮禁用', await calm.getByRole('button', { name: /^出关迎战/ }).isDisabled());
-  await calm.context().close();
-
-  // 退守关内：不扣金、边患保留
-  const retreat = await open(save({ homeLevel: 4, day: 11, gold: 20000, frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10 }));
-  await retreat.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(retreat);
-  await retreat.getByRole('button', { name: /北疆/ }).click();
-  await retreat.getByRole('button', { name: /^出关迎战/ }).click();
-  await retreat.getByRole('button', { name: '退守关内' }).waitFor();
-  await retreat.waitForTimeout(4500);
-  await retreat.getByRole('button', { name: '退守关内' }).click();
-  await retreat.waitForTimeout(500);
-  s = await read(retreat);
-  check('退守关内不扣金且边患保留', s.gold === 20000 && s.frontierRaid !== null && s.battleLosses === 1, `gold=${s.gold} raid=${Boolean(s.frontierRaid)}`);
-  await retreat.context().close();
-
-  // 迎战：胜则缴获 + 靖边 +1 + 解除；败则扣 5% + 解除
-  const fight = await open(save({ homeLevel: 4, day: 11, gold: 20000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10,
-    claimedQuestIds: ['upgrade-wood', 'first-partner', 'first-weapon', 'estate-third', 'first-win'] }));
-  await fight.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(fight);
-  await fight.getByRole('button', { name: /北疆/ }).click();
-  const panel = await fight.locator('[aria-label="边患说明"]').innerText();
-  const reward = Number(panel.match(/缴获 ([\d,]+) 金/)[1].replace(/,/g, ''));
-  const before = await read(fight);
-  await fight.getByRole('button', { name: /^出关迎战/ }).click();
-  await fight.getByText(/靖边得胜|边郡失守/).first().waitFor({ timeout: 90000 });
-  const win = (await fight.locator('h2').first().innerText()).includes('靖边得胜');
-  await fight.waitForTimeout(500);
-  const after = await read(fight);
-  check('边患迎战结算一致', after.frontierRaid === null && after.nextRaidDay === 21 && (win
-    ? after.gold - before.gold === reward && after.frontierWins === 1
-    : before.gold - after.gold === 1000 && after.frontierWins === 0), `${win ? '胜' : '负'} Δgold=${after.gold - before.gold}`);
-  await fight.context().close();
-});
+// 「北疆边患」10 项 v2.2 作废：北疆收起，改为疆域图上的邻郡反攻守城（见文末「守城·」各项）
 
 await scenario('传位', async () => {
   // 未到王城：按钮禁用并说明条件
@@ -599,22 +518,7 @@ await scenario('竖屏两行手牌', async () => {
   await page.context().close();
 });
 
-await scenario('战斗加速与押注上限', async () => {
-  // 自动战只剩北疆边患：直接结算几秒内出结果
-  const raid = { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 };
-  const page = await open(save({ day: 10, gold: 5000, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], homeLevel: 4, frontierRaid: raid, nextRaidDay: 10 }));
-  await dismissChoice(page);
-  await page.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(page);
-  await page.locator('.map-node').filter({ hasText: '北疆' }).click();
-  await page.getByRole('button', { name: /出关迎战/ }).click();
-  await page.getByRole('button', { name: '直接结算' }).waitFor({ timeout: 15000 });
-  const t0 = Date.now();
-  await page.getByRole('button', { name: '直接结算' }).click();
-  await page.getByText(/靖边得胜|边郡失守|退守关内|力竭/).first().waitFor({ timeout: 5000 });
-  check('直接结算立刻出结果', Date.now() - t0 < 3000 && (await page.locator('.battle-info').innerText()).includes('本战金币'));
-  await page.context().close();
-});
+// 「战斗加速与押注上限」v2.2 作废：自动战只剩北疆一处入口，北疆收起后 HP 自动战已无入口（引擎代码保留到下个版本整体删除）
 
 await scenario('离线保留事件与升阶画面', async () => {
   // 离线 12 天经过第 10 日：商旅归附保留待决断
@@ -640,33 +544,24 @@ await scenario('品级定价与中途离阵', async () => {
   const tags = (await page.locator('.partner-card').filter({ hasText: '貂蝉' }).innerText()) + (await page.locator('.partner-card').filter({ hasText: '蔡文姬' }).innerText());
   check('伴侣按品级定价（传说 > 名姬 > 贤助）', d > z && z > c && tags.includes('传说') && tags.includes('贤助'), `${d}/${z}/${c}`);
   await page.context().close();
-  // 北疆迎战中途刷新：只算退守，不扣金，边患仍在
-  const raid = { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 };
-  const fight = await open(save({ day: 10, gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'], frontierRaid: raid, nextRaidDay: 10 }));
-  await dismissChoice(fight);
-  await fight.getByRole('button', { name: '出征', exact: true }).click();
-  await openMap(fight);
-  await fight.locator('.map-node').filter({ hasText: '北疆' }).click();
-  await fight.getByRole('button', { name: /出关迎战/ }).click();
-  await fight.waitForTimeout(800);
-  await fight.reload({ waitUntil: 'domcontentloaded' });
-  await fight.locator('.home-v2').waitFor({ timeout: 8000 });
-  const s2 = await read(fight);
-  check('北疆中途刷新：不扣金、边患仍在', s2.activeBattle === null && s2.gold === 5000 && s2.frontierRaid !== null && s2.eventLog[0]?.title === '中途离阵', JSON.stringify({ gold: s2.gold, raid: Boolean(s2.frontierRaid), t: s2.eventLog[0]?.title }));
-  await fight.context().close();
+  // 「北疆中途刷新」v2.2 迁到「守城·刷新保留可重打」
 });
 
 await scenario('军令', async () => {
-  // 0 道军令：出征按钮禁用并写明几日后回复；北疆边患不受限
-  const page = await open(save({ day: 10, orders: 0, homeLevel: 4, frontierRaid: { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 }, nextRaidDay: 10 }));
+  // 0 道军令：出征按钮禁用并写明几日后回复；守城不受限（v2.2 由北疆边患迁来）
+  const now = Date.now();
+  const page = await open(save({ day: 10, orders: 0, homeLevel: 5, fiefs: { nanyang: 'farming' }, fiefTakenAt: { nanyang: now - 100 * 3600e3 }, nextSiegeAt: now + 3600e3, siege: { fiefId: 'nanyang', attacker: '张绣', skill: 'novice', startedAt: now, dueAt: now + 3600e3 } }));
   await page.getByRole('button', { name: '出征', exact: true }).click();
   await openMap(page);
   check('出征页标题显示军令', (await page.locator('.screen-header').first().innerText()).includes('军令 0/6'));
   await page.locator('.map-node').filter({ hasText: '荆州' }).click();
   const go = page.getByRole('button', { name: /军令不足/ });
   check('军令为 0 时不能进斗地主', (await go.isDisabled()) && (await go.innerText()).includes('2 日后'));
-  await page.locator('.map-node').filter({ hasText: '北疆' }).click();
-  check('北疆边患不耗军令', await page.getByRole('button', { name: /出关迎战/ }).isEnabled());
+  await page.getByRole('button', { name: '斗地主', exact: true }).click();
+  await page.locator('.conquest-map g.conquest-node').filter({ hasText: '南阳' }).click({ force: true });
+  await page.getByRole('button', { name: /迎战守城/ }).click();
+  await page.getByText('守卫南阳郡').first().waitFor();
+  check('守城不耗军令（0 道也能迎战）', (await read(page)).orders === 0 && (await read(page)).activeBattle?.conquest?.kind === 'defend');
   await page.context().close();
   // 进斗地主扣 1 道；处理政务到双数日回 1 道（府邸起每 2 日）
   const p2 = await open(save({ day: 11, orders: 2, gold: 5000, homeLevel: 4, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan', 'zhurong'] }));
@@ -1174,12 +1069,12 @@ await scenario('四十日试玩修复', async () => {
   check('武力任务显示进度', /\d+\/180/.test(await zero.locator('.quest-item').filter({ hasText: '威震一郡' }).innerText()));
   check('顶栏日期标签为「日」', (await zero.locator('.home-hud__chips').innerText()).includes('\n日'));
   await zero.context().close();
-  // 升府邸：纪事写明新开放，边患推迟三日
-  const up = await open(save({ homeLevel: 3, gold: 20000, day: 18, nextRaidDay: 10 }));
+  // 升侯府：纪事写明新开放攻郡与反攻（v2.2 北疆收起，府邸不再新开放内容）
+  const up = await open(save({ homeLevel: 4, gold: 200000, day: 18 }));
   await up.getByRole('button', { name: /升级宅邸/ }).click();
   await up.waitForTimeout(3000);
   const u = await read(up);
-  check('升府邸纪事写明新开放且边患推迟', u.homeLevel === 4 && (u.eventLog[0]?.detail ?? '').includes('新开放：北疆边患') && u.nextRaidDay === 21, JSON.stringify({ d: u.eventLog[0]?.detail, n: u.nextRaidDay }));
+  check('升侯府纪事写明新开放攻郡且诸郡会遭反攻', u.homeLevel === 5 && (u.eventLog[0]?.detail ?? '').includes('新开放：攻郡开疆（诸郡会遭反攻）'), JSON.stringify({ d: u.eventLog[0]?.detail }));
   await up.context().close();
   // 钱够时机会栏提示兵器
   const rich = await open(save({ gold: 6000 }));
@@ -1368,7 +1263,7 @@ await scenario('出征直达斗地主', async () => {
   await page.getByRole('button', { name: /^进入斗地主/ }).waitFor();
   check('点出征是疆域图 + 斗地主选场', (await page.locator('.expedition-map').count()) === 0 && (await page.locator('.conquest-map').isVisible()) && (await page.locator('h2').first().innerText()) === '出征' && (await page.locator('.venue-card').count()) === 3);
   await page.getByRole('button', { name: '其他战场 ›' }).click();
-  check('其他战场展开小地图', (await page.locator('.expedition-map').isVisible()) && (await page.locator('.map-node').count()) === 3);
+  check('其他战场展开小地图', (await page.locator('.expedition-map').isVisible()) && (await page.locator('.map-node').count()) === 2); // v2.2 北疆收起：只剩荆州、西蜀
   await page.getByRole('button', { name: '斗地主', exact: true }).click();
   check('地图里可一键回到出征页', (await page.locator('.expedition-map').count()) === 0 && (await page.locator('.conquest-map').isVisible()));
   await page.context().close();
@@ -1784,15 +1679,13 @@ await scenario('斗地主', async () => {
 });
 
 await scenario('主城入口与加成文案', async () => {
-  const raid = { startDay: 10, startedAt: Date.now(), dueAt: Date.now() + 3600 * 1000 };
-  // 边患告警「去迎战」直接选中北疆，主按钮是出关迎战；有练兵之策时预览按翻倍后金额
-  const fr = await open(save({ homeLevel: 4, day: 11, gold: 20000, frontierRaid: raid, nextRaidDay: 10, nextBattleBonus: 2 }));
-  await fr.getByRole('button', { name: '去迎战 →' }).click();
-  await openMap(fr);
-  check('去迎战选中北疆', (await fr.locator('.map-node.is-selected').innerText()).includes('北疆'));
-  check('去迎战主按钮为出关迎战', await fr.getByRole('button', { name: /^出关迎战/ }).isEnabled() && !(await fr.getByRole('button', { name: /进入斗地主/ }).isVisible().catch(() => false)));
-  const frText = await fr.locator('.venue-summary').innerText();
-  check('边患预览含练兵之策翻倍', frText.includes('（练兵之策 ×2）'), frText.slice(0, 120));
+  // 告急条「去守城」直达疆域图并选中被围的郡，面板主按钮是迎战守城（v2.2 由北疆「去迎战」迁来；守城不赢金，练兵之策预览一项作废）
+  const now = Date.now();
+  const fr = await open(save({ homeLevel: 5, day: 11, gold: 20000, fiefs: { nanyang: 'farming', changsha: 'farming' }, fiefTakenAt: { nanyang: now - 100 * 3600e3, changsha: now - 100 * 3600e3 }, nextSiegeAt: now + 3600e3, siege: { fiefId: 'changsha', attacker: '韩玄', skill: 'novice', startedAt: now, dueAt: now + 3600e3 }, nextBattleBonus: 2 }));
+  await fr.getByRole('button', { name: '去守城 →' }).click();
+  await fr.locator('.conquest-map').waitFor();
+  check('去守城选中被围的长沙', (await fr.locator('.conquest-map g.conquest-node.is-selected').getAttribute('aria-label') ?? '').includes('长沙郡 已归府下') && (await fr.locator('.conquest-panel').innerText()).includes('长沙郡 · 告急'));
+  check('去守城主按钮为迎战守城', await fr.getByRole('button', { name: /迎战守城 · 韩玄/ }).isEnabled());
   await fr.context().close();
 
   // 今日军功与江东/许都加成文案随自动战 10-15 收起，不再测
@@ -2199,6 +2092,376 @@ await scenario('伴侣·随行统计累计', async () => {
   check('随行两局：skillStats 记 2 局、闭月发动 2 次', s.skillStats?.diaochan?.games === 2 && s.skillStats.diaochan.uses === 2, JSON.stringify(s.skillStats));
   await page.getByRole('button', { name: '伴侣', exact: true }).click();
   check('伴侣弹窗写「随行 2 局 · 发动 2 次」', (await page.getByRole('dialog', { name: '伴侣招募' }).getByLabel('牌桌技能 闭月').innerText()).includes('随行 2 局 · 发动 2 次'));
+  await page.context().close();
+});
+
+// ===== v2.2 邻郡反攻守城（替代北疆边患）：存档直接写时间戳，不真等 =====
+const HR = 3600e3;
+const near = (value, target, tol = 5 * 60e3) => typeof value === 'number' && Math.abs(value - target) <= tol;
+const ALL_FIEFS = { nanyang: 'farming', runan: 'farming', yingchuan: 'farming', changsha: 'farming', bajun: 'farming', liaodong: 'farming' };
+const allTaken = (at) => Object.fromEntries(Object.keys(ALL_FIEFS).map((id) => [id, at]));
+/** 侯府、南阳 + 汝南，汝南正被袁术反攻（城防满、早过保护期） */
+const siegeSave = (extra = {}) => {
+  const now = Date.now();
+  return save({
+    homeLevel: 5, gold: 100000, day: 40, orders: 3, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan'],
+    fiefs: { nanyang: 'farming', runan: 'farming' }, fiefWalls: { nanyang: 2, runan: 2 }, fiefTakenAt: { nanyang: now - 200 * HR, runan: now - 200 * HR },
+    nextSiegeAt: now + 40 * HR, siege: { fiefId: 'runan', attacker: '袁术', skill: 'novice', startedAt: now, dueAt: now + 20 * HR }, ...extra
+  });
+};
+const siegeLabel = async (page, name) => (await page.locator('.conquest-map g.conquest-node').filter({ hasText: name }).getAttribute('aria-label')) ?? '';
+
+await scenario('守城·起反攻只选末端郡', async () => {
+  // 六郡全占、都过了保护期、到点：只会在汝南、巴郡、辽东里挑（南阳、颍川、长沙是中间郡）
+  const page = await open(save({ homeLevel: 6, legacyPoints: 0, gold: 50000, fiefs: ALL_FIEFS, fiefTakenAt: allTaken(Date.now() - 200 * HR), nextSiegeAt: Date.now() - 1000 }));
+  await page.waitForTimeout(600);
+  let s = await read(page);
+  check('六郡全占只反攻末端郡', ['runan', 'bajun', 'liaodong'].includes(s.siege?.fiefId), JSON.stringify(s.siege));
+  check('应战窗口 24 小时、来犯将牌艺降档', s.siege && s.siege.dueAt - s.siege.startedAt === 24 * HR && s.siege.skill === ({ runan: 'novice', bajun: 'veteran', liaodong: 'veteran' })[s.siege.fiefId], JSON.stringify(s.siege));
+  check('首页告急条写明郡名、来犯将与剩余时间', /(汝南|巴|辽东)告急 · (袁术|严颜|公孙度)卷土重来 · 约 2[34] 小时/.test(await page.locator('.siege-alert').innerText()), await page.locator('.siege-alert').innerText());
+  check('纪事记下告急', (s.eventLog[0]?.title ?? '').endsWith('告急'), s.eventLog[0]?.title);
+  await page.getByRole('button', { name: '去守城 →' }).click();
+  await page.locator('.conquest-map').waitFor();
+  const besieged = page.locator('.conquest-map g.conquest-node.is-besieged');
+  check('疆域图被围的郡红色告急并写倒计时', (await besieged.count()) === 1 && ((await besieged.getAttribute('aria-label')) ?? '').includes('告急') && /约2[34]时/.test(await besieged.locator('.conquest-node__timer').textContent()));
+  await page.context().close();
+
+  // 测试开关：jiaye-siege-now 跳过间隔与保护期，jiaye-siege-target 指定郡（须是末端郡）
+  const forced = await open(save({ homeLevel: 6, fiefs: ALL_FIEFS, fiefTakenAt: allTaken(Date.now() - HR), nextSiegeAt: Date.now() + 40 * HR }), { ls: { 'jiaye-siege-now': '1', 'jiaye-siege-target': 'liaodong' } });
+  await forced.waitForTimeout(600);
+  s = await read(forced);
+  check('siege-now + target：立即反攻辽东，公孙度高手降为老手', s.siege?.fiefId === 'liaodong' && s.siege.attacker === '公孙度' && s.siege.skill === 'veteran', JSON.stringify(s.siege));
+  await forced.context().close();
+  const hub = await open(save({ homeLevel: 6, fiefs: ALL_FIEFS, fiefTakenAt: allTaken(Date.now() - HR), nextSiegeAt: Date.now() + 40 * HR }), { ls: { 'jiaye-siege-now': '1', 'jiaye-siege-target': 'nanyang' } });
+  await hub.waitForTimeout(600);
+  s = await read(hub);
+  check('指定中间郡南阳无效，仍只打末端郡', ['runan', 'bajun', 'liaodong'].includes(s.siege?.fiefId), JSON.stringify(s.siege));
+  await hub.context().close();
+  // 整军方略的郡再降一档：汝南袁术老手 → 生手 → 生手；颍川荀彧老手（整军）作为末端郡 → 生手
+  const mil = await open(save({ homeLevel: 5, fiefs: { nanyang: 'farming', yingchuan: 'military' }, fiefTakenAt: { nanyang: Date.now() - 200 * HR, yingchuan: Date.now() - 200 * HR }, nextSiegeAt: Date.now() - 1000 }));
+  await mil.waitForTimeout(600);
+  s = await read(mil);
+  check('整军郡来犯将再降一档（颍川荀彧老手 → 生手）', s.siege?.fiefId === 'yingchuan' && s.siege.skill === 'novice', JSON.stringify(s.siege));
+  await mil.context().close();
+});
+
+await scenario('守城·保护期与迁移', async () => {
+  // 末端郡都在 72 小时保护期内：不起反攻，6 小时后再看
+  const now = Date.now();
+  const page = await open(save({ homeLevel: 6, fiefs: ALL_FIEFS, fiefTakenAt: { ...allTaken(now - 200 * HR), runan: now - HR, bajun: now - HR, liaodong: now - 2 * HR }, nextSiegeAt: now - 1000 }));
+  await page.waitForTimeout(600);
+  let s = await read(page);
+  check('末端郡都在保护期内不起反攻，6 小时后再看', s.siege === null && near(s.nextSiegeAt, Date.now() + 6 * HR), JSON.stringify({ siege: s.siege, next: s.nextSiegeAt - Date.now() }));
+  check('没有反攻时首页无告急条', (await page.locator('.siege-alert').count()) === 0);
+  await page.context().close();
+
+  // 老存档：北疆边患一律作废（逾期的也不扣金），补日志；城防补 2、得郡时刻补现在、48 小时后才起第一次反攻
+  const old = await open(save({ homeLevel: 5, gold: 40000, fiefs: { nanyang: 'farming' }, frontierRaid: { startDay: 10, startedAt: now - 25 * HR, dueAt: now - HR }, nextRaidDay: 10, frontierWins: 2 }));
+  await old.waitForTimeout(600);
+  s = await read(old);
+  check('旧北疆存档：边患清掉不扣金并补日志', s.frontierRaid === null && s.gold === 40000 && s.frontierWins === 2 && s.eventLog.some((e) => e.title === '北疆已靖'), JSON.stringify({ g: s.gold, raid: s.frontierRaid, log: s.eventLog.map((e) => e.title) }));
+  check('旧存档迁移：城防补 2、得郡时刻补现在、48 小时后起首次反攻', s.fiefWalls?.nanyang === 2 && near(s.fiefTakenAt?.nanyang, Date.now()) && near(s.nextSiegeAt, Date.now() + 48 * HR) && s.siege === null && s.peakFiefs === 1, JSON.stringify({ w: s.fiefWalls, t: s.fiefTakenAt, n: s.nextSiegeAt - Date.now(), p: s.peakFiefs }));
+  check('首页不再有北疆告警', (await old.locator('.frontier-alert').count()) === 0 && !(await old.locator('main').innerText()).includes('去迎战'));
+  await old.context().close();
+  const noFief = await open(save({ homeLevel: 4, frontierRaid: { startDay: 10, startedAt: now, dueAt: now + HR }, nextRaidDay: 10 }));
+  await noFief.waitForTimeout(400);
+  s = await read(noFief);
+  check('无郡的旧存档：边患清掉、反攻不计时', s.frontierRaid === null && s.nextSiegeAt === 0 && s.siege === null);
+  await noFief.context().close();
+  // 北疆迎战中途关页的旧存档：只算离阵，不扣金
+  const midRaid = await open(save({ homeLevel: 4, gold: 5000, activeBattle: { mode: 'frontier', lossGold: 1000, rewardGold: 2000, odds: 0.5 } }));
+  await midRaid.waitForTimeout(400);
+  s = await read(midRaid);
+  check('旧存档北疆中途离开：不扣金', s.activeBattle === null && s.gold === 5000 && s.eventLog[0]?.title === '中途离阵');
+  await midRaid.context().close();
+  // 坏数据：城防越界截到 1..2，不在手的郡的城防删掉，反攻目标不在手作废
+  const dirty = await open(save({ homeLevel: 5, fiefs: { nanyang: 'farming' }, fiefWalls: { nanyang: 9, runan: 1 }, fiefTakenAt: { nanyang: now - 200 * HR }, nextSiegeAt: now + 40 * HR, siege: { fiefId: 'runan', attacker: '袁术', skill: 'novice', startedAt: now, dueAt: now + HR } }));
+  await dirty.waitForTimeout(400);
+  s = await read(dirty);
+  check('坏数据修剪：城防截到 2、不在手的郡与反攻作废', JSON.stringify(s.fiefWalls) === '{"nanyang":2}' && s.siege === null, JSON.stringify({ w: s.fiefWalls, siege: s.siege }));
+  await dirty.context().close();
+  // 开疆志向按本代最高郡数：丢过郡不倒退，也不能靠丢了再收复刷进度
+  const amb = await open(save({ generation: 2, homeLevel: 5, fiefs: { nanyang: 'farming' }, peakFiefs: 2, ambition: { id: 'expansion', target: 1, baseFiefs: 1 } }));
+  check('开疆志向按本代最高郡数算（失郡不倒退）', (await amb.locator('.home-hud').innerText()).includes('志向 开疆 已达成'), await amb.locator('.home-hud').innerText());
+  await amb.context().close();
+});
+
+await scenario('守城·整局结算', async () => {
+  // 城防 1 的汝南被反攻，0 道军令照样迎战；城主坐庄打完：守住则城防回满 + 犒赏 2,500 + 守城胜场；失手则失郡
+  let won = false;
+  let lossChecked = false;
+  for (const seed of [11, 12, 13, 14, 15, 16, 17, 18]) {
+    const page = await open(siegeSave({ orders: 0, fiefWalls: { nanyang: 2, runan: 1 } }), { ls: { 'jiaye-ddz-seed': String(seed) } });
+    const s0 = await read(page);
+    await page.getByRole('button', { name: '去守城 →' }).click();
+    await page.getByRole('button', { name: /迎战守城 · 袁术/ }).click();
+    await page.getByText('守卫汝南郡').first().waitFor();
+    if (seed === 11) {
+      const s1 = await read(page);
+      check('守城不耗军令、不押军资', s1.orders === 0 && s1.gold === s0.gold && s1.activeBattle?.conquest?.kind === 'defend' && s1.activeBattle.conquest.stake === 0, JSON.stringify(s1.activeBattle));
+      check('城主坐庄：开局即地主先出、对面是来犯将袁术、按钮是弃城', (await page.locator('.ddz-seat--self .ddz-seat__role').innerText()) === '地主' && (await page.locator('.ddz-seat--left .ddz-seat__name').innerText()).includes('袁术') && (await page.getByRole('button', { name: '弃城' }).isVisible()));
+    }
+    const ended = await playOut(page);
+    await page.waitForTimeout(500);
+    const s2 = await read(page);
+    const banner = await page.locator('.doudizhu-result-banner').innerText().catch(() => '');
+    if (ended && banner.includes('守住汝南郡')) {
+      won = true;
+      check('守住：城防回满、犒赏 2,500、守城胜场 +1、48 小时后再来', s2.fiefWalls.runan === 2 && s2.gold === s0.gold + 2500 && s2.frontierWins === 1 && s2.battleWins === s0.battleWins + 1 && s2.siege === null && near(s2.nextSiegeAt, Date.now() + 48 * HR) && s2.orders === 0 && !s2.activeBattle, JSON.stringify({ w: s2.fiefWalls, dg: s2.gold - s0.gold, fw: s2.frontierWins, n: s2.nextSiegeAt - Date.now() }));
+      check('守住写进纪事', s2.eventLog[0]?.title === '守住汝南郡' && s2.eventLog[0]?.goldDelta === 2500, JSON.stringify(s2.eventLog[0]));
+      await page.getByRole('button', { name: '返回家业' }).click();
+      await openGoals(page);
+      check('任务「首守城池」可领赏（id 仍是 frontier-first-win）', await page.locator('.quest-item').filter({ hasText: '首守城池' }).getByRole('button', { name: '领赏' }).isEnabled().catch(() => false));
+    } else if (ended && !lossChecked) {
+      lossChecked = true;
+      check('守城未克（城防 1）：失郡、不扣金、记一负', !s2.fiefs.runan && near(s2.lostFiefs?.runan, Date.now()) && s2.gold === s0.gold && s2.battleLosses === s0.battleLosses + 1 && s2.siege === null, JSON.stringify({ f: s2.fiefs, g: s2.gold - s0.gold, l: s2.lostFiefs }));
+    }
+    await page.context().close();
+    if (won) break;
+  }
+  check('守城能打赢一局（8 个种子内）', won);
+});
+
+await scenario('守城·失手告急与特权暂停', async () => {
+  const page = await open(siegeSave());
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  check('城防满时汝南特权生效', (await page.locator('.venue-summary').first().innerText()).includes('（汝南：失手减半）'));
+  const s0 = await read(page);
+  await page.getByRole('button', { name: /迎战守城/ }).click();
+  await page.getByText('守卫汝南郡').first().waitFor();
+  await page.getByRole('button', { name: '弃城' }).click();
+  await page.locator('.home-v2').waitFor();
+  const s = await read(page);
+  check('牌桌上弃城按失手：城防降为 1、郡还在、不扣金', s.fiefWalls.runan === 1 && s.fiefs.runan === 'farming' && s.gold === s0.gold && s.battleLosses === s0.battleLosses + 1 && s.siege === null && near(s.nextSiegeAt, Date.now() + 48 * HR) && !s.activeBattle, JSON.stringify({ w: s.fiefWalls, g: s.gold - s0.gold }));
+  check('纪事写告急与特权暂停', s.eventLog[0]?.title === '汝南郡告急' && (s.eventLog[0]?.detail ?? '').includes('「门生故吏」暂停'), JSON.stringify(s.eventLog[0]));
+  check('首页提示城防告急、特权暂停，可去修城', (await page.locator('.siege-alert').innerText()).includes('汝南城防告急，郡中特权暂停') && (await page.getByRole('button', { name: '去修城 →' }).isVisible()));
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  check('告急郡的牌桌特权暂停（选场不再写汝南减半）', !(await page.locator('.venue-summary').first().innerText()).includes('汝南'));
+  check('疆域图写城防 1/2', (await siegeLabel(page, '汝南')).includes('城防 1/2'), await siegeLabel(page, '汝南'));
+  await page.context().close();
+
+  // 地图上的弃城要二次确认：取消则什么都不变
+  const keep = await open(siegeSave());
+  keep.on('dialog', (d) => d.dismiss());
+  await keep.getByRole('button', { name: '去守城 →' }).click();
+  const k0 = await read(keep);
+  await keep.locator('.conquest-panel').getByRole('button', { name: '弃城' }).click();
+  await keep.waitForTimeout(300);
+  const k1 = await read(keep);
+  check('弃城取消确认则不变', k1.siege?.fiefId === 'runan' && k1.fiefWalls.runan === 2 && k1.battleLosses === k0.battleLosses);
+  await keep.context().close();
+});
+
+await scenario('守城·再失手失郡', async () => {
+  // 城防 1 的汝南（整军）再失手：郡暂归袁术、地图缩回、军令按新上限截断
+  const page = await open(siegeSave({ fiefs: { nanyang: 'farming', runan: 'military' }, fiefWalls: { nanyang: 2, runan: 1 }, orders: 7 }));
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: '去守城 →' }).click();
+  await page.locator('.conquest-map').waitFor();
+  const heldBefore = await page.locator('.conquest-edge.is-held').count();
+  await page.locator('.conquest-panel').getByRole('button', { name: '弃城' }).click();
+  await page.waitForTimeout(400);
+  const s = await read(page);
+  check('城防归零失郡：删郡与城防、记失郡时刻、军令 7 → 6', !s.fiefs.runan && s.fiefWalls.runan === undefined && s.fiefTakenAt.runan === undefined && near(s.lostFiefs?.runan, Date.now()) && s.orders === 6 && s.siege === null, JSON.stringify({ f: s.fiefs, w: s.fiefWalls, o: s.orders, l: s.lostFiefs }));
+  check('纪事写暂归，不写负面字', s.eventLog[0]?.title === '汝南郡暂归袁术' && !/[输败亏]/.test(s.eventLog[0]?.detail ?? ''), JSON.stringify(s.eventLog[0]));
+  check('地图缩回：连线收回一条、汝南褪色写暂归可半价收复', (await page.locator('.conquest-edge.is-held').count()) === heldBefore - 1 && (await siegeLabel(page, '汝南')).includes('暂归袁术 · 可半价收复') && (await page.locator('.conquest-map g.conquest-node.is-lost').count()) === 1, `${heldBefore} → ${await page.locator('.conquest-edge.is-held').count()} ${await siegeLabel(page, '汝南')}`);
+  await page.getByRole('button', { name: '回府' }).click();
+  check('首页提示可半价收复', (await page.locator('.siege-alert').innerText()).includes('汝南暂归袁术') && (await page.getByRole('button', { name: '去收复 →' }).isVisible()));
+  await page.context().close();
+});
+
+await scenario('守城·逾期最低到 1', async () => {
+  const past = { startedAt: Date.now() - 30 * HR, dueAt: Date.now() - 6 * HR };
+  const page = await open(siegeSave({ siege: { fiefId: 'runan', attacker: '袁术', skill: 'novice', ...past } }));
+  await page.waitForTimeout(500);
+  let s = await read(page);
+  check('逾期没应战：城防 −1、排下一次', s.fiefWalls.runan === 1 && s.siege === null && near(s.nextSiegeAt, Date.now() + 48 * HR) && s.eventLog.some((e) => e.title === '汝南郡城防受损'), JSON.stringify({ w: s.fiefWalls, n: s.nextSiegeAt - Date.now() }));
+  await page.context().close();
+  // 城防 1 再逾期（离线 10 天）：最低留 1，不会失郡
+  const off = await open(siegeSave({ fiefWalls: { nanyang: 2, runan: 1 }, siege: { fiefId: 'runan', attacker: '袁术', skill: 'novice', ...past }, lastSavedAt: Date.now() - 241 * HR }));
+  await off.waitForTimeout(600);
+  s = await read(off);
+  check('离线逾期最低扣到 1，不会失郡', s.fiefs.runan === 'farming' && s.fiefWalls.runan === 1 && s.siege === null && s.day > 40, JSON.stringify({ f: s.fiefs, w: s.fiefWalls, d: s.day }));
+  await off.context().close();
+  // 连点政务不推进反攻（按真实时间算，烧不掉应战窗口）
+  const burn = await open(siegeSave());
+  const b0 = await read(burn);
+  // 府中来报弹窗出来就先定夺（选第一项），再接着办政务
+  for (let i = 0; i < 8; i++) {
+    const option = burn.locator('.choice-card__options button').first();
+    if (await option.isVisible().catch(() => false)) await option.click();
+    else await burn.locator('.home-actions__main').click();
+    await burn.waitForTimeout(150);
+  }
+  s = await read(burn);
+  check('连点政务不推进反攻', s.day >= b0.day + 4 && s.siege?.dueAt === b0.siege.dueAt && s.fiefWalls.runan === 2, `day=${b0.day}→${s.day}`);
+  await burn.context().close();
+});
+
+await scenario('守城·刷新保留可重打', async () => {
+  const page = await open(siegeSave());
+  const s0 = await read(page);
+  await page.getByRole('button', { name: '去守城 →' }).click();
+  await page.getByRole('button', { name: /迎战守城/ }).click();
+  await page.getByText('守卫汝南郡').first().waitFor();
+  await page.waitForTimeout(600);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.home-v2').waitFor({ timeout: 8000 });
+  const s = await read(page);
+  check('守城中途刷新：反攻保留、不扣金不记负、城防不变', !s.activeBattle && s.siege?.fiefId === 'runan' && s.siege.dueAt === s0.siege.dueAt && s.gold === s0.gold && s.battleLosses === s0.battleLosses && s.fiefWalls.runan === 2 && s.eventLog[0]?.title === '守城暂歇', JSON.stringify({ ab: s.activeBattle, siege: s.siege, t: s.eventLog[0]?.title }));
+  await page.getByRole('button', { name: '去守城 →' }).click();
+  await page.getByRole('button', { name: /迎战守城/ }).click();
+  check('刷新后可以重打', await page.getByText('守卫汝南郡').first().isVisible({ timeout: 8000 }).catch(() => false));
+  await page.context().close();
+});
+
+await scenario('守城·修城', async () => {
+  const page = await open(siegeSave({ siege: null, fiefWalls: { nanyang: 2, runan: 1 }, gold: 20000 }));
+  await page.getByRole('button', { name: '去修城 →' }).click();
+  await page.locator('.conquest-panel').waitFor();
+  check('去修城直达汝南、面板写特权暂停', (await page.locator('.conquest-panel').innerText()).includes('城防 1/2 · 告急：牌桌特权「门生故吏」暂停'));
+  await page.getByRole('button', { name: '修城 · 12,500 金' }).click();
+  await page.waitForTimeout(300);
+  const s = await read(page);
+  check('修城：扣开拓价 5%、城防回满', s.gold === 7500 && s.fiefWalls.runan === 2 && s.eventLog[0]?.title === '修缮汝南郡城防', JSON.stringify({ g: s.gold, w: s.fiefWalls }));
+  await page.context().close();
+  const poor = await open(siegeSave({ siege: null, fiefWalls: { nanyang: 2, runan: 1 }, gold: 10000 }));
+  await poor.getByRole('button', { name: '去修城 →' }).click();
+  const btn = poor.getByRole('button', { name: /修城 · 差 2,500 金/ });
+  check('金不足时修城按钮禁用并写差额', await btn.isDisabled());
+  await poor.context().close();
+});
+
+await scenario('守城·收复半价', async () => {
+  // 失郡 72 小时内：押开拓价 25%（汝南 62,500），记为收复
+  const lost = { nanyang: 'farming' };
+  const page = await open(save({ homeLevel: 5, gold: 200000, orders: 3, day: 40, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan'], fiefs: lost, fiefTakenAt: { nanyang: Date.now() - 200 * HR }, lostFiefs: { runan: Date.now() - HR }, nextSiegeAt: Date.now() + 40 * HR }));
+  await page.getByRole('button', { name: '去收复 →' }).click();
+  await page.locator('.conquest-panel').waitFor();
+  check('收复面板写暂归与半价', (await page.locator('.conquest-panel').innerText()).includes('汝南郡 · 暂归袁术') && (await page.locator('.conquest-panel').innerText()).includes('半价收复'));
+  const s0 = await read(page);
+  await page.getByRole('button', { name: '收复汝南郡 · 耗 1 军令 · 押 62,500 金' }).click();
+  await page.getByText('攻取汝南郡').first().waitFor();
+  const s1 = await read(page);
+  check('收复押 25%、耗 1 军令、记为收复', s0.gold - s1.gold === 62500 && s1.orders === 2 && s1.activeBattle?.conquest?.kind === 'reclaim', JSON.stringify(s1.activeBattle));
+  const ended = await playOut(page);
+  await page.waitForTimeout(500);
+  const s2 = await read(page);
+  const won = Boolean(s2.fiefs.runan);
+  check('收复打完：胜则重得郡、城防满、重新保护 72 小时；未克则军资不退', ended && (won
+    ? s2.fiefWalls.runan === 2 && near(s2.fiefTakenAt.runan, Date.now()) && !s2.lostFiefs.runan && s2.eventLog[0]?.title === '收复汝南郡'
+    : s2.gold === s1.gold && near(s2.lostFiefs.runan, s0.lostFiefs.runan, 10) && s2.eventLog[0]?.title === '收复汝南郡未克'), `won=${won} ${s2.eventLog[0]?.title}`);
+  await page.context().close();
+  // 过了 72 小时按原价（50%）
+  const late = await open(save({ homeLevel: 5, gold: 200000, orders: 3, fiefs: lost, fiefTakenAt: { nanyang: Date.now() - 200 * HR }, lostFiefs: { runan: Date.now() - 73 * HR }, nextSiegeAt: Date.now() + 40 * HR }));
+  check('超过 72 小时不再提示收复', (await late.locator('.siege-alert').count()) === 0);
+  await late.getByRole('button', { name: '出征', exact: true }).click();
+  await late.locator('.conquest-map g.conquest-node').filter({ hasText: '汝南' }).click({ force: true });
+  check('超过 72 小时按原价押 125,000', await late.getByRole('button', { name: '出兵攻取汝南郡 · 耗 1 军令 · 押 125,000 金' }).isVisible());
+  await late.context().close();
+});
+
+await scenario('守城·天下归心后不再起', async () => {
+  const page = await open(save({ homeLevel: 6, legacyPoints: 20, fiefs: ALL_FIEFS, fiefTakenAt: allTaken(Date.now() - 200 * HR), nextSiegeAt: Date.now() - 1000 }), { ls: { 'jiaye-siege-now': '1' } });
+  await page.waitForTimeout(800);
+  const s = await read(page);
+  check('天下归心后即使 siege-now 也不起反攻', s.siege === null && (await page.locator('.siege-alert').count()) === 0, JSON.stringify(s.siege));
+  await page.context().close();
+});
+
+await scenario('守城·直达按钮在首屏', async () => {
+  // 首页告急条一点直达：迎战守城 / 修城 / 收复按钮不用再滚就在视口里（横竖屏、平板）
+  const inView = async (page, name) => page.getByRole('button', { name }).evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight && r.height > 0;
+  });
+  for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 667, height: 375 }, { width: 768, height: 1024 }]) {
+    const tag = `${viewport.width}x${viewport.height}`;
+    const page = await open(siegeSave(), { viewport });
+    await page.getByRole('button', { name: '去守城 →' }).click();
+    await page.getByRole('button', { name: /迎战守城 · 袁术/ }).waitFor();
+    await page.waitForTimeout(300);
+    check(`${tag} 去守城后「迎战守城」在首屏`, await inView(page, /迎战守城 · 袁术/));
+    await page.context().close();
+  }
+  const repair = await open(siegeSave({ siege: null, fiefWalls: { nanyang: 2, runan: 1 }, gold: 20000 }));
+  await repair.getByRole('button', { name: '去修城 →' }).click();
+  await repair.getByRole('button', { name: /修城 · 12,500 金/ }).waitFor();
+  await repair.waitForTimeout(300);
+  check('390x844 去修城后修城按钮在首屏', await inView(repair, /修城 · 12,500 金/));
+  await repair.context().close();
+  const reclaim = await open(save({ homeLevel: 5, gold: 200000, orders: 3, day: 40, fiefs: { nanyang: 'farming' }, fiefTakenAt: { nanyang: Date.now() - 200 * HR }, lostFiefs: { runan: Date.now() - HR }, nextSiegeAt: Date.now() + 40 * HR }));
+  await reclaim.getByRole('button', { name: '去收复 →' }).click();
+  await reclaim.getByRole('button', { name: /收复汝南郡 · 耗 1 军令/ }).waitFor();
+  await reclaim.waitForTimeout(300);
+  check('390x844 去收复后收复按钮在首屏', await inView(reclaim, /收复汝南郡 · 耗 1 军令/));
+  await reclaim.context().close();
+});
+
+await scenario('守城·被围郡成腹地即解围', async () => {
+  // 只持南阳（城防 1）且南阳被围，反攻窗口内攻下汝南：南阳成了中间郡，反攻作罢，不会连带丢汝南
+  const base = (extra = {}) => save({ homeLevel: 5, gold: 400000, day: 40, orders: 3, equippedWeaponId: 'fangtian', ownedPartnerIds: ['diaochan'],
+    fiefs: { nanyang: 'farming' }, fiefWalls: { nanyang: 1 }, fiefTakenAt: { nanyang: Date.now() - 200 * HR },
+    nextSiegeAt: Date.now() + 40 * HR, siege: { fiefId: 'nanyang', attacker: '张绣', skill: 'novice', startedAt: Date.now(), dueAt: Date.now() + 20 * HR }, ...extra });
+  let won = false;
+  for (const seed of [11, 12, 13, 14, 15, 16, 17, 18]) {
+    const page = await open(base(), { ls: { 'jiaye-ddz-seed': String(seed) } });
+    await page.getByRole('button', { name: '出征', exact: true }).click();
+    await page.locator('.conquest-map g.conquest-node').filter({ hasText: '汝南' }).click({ force: true });
+    await page.getByRole('button', { name: /出兵攻取汝南郡/ }).click();
+    await page.getByText('攻取汝南郡').first().waitFor();
+    const ended = await playOut(page);
+    await page.waitForTimeout(500);
+    const s = await read(page);
+    if (ended && s.fiefs.runan) {
+      won = true;
+      check('攻下被围郡背后的郡：反攻作罢、48 小时后再来、城防不变', s.siege === null && near(s.nextSiegeAt, Date.now() + 48 * HR) && s.fiefWalls.nanyang === 1 && s.fiefs.nanyang === 'farming', JSON.stringify({ siege: s.siege, n: s.nextSiegeAt - Date.now(), w: s.fiefWalls }));
+      check('纪事写南阳围解，不写负面字', s.eventLog.some((e) => e.title === '南阳围解' && e.detail.includes('已成腹地')) && !s.eventLog.slice(0, 3).some((e) => /[输败亏]/.test(e.title + e.detail)), JSON.stringify(s.eventLog.slice(0, 2)));
+      await page.getByRole('button', { name: '返回家业' }).click();
+      check('首页告急条随之消失', (await page.locator('.siege-alert').filter({ hasText: '南阳告急' }).count()) === 0);
+    }
+    await page.context().close();
+    if (won) break;
+  }
+  check('反攻期间攻郡能打赢一局（8 个种子内）', won);
+  // 读档兜底：存档里被围的已是中间郡（如旧版本留下的），读档即解围，两郡都在
+  const load = await open(base({ fiefs: { nanyang: 'farming', runan: 'farming' }, fiefWalls: { nanyang: 1, runan: 2 }, fiefTakenAt: { nanyang: Date.now() - 200 * HR, runan: Date.now() - HR } }));
+  await load.waitForTimeout(500);
+  const s = await read(load);
+  check('读档时被围郡已是中间郡：反攻作罢、两郡都在', s.siege === null && s.fiefs.nanyang && s.fiefs.runan && s.eventLog[0]?.title === '南阳围解', JSON.stringify({ siege: s.siege, f: s.fiefs, t: s.eventLog[0]?.title }));
+  await load.context().close();
+});
+
+await scenario('守城·天下归心时进行中的反攻作罢', async () => {
+  // 六郡全占 + 王城 + 家业点满足结局，存档里巴郡（城防 1）还被围：读档即解围，结局入口保留
+  const page = await open(save({ homeLevel: 6, legacyPoints: 20, fiefs: ALL_FIEFS, fiefTakenAt: allTaken(Date.now() - 200 * HR), fiefWalls: { ...Object.fromEntries(Object.keys(ALL_FIEFS).map((id) => [id, 2])), bajun: 1 }, nextSiegeAt: Date.now() + 40 * HR, siege: { fiefId: 'bajun', attacker: '严颜', skill: 'veteran', startedAt: Date.now(), dueAt: Date.now() + 20 * HR } }));
+  await page.waitForTimeout(500);
+  const s = await read(page);
+  check('天下归心：进行中的反攻作罢、六郡都在', s.siege === null && Object.keys(s.fiefs).length === 6 && s.eventLog[0]?.title === '巴围解' && s.eventLog[0].detail.includes('天下归心'), JSON.stringify({ siege: s.siege, t: s.eventLog[0] }));
+  check('首页没有告急条', (await page.locator('.siege-alert').filter({ hasText: '告急 ·' }).count()) === 0);
+  await page.context().close();
+});
+
+await scenario('守城·第二代重回侯府有缓冲', async () => {
+  // 继承来的反攻计时早已过期、郡也早过保护期：升到侯府时反攻至少 48 小时后才来，不会一升就开打
+  const page = await open(save({ generation: 2, homeLevel: 4, gold: 2000000, day: 30, fiefs: { nanyang: 'farming' }, fiefTakenAt: { nanyang: Date.now() - 300 * HR }, fiefWalls: { nanyang: 2 }, nextSiegeAt: Date.now() - 100 * HR }));
+  await page.waitForTimeout(400);
+  const before = await read(page);
+  check('侯府前过期计时不起反攻', before.siege === null);
+  await page.getByRole('button', { name: /升级宅邸/ }).click();
+  await page.waitForTimeout(3000);
+  const s = await read(page);
+  check('升到侯府：反攻计时补到 48 小时后、没有立刻起反攻', s.homeLevel === 5 && s.siege === null && near(s.nextSiegeAt, Date.now() + 48 * HR), JSON.stringify({ h: s.homeLevel, siege: s.siege, n: s.nextSiegeAt - Date.now() }));
+  await page.context().close();
+});
+
+await scenario('守城·称号与任务', async () => {
+  const page = await open(save({ homeLevel: 5, battleWins: 5, frontierWins: 3, fiefs: { nanyang: 'farming' }, claimedQuestIds: [] }));
+  check('守城 3 次得称号「金汤之将」（id 仍是 north-general）', (await page.locator('.home-hud').innerText()).includes('「金汤之将」'));
+  await openGoals(page);
+  check('家业目标写守城战绩', (await page.locator('.home-record').innerText()).includes('守城 3'));
+  check('任务改为「首守城池」', (await page.locator('.quest-item').filter({ hasText: '首守城池' }).innerText()).includes('守住一次邻郡反攻'));
   await page.context().close();
 });
 

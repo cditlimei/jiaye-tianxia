@@ -5,7 +5,8 @@ import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { bestValueTierIndex, enemyForTier, legacyIncomeMultiplier, legacyPointsGainable, ROSTERS, safeTierIndex, weaponBonusForLord } from '../lib/battle';
-import { formatRemaining, raidRemainingMs } from '../lib/frontier';
+import { formatRemaining } from '../lib/frontier';
+import { FIEF_WALLS, reclaimRemainingMs, SIEGE_ENABLED } from '../lib/siege';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
@@ -46,8 +47,10 @@ interface HomeScreenProps {
   onOpenPartnerTalk: () => void;
   onOpenWeapon: () => void;
   onBattle: () => void;
-  /** 带预选区域进出征页（边患告警进北疆，其余进荆州：疆域图 + 斗地主） */
+  /** 带预选区域进出征页（荆州：疆域图 + 斗地主；西蜀：屯田） */
   onBattleAt: (region: RegionId) => void;
+  /** 邻郡反攻告急条：进疆域图并选中该郡 */
+  onOpenSiege?: (fiefId: string) => void;
   onOpenFarm: () => void;
   onClaimQuest: (questId: string) => void;
   onCompleteTutorial: () => void;
@@ -96,6 +99,7 @@ export function HomeScreen({
   onOpenWeapon,
   onBattle,
   onBattleAt,
+  onOpenSiege,
   onOpenFarm,
   onClaimQuest,
   onCompleteTutorial,
@@ -222,11 +226,17 @@ export function HomeScreen({
   const [moreOpen, setMoreOpen] = useState(false);
 
   const [clock, setClock] = useState(() => Date.now());
+  // 告急条：反攻中 > 城防不满 > 失郡可半价收复（同时只显示一条，最急的那条）
+  const siegeFief = SIEGE_ENABLED && state.siege ? fiefs.find((fief) => fief.id === state.siege?.fiefId && state.fiefs[fief.id]) ?? null : null;
+  const wallAlertFief = SIEGE_ENABLED ? fiefs.find((fief) => state.fiefs[fief.id] && (state.fiefWalls[fief.id] ?? FIEF_WALLS) < FIEF_WALLS) ?? null : null;
+  const reclaimFief = SIEGE_ENABLED ? fiefs.find((fief) => reclaimRemainingMs(state, fief.id, clock) > 0) ?? null : null;
+  const needsClock = Boolean(siegeFief || reclaimFief);
   useEffect(() => {
-    if (!state.frontierRaid) return undefined;
+    if (!needsClock) return undefined;
+    setClock(Date.now());
     const timer = window.setInterval(() => setClock(Date.now()), 60000);
     return () => window.clearInterval(timer);
-  }, [state.frontierRaid]);
+  }, [needsClock]);
 
   // 府中三件事：点「处理政务」先弹出今日三件事挑一件办；办完留在弹层里接着办下一日
   const [affairsOpen, setAffairsOpen] = useState(false);
@@ -301,7 +311,7 @@ export function HomeScreen({
   const ownedFiefs = ownedFiefCount(state.fiefs);
   const latestLog = state.eventLog[0];
   const canRecruit = Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10;
-  const battleDot = Boolean(state.frontierRaid) || state.orders >= orderCap;
+  const battleDot = Boolean(siegeFief) || state.orders >= orderCap;
   const incomeDetail = `宅邸 ${currentHome.dailyIncome} 金${farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}${fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}${realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}${state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +${Math.floor(intelligence / 10)}%${state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}% 至第 ${state.incomeBuff.untilDay} 日` : ''}`;
 
   return (
@@ -331,7 +341,7 @@ export function HomeScreen({
           </div>
           <div>
             <strong>{state.orders}/{orderCap}</strong>
-            <span title="每场出征耗 1 道军令（北疆边患除外）；府邸前每日回 1 道，之后每 2 日回 1 道">{state.orders < 1 ? `${daysUntilNextOrder(state.day, state.homeLevel)} 日后 +1` : '军令'}</span>
+            <span title="每场出征耗 1 道军令（守城除外）；府邸前每日回 1 道，之后每 2 日回 1 道">{state.orders < 1 ? `${daysUntilNextOrder(state.day, state.homeLevel)} 日后 +1` : '军令'}</span>
           </div>
           <div>
             <strong>{state.day}</strong>
@@ -340,12 +350,22 @@ export function HomeScreen({
         </div>
       </header>
 
-      {state.frontierRaid && (
-        <div className="frontier-alert" role="status">
-          <span>北疆边患！{formatRemaining(raidRemainingMs(state.frontierRaid, clock))}内出征北疆迎战，否则边郡失守、损失 5% 金（最多 5,000）。</span>
-          <button type="button" onClick={() => onBattleAt('beijiang')}>去迎战 →</button>
+      {siegeFief && state.siege ? (
+        <div className="frontier-alert siege-alert is-besieged" role="status">
+          <span>{siegeFief.name.replace(/郡$/, '')}告急 · {state.siege.attacker}卷土重来 · {formatRemaining(Math.max(0, state.siege.dueAt - clock))}{(state.fiefWalls[siegeFief.id] ?? FIEF_WALLS) < FIEF_WALLS ? ' · 城防仅余 1，再失手即失郡' : ''}</span>
+          <button type="button" onClick={() => onOpenSiege?.(siegeFief.id)}>去守城 →</button>
         </div>
-      )}
+      ) : wallAlertFief ? (
+        <div className="frontier-alert siege-alert is-wall" role="status">
+          <span>{wallAlertFief.name.replace(/郡$/, '')}城防告急，郡中特权暂停 → 修城 / 等下次守住</span>
+          <button type="button" onClick={() => onOpenSiege?.(wallAlertFief.id)}>去修城 →</button>
+        </div>
+      ) : reclaimFief ? (
+        <div className="frontier-alert siege-alert is-lost" role="status">
+          <span>{reclaimFief.name.replace(/郡$/, '')}暂归{reclaimFief.garrison} · {formatRemaining(reclaimRemainingMs(state, reclaimFief.id, clock))}内可半价收复</span>
+          <button type="button" onClick={() => onOpenSiege?.(reclaimFief.id)}>去收复 →</button>
+        </div>
+      ) : null}
 
       <section className="home-banner" aria-label="主城">
         <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-banner__image" loading="eager" />
@@ -609,7 +629,7 @@ export function HomeScreen({
                 </article>
               ))}
             </div>
-            <p className="home-record">战绩：胜 {state.battleWins}（牌局与攻郡 {state.battleWins - state.frontierWins} · 靖边 {state.frontierWins}）· 负 {state.battleLosses}</p>
+            <p className="home-record">战绩：胜 {state.battleWins}（牌局与攻郡 {state.battleWins - state.frontierWins} · 守城 {state.frontierWins}）· 负 {state.battleLosses}</p>
           </section>
         </ModalShell>
       )}

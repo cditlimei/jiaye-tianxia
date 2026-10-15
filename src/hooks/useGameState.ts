@@ -12,10 +12,12 @@ import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, t
 import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmConquestDiscount, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
-import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type Fief, type FiefPolicyId } from '../data/fiefs';
-import { advanceFrontier, FRONTIER_UNLOCK_HOME_LEVEL, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
+import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, ownedFiefCount, type Fief, type FiefPolicyId } from '../data/fiefs';
+import { RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
+import { advanceSiege, canLoseFief, FIEF_WALLS, RECLAIM_STAKE_RATE, reclaimRemainingMs, reconcileSiege, releaseStaleSiege, SIEGE_FIRST_DELAY_MS, SIEGE_INTERVAL_MS, siegeBounty, siegeTestFlags, wallRepairCost, wallsOf } from '../lib/siege';
 
 const HEARTBEAT_MS = 15000;
+const SIEGE_TICK_MS = 60000;
 
 type Action =
   | { type: 'setScreen'; screen: Screen }
@@ -27,6 +29,10 @@ type Action =
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'startConquest'; fiefId: string; policyId: FiefPolicyId; stake: number; refundRate?: number }
   | { type: 'resolveConquest'; win: boolean; refundRate?: number }
+  | { type: 'siegeTick'; now: number; force?: boolean; target?: string | null }
+  | { type: 'startDefense' }
+  | { type: 'resolveDefense'; win: boolean; abandon?: boolean }
+  | { type: 'repairWall'; fiefId: string }
   | { type: 'setEscort'; partnerId: string }
   | { type: 'recordSkillUse'; partnerId: string; uses: number }
   | { type: 'refundOrder'; partnerId?: string }
@@ -70,7 +76,28 @@ function findPartnerName(partnerId: string) {
 
 /** 每次状态更新后把当前满足的家声并入 earnedTitles（只增不减），开新朝重置世代/封地也不收回 */
 function reducer(state: GameState, action: Action): GameState {
-  return collectEarnedTitles(baseReducer(state, action));
+  // 反攻字段跟着封地走：得郡补城防与得郡时刻、失郡清掉，有郡没计时补 48 小时（见 reconcileSiege）
+  // 天下归心或被围郡成了腹地：进行中的反攻作罢（见 releaseStaleSiege）
+  return collectEarnedTitles(releaseStaleSiege(reconcileSiege(baseReducer(state, action))));
+}
+
+/** 失郡：删掉该郡与城防、得郡时刻，记下失郡时刻；军令按新上限截断 */
+function loseFief(state: GameState, fiefId: string, now: number): GameState {
+  const fiefs = { ...state.fiefs };
+  delete fiefs[fiefId];
+  const fiefWalls = { ...state.fiefWalls };
+  delete fiefWalls[fiefId];
+  const fiefTakenAt = { ...state.fiefTakenAt };
+  delete fiefTakenAt[fiefId];
+  return {
+    ...state,
+    fiefs,
+    fiefWalls,
+    fiefTakenAt,
+    lostFiefs: { ...state.lostFiefs, [fiefId]: now },
+    // 撤掉整军郡后军令上限下降，存量超出的部分收回（同改方略）
+    orders: Math.min(orderCapFor(fiefs, state.realms), state.orders)
+  };
 }
 
 /** 军令 +1 类选项：已满时不增加，纪事改写，免得写着 +1 实际没加 */
@@ -107,6 +134,8 @@ function baseReducer(state: GameState, action: Action): GameState {
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
         fiefs: state.generation > 1 ? state.fiefs : defaultGameState.fiefs,
+        // 封地的城防、得郡时刻与反攻计时随封地带过来（反攻要侯府才起）
+        ...(state.generation > 1 ? { fiefWalls: state.fiefWalls, fiefTakenAt: state.fiefTakenAt, lostFiefs: state.lostFiefs, nextSiegeAt: state.nextSiegeAt, peakFiefs: ownedFiefCount(state.fiefs) } : {}),
         claimedQuestIds: state.generation > 1 ? inheritedQuestIds(state.farmLevel, state.fiefs) : [],
         eventLog: [
           {
@@ -173,9 +202,8 @@ function baseReducer(state: GameState, action: Action): GameState {
       const staleGold = staleChoice ? choiceGoldValue(staleChoice, state.pendingChoice!.dailyIncome) : 0;
       const pendingChoice = choice ? { eventId: choice.id, day: nextDay, dailyIncome: action.amount } : state.pendingChoice;
       const goldAfterIncome = state.gold + buffed + (dailyEvent?.goldDelta ?? 0) + staleGold;
-      const frontier = advanceFrontier({ ...state, gold: goldAfterIncome }, nextDay);
+      // 北疆边患 v2.2 收起：政务不再推进边患（反攻按真实时间，由 siegeTick 推进）
       const eventLog = [
-        ...(frontier.event ? [frontier.event] : []),
         ...(choice ? [{ id: `choice-${nextDay}`, day: nextDay, title: choice.title, detail: `${choice.prompt} 请在主城决断。` }] : []),
         ...(buffExpired ? [{ id: `buff-end-${nextDay}`, day: nextDay, title: '减税招商到期', detail: '十日之期已满，政务收入恢复常例。' }] : []),
         ...(staleChoice && staleChoice.id.startsWith('partner:') ? [{ id: `choice-skip-${state.pendingChoice!.day}`, day: nextDay, title: `${staleChoice.title}（搁置）`, detail: '心事未及回应，她不再提起。' }] : []),
@@ -187,10 +215,8 @@ function baseReducer(state: GameState, action: Action): GameState {
       ].slice(0, 18);
       return {
         ...state,
-        gold: goldAfterIncome + frontier.goldDelta,
+        gold: goldAfterIncome,
         day: nextDay,
-        frontierRaid: frontier.frontierRaid,
-        nextRaidDay: frontier.nextRaidDay,
         orders: isOrderDay(nextDay, state.homeLevel) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
         incomeBuff,
         pendingChoice,
@@ -307,7 +333,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         ...state,
         gold: state.gold - action.stake,
         orders: state.orders - 1,
-        activeBattle: { mode: 'land', lossGold: 0, doudizhu: true, conquest: { fiefId: fief.id, policyId: policy.id, stake: action.stake, ...(action.refundRate ? { refundRate: clampRefundRate(action.refundRate) } : {}) } }
+        activeBattle: { mode: 'land', lossGold: 0, doudizhu: true, conquest: { fiefId: fief.id, policyId: policy.id, stake: action.stake, ...(action.refundRate ? { refundRate: clampRefundRate(action.refundRate) } : {}), ...(reclaimRemainingMs(state, fief.id) > 0 ? { kind: 'reclaim' as const } : {}) } }
       };
     }
     case 'resolveConquest': {
@@ -320,17 +346,103 @@ function baseReducer(state: GameState, action: Action): GameState {
       // 比例以出兵时记下的为准（与刷新离开一致），老存档没记就用撤兵时传来的
       const refundRate = conquest.refundRate ?? action.refundRate ?? 0;
       const refund = !action.win && refundRate ? Math.round(conquest.stake * clampRefundRate(refundRate)) : 0;
+      const now = Date.now();
+      const lostFiefs = { ...state.lostFiefs };
+      if (action.win) delete lostFiefs[fief.id];
+      const reclaimed = conquest.kind === 'reclaim';
       return {
         ...state,
         activeBattle: null,
         gold: state.gold + refund,
         fiefs: action.win ? { ...state.fiefs, [fief.id]: policy.id } : state.fiefs,
+        // 得郡（含收复）：城防满、72 小时保护期从现在算；首郡开始反攻计时
+        ...(action.win ? { fiefTakenAt: { ...state.fiefTakenAt, [fief.id]: now }, fiefWalls: { ...state.fiefWalls, [fief.id]: FIEF_WALLS }, lostFiefs, nextSiegeAt: state.nextSiegeAt || now + SIEGE_INTERVAL_MS } : {}),
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
         eventLog: [
           action.win
-            ? { id: `conquest-${fief.id}-${Date.now()}`, day: state.day, title: `攻取${fief.name}`, detail: `牌桌上击败守将${fief.garrison}，${fief.name}归府下，行「${policy.name}」之策（${policy.effect}），所有牌局得「${fief.perk.name}」：${fief.perk.detail}。` }
-            : { id: `conquest-fail-${fief.id}-${Date.now()}`, day: state.day, title: `攻${fief.name}未克`, detail: refund > 0 ? `未克守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，糜夫人舍身护得 ${refund.toLocaleString()} 金带回。` : `败于守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，可整军再攻。`, goldDelta: refund > 0 ? refund : undefined },
+            ? { id: `conquest-${fief.id}-${Date.now()}`, day: state.day, title: `${reclaimed ? '收复' : '攻取'}${fief.name}`, detail: `牌桌上力克守将${fief.garrison}，${fief.name}${reclaimed ? '重' : ''}归府下，行「${policy.name}」之策（${policy.effect}），所有牌局得「${fief.perk.name}」：${fief.perk.detail}。` }
+            : { id: `conquest-fail-${fief.id}-${Date.now()}`, day: state.day, title: `${reclaimed ? '收复' : '攻'}${fief.name}未克`, detail: refund > 0 ? `未克守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，糜夫人舍身护得 ${refund.toLocaleString()} 金带回。` : `守将${fief.garrison}棋高一着，${conquest.stake.toLocaleString()} 金军资没入敌手，可整军再攻。`, goldDelta: refund > 0 ? refund : undefined },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
+    case 'siegeTick': {
+      if (!state.selectedLordId) return state;
+      const step = advanceSiege(state, action.now, { force: action.force, target: action.target });
+      if (step.siege === state.siege && step.nextSiegeAt === state.nextSiegeAt && step.fiefWalls === state.fiefWalls && !step.event) return state;
+      return {
+        ...state,
+        siege: step.siege,
+        nextSiegeAt: step.nextSiegeAt,
+        fiefWalls: step.fiefWalls,
+        eventLog: step.event ? [step.event, ...state.eventLog].slice(0, 18) : state.eventLog
+      };
+    }
+    case 'startDefense': {
+      // 守城：不耗军令、不押军资；随行伴侣照常
+      const siege = state.siege;
+      if (!siege || state.activeBattle || !state.fiefs[siege.fiefId]) return state;
+      return { ...state, activeBattle: { mode: 'land', lossGold: 0, doudizhu: true, conquest: { fiefId: siege.fiefId, policyId: state.fiefs[siege.fiefId], stake: 0, kind: 'defend' } } };
+    }
+    case 'resolveDefense': {
+      // 守住：城防回满、发犒赏、守城胜场 +1；失手（含主动弃城）：城防 −1，到 0 失郡；都排下一次反攻
+      const siege = state.siege;
+      const fief = siege ? findFief(siege.fiefId) : null;
+      const defending = state.activeBattle?.conquest?.kind === 'defend' ? null : state.activeBattle;
+      if (!siege || !fief || !state.fiefs[fief.id]) return { ...state, activeBattle: defending, siege: null };
+      const now = Date.now();
+      const base = { ...state, activeBattle: defending, siege: null, nextSiegeAt: now + SIEGE_INTERVAL_MS };
+      if (action.win) {
+        const bounty = siegeBounty(fief);
+        return {
+          ...base,
+          gold: state.gold + bounty,
+          fiefWalls: { ...state.fiefWalls, [fief.id]: FIEF_WALLS },
+          frontierWins: state.frontierWins + 1,
+          battleWins: state.battleWins + 1,
+          eventLog: [
+            { id: `siege-win-${fief.id}-${now}`, day: state.day, title: `守住${fief.name}`, detail: `牌桌上击退${siege.attacker}，${fief.name}城防回满，犒赏三军 ${bounty.toLocaleString()} 金。`, goldDelta: bounty },
+            ...state.eventLog
+          ].slice(0, 18)
+        };
+      }
+      // 兜底：被围郡已不是末端郡或已天下归心时不失郡，最低留 1（丢它会连带丢后方，或破坏结局）
+      const walls = Math.max(canLoseFief(state, fief.id) ? 0 : 1, wallsOf(state, fief.id) - 1);
+      const how = action.abandon ? '主公弃城' : '守城未克';
+      if (walls <= 0) {
+        const lost = loseFief(base, fief.id, now);
+        const cap = orderCapFor(lost.fiefs, state.realms);
+        return {
+          ...lost,
+          battleLosses: state.battleLosses + 1,
+          eventLog: [
+            { id: `siege-lost-${fief.id}-${now}`, day: state.day, title: `${fief.name}暂归${siege.attacker}`, detail: `${how}，城防尽失，${fief.name}暂归${siege.attacker}。72 小时内可押四分之一军资收复${state.orders > cap ? `；军令上限降为 ${cap}` : ''}。` },
+            ...state.eventLog
+          ].slice(0, 18)
+        };
+      }
+      return {
+        ...base,
+        fiefWalls: { ...state.fiefWalls, [fief.id]: walls },
+        battleLosses: state.battleLosses + 1,
+        eventLog: [
+          { id: `siege-alert-${fief.id}-${now}`, day: state.day, title: `${fief.name}告急`, detail: `${how}，${fief.name}城防降为 ${walls}，郡中牌桌特权「${fief.perk.name}」暂停。修城或下次守住即回满。` },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
+    case 'repairWall': {
+      const fief = findFief(action.fiefId);
+      if (!fief || !state.fiefs[fief.id] || wallsOf(state, fief.id) >= FIEF_WALLS) return state;
+      const cost = wallRepairCost(fief);
+      if (state.gold < cost) return state;
+      return {
+        ...state,
+        gold: state.gold - cost,
+        fiefWalls: { ...state.fiefWalls, [fief.id]: FIEF_WALLS },
+        eventLog: [
+          { id: `wall-repair-${fief.id}-${Date.now()}`, day: state.day, title: `修缮${fief.name}城防`, detail: `耗 ${cost.toLocaleString()} 金修满城防，「${fief.perk.name}」恢复。`, goldDelta: -cost },
           ...state.eventLog
         ].slice(0, 18)
       };
@@ -364,7 +476,8 @@ function baseReducer(state: GameState, action: Action): GameState {
       const target = ambition.target(state.generation);
       return {
         ...state,
-        ambition: { id: ambition.id, target, baseFiefs: ownedFiefCountOf(state.fiefs) },
+        // 开疆按本代最高郡数起算：先丢郡再定志向、收复回来不算新开拓
+        ambition: { id: ambition.id, target, baseFiefs: Math.max(state.peakFiefs, ownedFiefCountOf(state.fiefs)) },
         eventLog: [
           { id: `ambition-${Date.now()}`, day: state.day, title: `本代志向 · ${ambition.name}`, detail: `${ambition.motto}。${ambition.describe(target)}，传位时结算。` },
           ...state.eventLog
@@ -403,8 +516,8 @@ function baseReducer(state: GameState, action: Action): GameState {
         ...state,
         gold: state.gold - action.cost,
         homeLevel: action.nextLevel,
-        // 北疆刚开放时不立刻来边患，给三日缓冲
-        nextRaidDay: action.nextLevel === FRONTIER_UNLOCK_HOME_LEVEL ? Math.max(state.nextRaidDay, state.day + 3) : state.nextRaidDay,
+        // 升到侯府（含第二代起带着封地重回侯府）：反攻至少 48 小时后才来，继承下来的过期计时不算
+        ...(action.nextLevel === FIEF_UNLOCK_HOME_LEVEL && ownedFiefCount(state.fiefs) > 0 ? { nextSiegeAt: Math.max(state.nextSiegeAt, Date.now() + SIEGE_FIRST_DELAY_MS) } : {}),
         eventLog: [
           {
             id: `home-${action.nextLevel}-${Date.now()}`,
@@ -512,10 +625,10 @@ function baseReducer(state: GameState, action: Action): GameState {
           {
             id: `battle-${Date.now()}`,
             day: state.day,
-            title: action.doudizhu ? (action.win ? '牌局得胜' : action.retreat ? '离席认输' : '牌局失手') : action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '边患失守' : '整军再战',
+            title: action.doudizhu ? (action.win ? '牌局得胜' : action.retreat ? '离席认输' : '牌局失手') : action.win ? ({ land: '讨伐得胜', naval: '水战告捷', court: '朝议得胜', frontier: '靖边得胜' } as const)[action.mode] : frontierSettled ? '城池暂失' : '整军再战',
             detail: action.win
               ? `${action.doudizhu ? '牌桌赢得' : ({ land: '军中缴获', naval: '江上缴获', court: '朝廷赏赐', frontier: '边军缴获' } as const)[action.mode]} ${rewardGold.toLocaleString()} 金${bonus > 1 ? '（练兵之策翻倍）' : ''}。`
-              : frontierSettled ? `迎战失利，边郡遭劫，损失 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : action.doudizhu ? `${action.retreat ? '中途认输' : '对手先走完'}，付出 ${lossGold.toLocaleString()} 金。` : action.retreat ? `认输回府，折损军资 ${lossGold.toLocaleString()} 金。` : `此战未竟，折损军资 ${lossGold.toLocaleString()} 金。`,
+              : frontierSettled ? `守城未克，边郡遭劫，折损 ${frontierPenalty.toLocaleString()} 金。` : action.mode === 'frontier' ? '退守关内，边患未解，须尽快再战。' : action.doudizhu ? `${action.retreat ? '中途认输' : '对手先走完'}，付出 ${lossGold.toLocaleString()} 金。` : action.retreat ? `认输回府，折损军资 ${lossGold.toLocaleString()} 金。` : `此战未竟，折损军资 ${lossGold.toLocaleString()} 金。`,
             goldDelta: action.win ? rewardGold : frontierPenalty > 0 ? -frontierPenalty : lossGold > 0 ? -lossGold : undefined,
           },
           ...state.eventLog
@@ -611,6 +724,12 @@ function baseReducer(state: GameState, action: Action): GameState {
         // 屯田与封地是田产，随家业传给下一代
         farmLevel: state.farmLevel,
         fiefs: state.fiefs,
+        // 城防与得郡时刻随封地传下；进行中的反攻随传位作罢，下一代升到侯府时反攻计时至少重给 48 小时（见 upgradeHome）
+        fiefWalls: state.fiefWalls,
+        fiefTakenAt: state.fiefTakenAt,
+        lostFiefs: state.lostFiefs,
+        nextSiegeAt: state.nextSiegeAt,
+        peakFiefs: ownedFiefCount(state.fiefs),
         claimedQuestIds: inheritedQuestIds(state.farmLevel, state.fiefs),
         eventLog: [
           {
@@ -704,6 +823,22 @@ export function useGameState() {
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // 邻郡反攻：读档后检查一次，开着页面每分钟一次，切回前台再检查；只在页面可见时起反攻（离线不起）
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      const flags = siegeTestFlags();
+      dispatch({ type: 'siegeTick', now: Date.now(), force: flags.force, target: flags.target });
+    };
+    tick();
+    const timer = window.setInterval(tick, SIEGE_TICK_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, []);
 
   const selectedLord = useMemo(() => findLord(state.selectedLordId), [state.selectedLordId]);
@@ -800,6 +935,21 @@ export function useGameState() {
     [state]
   );
   const resolveConquest = useCallback((win: boolean, refundRate = 0) => dispatch({ type: 'resolveConquest', win, refundRate }), []);
+  /** 迎战守城：不耗军令、不押军资 */
+  const startDefense = useCallback(() => {
+    if (!state.siege || state.activeBattle || !state.fiefs[state.siege.fiefId]) return false;
+    dispatch({ type: 'startDefense' });
+    return true;
+  }, [state.siege, state.activeBattle, state.fiefs]);
+  const resolveDefense = useCallback((win: boolean) => dispatch({ type: 'resolveDefense', win }), []);
+  /** 弃城：按失手处理（调用方先二次确认） */
+  const abandonSiege = useCallback(() => dispatch({ type: 'resolveDefense', win: false, abandon: true }), []);
+  const repairWall = useCallback((fiefId: string) => {
+    const fief = findFief(fiefId);
+    if (!fief || !state.fiefs[fiefId] || wallsOf(state, fiefId) >= FIEF_WALLS || state.gold < wallRepairCost(fief)) return false;
+    dispatch({ type: 'repairWall', fiefId });
+    return true;
+  }, [state]);
 
   const setFiefPolicy = useCallback(
     (fiefId: string, policyId: FiefPolicyId) => {
@@ -862,6 +1012,10 @@ export function useGameState() {
     claimFief,
     startConquest,
     resolveConquest,
+    startDefense,
+    resolveDefense,
+    abandonSiege,
+    repairWall,
     setFiefPolicy,
     chooseAmbition: (ambitionId: AmbitionId) => dispatch({ type: 'chooseAmbition', ambitionId }),
     foundDynasty: (realm: RealmId) => dispatch({ type: 'foundDynasty', realm }),
@@ -884,7 +1038,8 @@ export function useGameState() {
   };
 }
 
-/** 攻郡军资：开拓价（含开疆家风折扣）的一半，国号魏再打折 */
-export function conquestStakeFor(state: Pick<GameState, 'chronicle' | 'realms'>, fief: Fief) {
-  return Math.round(fiefCostFor(state, fief) * CONQUEST_STAKE_RATE * realmConquestDiscount(state.realms));
+/** 攻郡军资：开拓价（含开疆家风折扣）的一半，国号魏再打折；失郡 72 小时内收复只押四分之一 */
+export function conquestStakeFor(state: Pick<GameState, 'chronicle' | 'realms'> & Partial<Pick<GameState, 'lostFiefs' | 'fiefs'>>, fief: Fief, now = Date.now()) {
+  const reclaim = state.lostFiefs && state.fiefs && reclaimRemainingMs({ lostFiefs: state.lostFiefs, fiefs: state.fiefs }, fief.id, now) > 0;
+  return Math.round(fiefCostFor(state, fief) * (reclaim ? RECLAIM_STAKE_RATE : CONQUEST_STAKE_RATE) * realmConquestDiscount(state.realms));
 }

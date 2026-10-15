@@ -3,7 +3,8 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { VENUES, venueReward, venueRewardScale, type VenueId } from '../data/venues';
-import { FIEF_UNLOCK_HOME_LEVEL, fiefs as fiefCatalog, ownedFiefIds, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
+import { FIEF_UNLOCK_HOME_LEVEL, fiefs as fiefCatalog, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
+import { activePerkIds, DEFENSE_FORCE_LANDLORD, type Siege } from '../lib/siege';
 import { ConquestMap } from './ConquestMap';
 import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
@@ -42,7 +43,8 @@ interface BattleScreenProps {
   farmCost: number;
   day: number;
   battleBonus: number | null;
-  frontier: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
+  /** 北疆边患 v2.2 收起：入口已断开，自动战引擎保留到下个版本，不传即视为无边患 */
+  frontier?: { raid: { startDay: number; startedAt: number; dueAt: number } | null; nextRaidDay: number; day: number };
   onUpgradeFarm: () => boolean;
   onBattleStart: (mode: BattleMode, lossGold: number, extra?: { rewardGold?: number; odds?: number; doudizhu?: boolean }) => void;
   /** 斗地主倍数/身份变化时回写进行中的牌局 */
@@ -68,6 +70,15 @@ interface BattleScreenProps {
   onSkillUsed?: (partnerId: string, uses: number) => void;
   /** 糜夫人「舍身」失手 ×4 起返还军令 */
   onRefundOrder?: (partnerId: string) => void;
+  /** 邻郡反攻：进行中的反攻、各郡城防、失郡时刻；疆域图预选的郡（首页告急条直达） */
+  siege?: Siege | null;
+  fiefWalls?: Record<string, number>;
+  lostFiefs?: Record<string, number>;
+  initialFiefId?: string;
+  onStartDefense?: () => boolean;
+  onDefenseResolved?: (win: boolean) => void;
+  onAbandonSiege?: () => void;
+  onRepairWall?: (fiefId: string) => boolean;
 }
 
 type BattlePhase = 'intro' | 'battle' | 'result';
@@ -92,12 +103,13 @@ interface BattleRuntime {
 }
 
 // 官道、江东、许都三处自动战 10-15 收起：开疆改为攻郡打斗地主（见 ConquestMap），旧入口一律落到荆州
+// 北疆边患 v2.2 收起（改为疆域图上的邻郡反攻守城）；北疆的 HP 自动战引擎（MODE_CONFIG.frontier 与下方回合战）先只断开入口
 const MAP_REGIONS: MapRegion[] = [
   { id: 'jingzhou', name: '荆州', state: '斗地主', x: 47, y: 58, mode: 'doudizhu' },
-  { id: 'xishu', name: '西蜀', state: '屯田', x: 19, y: 52, mode: 'farm' },
-  { id: 'beijiang', name: '北疆', state: '边境安宁', x: 30, y: 16, mode: 'frontier' }
+  { id: 'xishu', name: '西蜀', state: '屯田', x: 19, y: 52, mode: 'farm' }
 ];
-const RETIRED_REGIONS: RegionId[] = ['guandao', 'jiangdong', 'xuchang'];
+const RETIRED_REGIONS: RegionId[] = ['guandao', 'jiangdong', 'xuchang', 'beijiang'];
+const NO_FRONTIER = { raid: null, nextRaidDay: 0, day: 0 };
 
 interface ModeConfig {
   region: string;
@@ -173,7 +185,7 @@ export function BattleScreen({
   courtPower,
   homeLevel,
   farm,
-  frontier,
+  frontier = NO_FRONTIER,
   orders,
   orderCap,
   realmScale,
@@ -199,7 +211,15 @@ export function BattleScreen({
   escort = null,
   onSelectEscort,
   onSkillUsed,
-  onRefundOrder
+  onRefundOrder,
+  siege = null,
+  fiefWalls = {},
+  lostFiefs = {},
+  initialFiefId,
+  onStartDefense,
+  onDefenseResolved,
+  onAbandonSiege,
+  onRepairWall
 }: BattleScreenProps) {
   const settledRef = useRef(false);
   const startedRef = useRef(false);
@@ -210,9 +230,10 @@ export function BattleScreen({
   // 从「出征」直接进来先摆疆域图与斗地主选场；屯田、北疆点「其他战场」再展开
   const [showRegions, setShowRegions] = useState(entryRegion !== 'jingzhou');
   // 攻郡牌局：选好的郡与方略；ddzKey 变了就重开一桌（再来一局）
-  const [conquestTarget, setConquestTarget] = useState<{ fief: Fief; policyId: FiefPolicyId } | null>(null);
+  const [conquestTarget, setConquestTarget] = useState<{ fief: Fief; policyId: FiefPolicyId; defend?: Siege } | null>(null);
   const [ddzKey, setDdzKey] = useState(0);
-  const perks = ownedFiefIds(holdings);
+  // 城防不满（告急）的郡牌桌特权暂停
+  const perks = activePerkIds({ fiefs: holdings, fiefWalls });
   // 默认选能进的最高场
   const [venueId, setVenueId] = useState<VenueId>(() => [...VENUES].reverse().find((venue) => totalPower >= venue.requiredPower)?.id ?? 'beginner');
   // 每个战场自选的对手档位；null = 推荐档。边患不可选
@@ -436,6 +457,33 @@ export function BattleScreen({
 
   const resultTitle = runtime.result === 'win' ? wording.win : runtime.result === 'retreat' ? wording.retreat : runtime.result === 'loss' ? wording.loss : wording.fighting;
 
+  if (doudizhuOpen && conquestTarget?.defend) {
+    const { fief, defend } = conquestTarget;
+    return (
+      <DouDizhuGame
+        key={`defend-${ddzKey}`}
+        lord={lord}
+        wins={wins}
+        losses={losses}
+        rewardGold={0}
+        aiSkill={defend.skill}
+        lossGold={0}
+        onSfx={onSfx}
+        perks={perks}
+        escort={escort}
+        conquest={{ fiefName: fief.name, garrison: defend.attacker, portrait: fief.portrait, mode: 'defend', forceLandlord: DEFENSE_FORCE_LANDLORD }}
+        onResolved={(win, _reward, _loss, forfeit, _multiplier, skillUses = 0) => {
+          if (escort) onSkillUsed?.(escort.id, skillUses);
+          // 牌桌上点「弃城」（已二次确认）按弃城记，打完按胜负记
+          if (forfeit && !win) onAbandonSiege?.();
+          else onDefenseResolved?.(win);
+        }}
+        onStakeChange={onBattleStakeChange}
+        onReturnHome={onReturnHome}
+      />
+    );
+  }
+
   if (doudizhuOpen && conquestTarget) {
     const { fief } = conquestTarget;
     return (
@@ -515,7 +563,7 @@ export function BattleScreen({
         </header>
 
         {!showRegions && (
-          <p className="orders-note ddz-only-note">西蜀屯田、北疆边患在「其他战场」{raidActive ? '；北疆正有边患！' : '。'}</p>
+          <p className="orders-note ddz-only-note">西蜀屯田在「其他战场」。</p>
         )}
 
         {showRegions && <section className="expedition-map" aria-label="三国地图">
@@ -547,6 +595,20 @@ export function BattleScreen({
           <ConquestMap
             escortPicker={escortOptions.length > 0 && homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? escortSummary : undefined}
             holdings={holdings}
+            fiefWalls={fiefWalls}
+            lostFiefs={lostFiefs}
+            siege={siege}
+            initialFiefId={initialFiefId}
+            onDefend={() => {
+              const target = siege ? fiefCatalog.find((item) => item.id === siege.fiefId) : null;
+              if (!siege || !target || !onStartDefense?.()) return;
+              onSfx('audio/sfx/sfx_button.mp3', 0.35);
+              setConquestTarget({ fief: target, policyId: holdings[target.id] ?? 'farming', defend: siege });
+              setDoudizhuOpen(true);
+              setMapOpen(false);
+            }}
+            onAbandon={() => onAbandonSiege?.()}
+            onRepair={(fiefId) => onRepairWall?.(fiefId) ?? false}
             homeLevel={homeLevel}
             gold={farm.gold}
             orders={orders}
@@ -703,7 +765,7 @@ export function BattleScreen({
           {outOfOrders ? `军令不足 · 回府处理政务，${daysUntilNextOrder(day, homeLevel)} 日后 +1` : `${selectedRegion.mode === 'doudizhu' ? '进入斗地主' : wording.enterLabel}${needsOrder ? ' · 耗 1 军令' : ''}`}
         </GameButton>
         )}
-        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（北疆边患除外），府邸前每日回 1 道、之后每 2 日回 1 道，最多存 {orderCap} 道（整军封地可提高上限）。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
+        {selectedRegion.mode !== 'farm' && <p className="orders-note">每场出征耗 1 道军令（守城除外），府邸前每日回 1 道、之后每 2 日回 1 道，最多存 {orderCap} 道（整军封地可提高上限）。自动战中途离开，将士会按显示的胜率替你打完；斗地主中途离开按认输处理。</p>}
       </main>
     );
   }
@@ -747,7 +809,7 @@ export function BattleScreen({
               : (
                   <>
                     <span className="battle-info__line">胜 +{winGold(enemy.rewardGold).toLocaleString()} 金{drillBonus > 1 ? ` ×${drillBonus}` : ''}</span>
-                    <span className="battle-info__line">败 −{(mode === 'frontier' ? frontierLoss : lossGold).toLocaleString()} 金</span>
+                    <span className="battle-info__line">失手 −{(mode === 'frontier' ? frontierLoss : lossGold).toLocaleString()} 金</span>
                   </>
                 )}
           </strong>

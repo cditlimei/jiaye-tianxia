@@ -7875,3 +7875,134 @@ body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-car
     padding: 4px 8px;
   }
 }
+
+/* ===== v2.2 邻郡反攻守城：疆域图城防点、告急脉动、失郡褪色；首页告急条 ===== */
+.conquest-map .conquest-node .conquest-node__wall {
+  fill: rgba(255, 246, 220, 0.75);
+  stroke: #6b4a08;
+  stroke-width: 0.25;
+}
+
+.conquest-map .conquest-node .conquest-node__wall.is-full {
+  fill: #f2c45a;
+}
+
+.conquest-map .conquest-node.is-wall-alert .conquest-node__flag {
+  fill: #e08a2c;
+}
+
+.conquest-map .conquest-node.is-owned.is-besieged > circle:not(.conquest-node__ring) {
+  fill: #e0655a;
+  stroke: #7a1410;
+  animation: siege-node-pulse 1.1s ease-in-out infinite;
+}
+
+.conquest-map .conquest-node.is-besieged .conquest-node__ring {
+  stroke: #ff3b2f !important;
+  stroke-width: 0.9 !important;
+  animation-duration: 1.1s;
+}
+
+@keyframes siege-node-pulse {
+  0%, 100% { fill: #e0655a; }
+  50% { fill: #ffb08a; }
+}
+
+.conquest-map .conquest-node text.conquest-node__timer {
+  font-size: 2.8px;
+  fill: #fff4e6;
+  stroke: #8b1a1a;
+  stroke-width: 0.9px;
+}
+
+.conquest-map .conquest-node.is-lost > circle:not(.conquest-node__ring) {
+  fill: #d8cfba;
+  stroke: #9a8f78;
+  stroke-dasharray: 0.8 0.6;
+  opacity: 0.75;
+}
+
+.conquest-map .conquest-node.is-lost text {
+  fill: #7a6c4e;
+}
+
+.conquest-map .conquest-node text.conquest-node__lost {
+  font-size: 2.4px;
+  font-weight: 700;
+  fill: #8b3a2a;
+}
+
+.conquest-map .conquest-panel .conquest-walls {
+  color: #f5e6c8;
+  font-weight: 700;
+}
+
+.conquest-map .conquest-panel .conquest-walls.is-alert {
+  color: #ffb07a;
+}
+
+.conquest-map .conquest-panel .conquest-siege-line {
+  color: #ffc9b5;
+  font-weight: 700;
+}
+
+.conquest-map .conquest-panel.is-besieged {
+  border: 1px solid rgba(225, 106, 78, 0.65);
+  background: linear-gradient(180deg, rgba(90, 20, 20, 0.55), rgba(10, 10, 18, 0.72));
+}
+
+.conquest-map .conquest-panel.is-lost {
+  border: 1px dashed rgba(212, 168, 67, 0.45);
+}
+
+.conquest-map .conquest-panel .conquest-siege-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.conquest-map .conquest-panel .conquest-repair,
+.conquest-map .conquest-panel .conquest-abandon {
+  flex: 1;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.conquest-map .conquest-panel .conquest-repair {
+  border: 1px solid rgba(240, 214, 138, 0.7);
+  background: linear-gradient(180deg, #ffe99d, #d4a843);
+  color: #241303;
+}
+
+.conquest-map .conquest-panel .conquest-repair:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.conquest-map .conquest-panel .conquest-abandon {
+  border: 1px solid rgba(245, 230, 200, 0.35);
+  background: transparent;
+  color: rgba(245, 230, 200, 0.8);
+}
+
+.home-v2 .frontier-alert.siege-alert.is-wall {
+  border-color: rgba(240, 170, 80, 0.6);
+  background: linear-gradient(90deg, rgba(130, 80, 16, 0.55), rgba(70, 44, 12, 0.35));
+}
+
+.home-v2 .frontier-alert.siege-alert.is-lost {
+  border-color: rgba(212, 168, 67, 0.45);
+  background: linear-gradient(90deg, rgba(60, 50, 30, 0.6), rgba(30, 26, 18, 0.4));
+}
+
+.home-v2 .frontier-alert.siege-alert.is-besieged {
+  animation: siege-alert-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes siege-alert-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 80, 60, 0.0); }
+  50% { box-shadow: 0 0 14px 1px rgba(225, 80, 60, 0.45); }
+}

@@ -2,6 +2,10 @@ import type { FiefPolicyId } from './data/fiefs';
 import type { FiefHoldings } from './data/fiefs';
 import type { AmbitionId } from './data/ambitions';
 import type { RealmCounts, RealmId } from './data/dynasty';
+import type { AiSkill } from './lib/doudizhu';
+
+/** 牌局类郡战：攻郡、守城（反攻）、收复（失郡 72 小时内半价） */
+export type ConquestKind = 'attack' | 'defend' | 'reclaim';
 
 export type Screen = 'title' | 'lordSelect' | 'partnerSelect' | 'home' | 'battle';
 
@@ -20,9 +24,23 @@ export interface GameState {
   battleLosses: number;
   navalWins: number;
   courtWins: number;
+  /** v2.2 起记守城胜场（北疆边患收起，字段名沿用） */
   frontierWins: number;
+  /** 北疆边患（v2.2 收起）：读档一律置空，nextRaidDay 不再读 */
   frontierRaid: { startDay: number; startedAt: number; dueAt: number } | null;
   nextRaidDay: number;
+  /** 邻郡反攻：进行中的一次（见 lib/siege.ts） */
+  siege: { fiefId: string; attacker: string; skill: AiSkill; startedAt: number; dueAt: number } | null;
+  /** 下一次反攻不早于此刻（真实毫秒，0 = 未计时） */
+  nextSiegeAt: number;
+  /** 各郡城防 1..2；不满时该郡牌桌特权暂停 */
+  fiefWalls: Record<string, number>;
+  /** 各郡得郡时刻（72 小时保护期） */
+  fiefTakenAt: Record<string, number>;
+  /** 失郡时刻（72 小时内半价收复） */
+  lostFiefs: Record<string, number>;
+  /** 本代最高郡数（开疆志向按它算，失郡不倒退） */
+  peakFiefs: number;
   generation: number;
   legacyPoints: number;
   pendingChoice: { eventId: string; day: number; dailyIncome: number } | null;
@@ -40,7 +58,7 @@ export interface GameState {
   /** 进行中的战斗；rewardGold/odds 用于中途离开时按胜率替玩家打完，斗地主中途离开按认输 */
   /** 斗地主另记当前倍数与份额（农民 0.5），刷新逃局按 lossGold×multiplier×share 扣，与认输一致 */
   /** conquest：攻郡牌局（军资出兵时已扣，胜则得郡；中途离开按败；refundRate 是糜夫人「舍身」未克退还比例，出兵时记下，撤兵与刷新离开同样退） */
-  activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number; conquest?: { fiefId: string; policyId: FiefPolicyId; stake: number; refundRate?: number } } | null;
+  activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number; conquest?: { fiefId: string; policyId: FiefPolicyId; stake: number; refundRate?: number; kind?: ConquestKind } } | null;
   /** 军令：出征消耗，每 2 个游戏日回 1 道，上限随整军封地增加 */
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */

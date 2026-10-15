@@ -27,8 +27,11 @@ interface DouDizhuGameProps {
   onReturnHome: () => void;
   /** 已拿下的郡（牌局特权）：changsha 农民赢也拿全份、bajun 赢牌至少 ×2、yingchuan 开局探下家三张、liaodong 叫地主前看一张底牌 */
   perks?: string[];
-  /** 攻郡牌局：对面坐守将，不赢金币，赢了拿下这郡；stakeRefund 是糜夫人「舍身」未克时护回的军资 */
-  conquest?: { fiefName: string; garrison: string; portrait: string; stakeRefund?: number };
+  /**
+   * 攻郡牌局：对面坐守将，不赢金币，赢了拿下这郡；stakeRefund 是糜夫人「舍身」未克时护回的军资。
+   * mode 'defend' 是守城局（邻郡反攻）：对面坐来犯将，不赢金不扣金，守住城防回满、失手城防 −1；forceLandlord 时城主坐庄（跳过叫地主）
+   */
+  conquest?: { fiefName: string; garrison: string; portrait: string; stakeRefund?: number; mode?: 'attack' | 'defend'; forceLandlord?: boolean };
   /** 随行伴侣（开局冻结）：牌桌技能按等级生效 */
   escort?: EscortInfo | null;
   /** 结算后「再来一局」；不传则只有返回家业 */
@@ -131,7 +134,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   // 随行伴侣与等级开局冻结
   const [escort] = useState<EscortInfo | null>(() => (escortProp && partnerSkills[escortProp.id] ? escortProp : null));
   const escortName = escort?.name ?? '';
-  const [table, setTable] = useState<TableState>(() => createInitialTable(newSkillState(escort), escortName));
+  const defend = conquest?.mode === 'defend';
+  const [table, setTable] = useState<TableState>(() => createInitialTable(newSkillState(escort), escortName, defend && Boolean(conquest?.forceLandlord)));
   const [hintIndex, setHintIndex] = useState(0);
   // 托管：连续两次超时自动进入（新手局除外），也可手动开；托管时由系统按老手水平代打，叫牌一律不叫
   const [autoPilot, setAutoPilot] = useState(false);
@@ -145,7 +149,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   const profiles = useMemo(() => {
     const base = createPlayerProfiles(lord, gamesPlayedAtStart, aiSkill);
     // 攻郡：下家换成该郡守将
-    return conquest ? { ...base, 1: { ...base[1], name: conquest.garrison, title: `${conquest.fiefName}守将`, imagePath: `assets/enemies/enemy_${conquest.portrait}.png` } } : base;
+    return conquest ? { ...base, 1: { ...base[1], name: conquest.garrison, title: defend ? `来犯${conquest.fiefName}` : `${conquest.fiefName}守将`, imagePath: `assets/enemies/enemy_${conquest.portrait}.png` } } : base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiSkill, lord, gamesPlayedAtStart]);
   const hasPerk = (id: string) => perks.includes(id);
@@ -264,7 +268,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   ].filter(Boolean);
   const multTag = shownMult > 1 || shownShare < 1 || skillTags.length > 0 ? `（×${formatMult(shownMult)}${shownShare < 1 ? ' · 农民半份' : ''}${spring ? ` · ${spring}` : ''}${playerWins && winMultiplier > finalMultiplier ? ' · 巴郡保底' : ''}${playerWins && winShare > share ? ' · 长沙全份' : ''}${skillTags.map((tag) => ` · ${tag}`).join('')}）` : '';
   const statusCopy = table.winner !== null
-    ? conquest
+    ? defend && conquest
+      ? playerWins
+        ? `击退${conquest.garrison}，${conquest.fiefName}城防回满`
+        : `${playerNames[table.winner]}先走完，${conquest.fiefName}城防 −1（不扣金）`
+      : conquest
       ? playerWins
         ? `击败守将${conquest.garrison}，${conquest.fiefName}归府下`
         : `${playerNames[table.winner]}先走完，军资没入敌手${conquest.stakeRefund ? `（舍身护回 ${conquest.stakeRefund.toLocaleString()} 金）` : ''}`
@@ -546,6 +554,16 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   };
 
   const leaveTable = () => {
+    // 守城局：「弃城」二次确认后按失手（城防 −1，到 0 失郡）；关页、刷新不算弃城，反攻保留可重打
+    if (defend && table.winner === null) {
+      if (!window.confirm(`弃城按守城未克处理：${conquest?.fiefName ?? '本郡'}城防 −1，城防归零即失郡（不扣金）。确定弃城？`)) return;
+      if (!settledRef.current) {
+        settledRef.current = true;
+        onResolved(false, 0, 0, true, 1, settleUses(false), false);
+      }
+      onReturnHome();
+      return;
+    }
     if (table.winner === null && !window.confirm(`认输将损失 ${forfeitGold.toLocaleString()} 金（当前 ×${formatMult(Math.min(MAX_MULTIPLIER, table.multiplier * doubled))}${share < 1 ? ' · 农民半份' : ''}${doubled > 1 ? ` · 赤壁对赌，付缴获 ×${payRatio(forfeitGold)}` : ''}），确定回府？`)) {
       return;
     }
@@ -602,7 +620,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   // 技能条右侧的状态字：主动技能写剩余次数，被动写「生效中」
   function skillStateText() {
     if (!skillDef) return '';
-    if (skillId === 'xiaoqiao') return conquest ? '攻郡不加倍' : doubled > 1 ? '已加倍' : table.skill.offer ? '可加倍' : bidding ? '叫完地主可加倍' : table.multiplier >= MAX_MULTIPLIER ? '倍数已满' : skillLevel < 2 && table.landlord !== 0 ? '当地主才可加倍' : '未加倍';
+    if (skillId === 'xiaoqiao') return conquest ? (defend ? '守城不加倍' : '攻郡不加倍') : doubled > 1 ? '已加倍' : table.skill.offer ? '可加倍' : bidding ? '叫完地主可加倍' : table.multiplier >= MAX_MULTIPLIER ? '倍数已满' : skillLevel < 2 && table.landlord !== 0 ? '当地主才可加倍' : '未加倍';
     if (skillId === 'zhurong') return `+${Math.round(fireBonus * 100)}%`;
     if (skillDef.uses[skillLevel - 1] > 0) return `×${usesLeft}`;
     return '生效中';
@@ -663,7 +681,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
     }
     if (skillId === 'sunshangxiang') lines.push({ key: 'desc', text: `你的炸弹、王炸 ×${formatMult(skillVal)}（平时 ×2）${table.skill.myBombs > 0 ? ` · 已炸 ${table.skill.myBombs} 次` : ''}`, desc: table.skill.myBombs === 0 });
     if (skillId === 'zhurong') lines.push({ key: 'desc', text: `长牌 ${table.skill.longCombos} 手 · 赢牌缴获 +${Math.round(fireBonus * 100)}%（上限 ${Math.round(skillVal * 100)}%）`, desc: table.skill.longCombos === 0 });
-    if (skillId === 'mifuren') lines.push({ key: 'desc', text: conquest ? `攻城未克护回 ${(conquest.stakeRefund ?? 0).toLocaleString()} 金军资` : `${skillVal > 0 ? `失手少付 ${Math.round(skillVal * 100)}% · ` : ''}失手 ×${MIFUREN_REFUND_MULTIPLIER} 起返还军令`, desc: true });
+    if (skillId === 'mifuren') lines.push({ key: 'desc', text: defend ? '守城局失手不扣金，舍身待下局' : conquest ? `攻城未克护回 ${(conquest.stakeRefund ?? 0).toLocaleString()} 金军资` : `${skillVal > 0 ? `失手少付 ${Math.round(skillVal * 100)}% · ` : ''}失手 ×${MIFUREN_REFUND_MULTIPLIER} 起返还军令`, desc: true });
     return lines;
   }
 
@@ -671,7 +689,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
     <main className="screen ddz-screen">
       <header className="ddz-topbar">
         {table.winner === null ? (
-          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>{conquest ? '撤兵' : `认输 −${forfeitGold.toLocaleString()}`}</button>
+          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>{defend ? '弃城' : conquest ? '撤兵' : `认输 −${forfeitGold.toLocaleString()}`}</button>
         ) : (
           <span className="ddz-topbar__quit is-idle">牌局结束</span>
         )}
@@ -681,7 +699,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
           <MiniCardStrip cards={bidding ? table.landlordCards.slice(0, kittyVisible) : table.landlordCards} emptyLabel="叫完地主后亮出" center />
         </div>
         <div className="ddz-topbar__stake">
-          <h2>{conquest ? `攻取${conquest.fiefName}` : '斗地主牌局'}</h2>
+          <h2>{conquest ? `${defend ? '守卫' : '攻取'}${conquest.fiefName}` : '斗地主牌局'}</h2>
           <span className="ddz-multiplier">倍数 ×{formatMult(finalMultiplier)}</span>
           <span>胜 {wins} · 负 {losses}</span>
         </div>
@@ -751,7 +769,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
 
       {table.winner !== null && (
         <div className={`doudizhu-result-banner ${playerWins ? 'is-win' : 'is-loss'}`} role="status">
-          <strong>{conquest ? (playerWins ? `${conquest.fiefName}归附` : '攻城未克') : playerWins ? '牌局得胜' : '下局再战'}</strong>
+          <strong>{defend && conquest ? (playerWins ? `守住${conquest.fiefName}` : '守城未克') : conquest ? (playerWins ? `${conquest.fiefName}归附` : '攻城未克') : playerWins ? '牌局得胜' : '下局再战'}</strong>
           <span>{statusCopy}</span>
         </div>
       )}
@@ -1154,7 +1172,8 @@ function carrySkill(skill: SkillState): SkillState {
 const skillValue = (skill: SkillState) => (skill.id && skill.level > 0 ? partnerSkills[skill.id].values[skill.level - 1] : 0);
 const skillLabel = (skill: SkillState, name: string) => (skill.id ? `${name}·${partnerSkills[skill.id].name}` : '');
 
-function createInitialTable(skill: SkillState, escortName = ''): TableState {
+/** forceLandlord：守城「城主坐庄」，跳过叫地主，玩家直接当地主 */
+function createInitialTable(skill: SkillState, escortName = '', forceLandlord = false): TableState {
   const deal = createDoudizhuDeal();
   const kittyIds = new Set(deal.landlordCards.map((card) => card.id));
   const base: TableState = {
@@ -1180,6 +1199,7 @@ function createInitialTable(skill: SkillState, escortName = ''): TableState {
     // 貂蝉「闭月」开局即发动：桌心播报
     ...(skill.id === 'diaochan' && escortName ? { flash: { id: 1, text: skillLabel(skill, escortName), big: true } } : {})
   };
+  if (forceLandlord) return finishBidding({ ...base, history: ['城主坐庄：你当地主，先出牌。'], bid: { ...base.bid, candidate: 0 } }, escortName);
   return skipBidding() ? finishBidding({ ...base, bid: { ...base.bid, candidate: 0 } }, escortName) : base;
 }
 
