@@ -3,7 +3,7 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { VENUES, venueReward, venueRewardScale, type VenueId } from '../data/venues';
-import { fiefs as fiefCatalog, ownedFiefIds, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
+import { FIEF_UNLOCK_HOME_LEVEL, fiefs as fiefCatalog, ownedFiefIds, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
 import { ConquestMap } from './ConquestMap';
 import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
@@ -13,6 +13,15 @@ import { imageUrl } from '../lib/assets';
 import { DouDizhuGame } from './DouDizhuGame';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
+import { MIFUREN_MIN_PAY, MIFUREN_STAKE_REFUND, partnerSkills, SKILL_LEVEL_NAME, type EscortInfo } from '../data/partnerSkills';
+
+export interface EscortOption {
+  id: string;
+  name: string;
+  imagePath: string;
+  /** 技能等级 1~3 */
+  level: 1 | 2 | 3;
+}
 
 interface BattleScreenProps {
   /** 新手还没赢过第一场：官道推荐档改用高胜率档 */
@@ -48,9 +57,17 @@ interface BattleScreenProps {
   fiefs: FiefHoldings;
   conquestStakeFor: (fief: Fief) => number;
   policyChangeCostFor: (fief: Fief) => number;
-  onStartConquest: (fiefId: string, policyId: FiefPolicyId) => boolean;
-  onConquestResolved: (win: boolean) => void;
+  onStartConquest: (fiefId: string, policyId: FiefPolicyId, refundRate?: number) => boolean;
+  onConquestResolved: (win: boolean, refundRate?: number) => void;
   onChangeFiefPolicy: (fiefId: string, policyId: FiefPolicyId) => boolean;
+  /** 随行伴侣：可选的已入府伴侣、当前随行（开局冻结进牌桌） */
+  escortOptions?: EscortOption[];
+  escort?: EscortInfo | null;
+  onSelectEscort?: (partnerId: string) => void;
+  /** 每局结算记一笔随行统计 */
+  onSkillUsed?: (partnerId: string, uses: number) => void;
+  /** 糜夫人「舍身」失手 ×4 起返还军令 */
+  onRefundOrder?: (partnerId: string) => void;
 }
 
 type BattlePhase = 'intro' | 'battle' | 'result';
@@ -177,7 +194,12 @@ export function BattleScreen({
   policyChangeCostFor,
   onStartConquest,
   onConquestResolved,
-  onChangeFiefPolicy
+  onChangeFiefPolicy,
+  escortOptions = [],
+  escort = null,
+  onSelectEscort,
+  onSkillUsed,
+  onRefundOrder
 }: BattleScreenProps) {
   const settledRef = useRef(false);
   const startedRef = useRef(false);
@@ -204,7 +226,22 @@ export function BattleScreen({
   // 国号吴：斗地主胜利缴获 +20%/次（realmScale('doudizhu')），与南阳同样直接算进本场缴获
   const nanyangBoost = (perks.includes('nanyang') ? 1.2 : 1) * realmScale('doudizhu');
   const venueGold = Math.round(venueReward(selectedVenue, venueScale) * nanyangBoost);
-  const venueLoss = Math.round(venueGold * LOSS_PENALTY_RATE * (perks.includes('runan') ? 0.5 : 1));
+  // 糜夫人「舍身」二重起失手少付，与汝南相乘，最少付三成
+  const mifurenCut = escort?.id === 'mifuren' ? partnerSkills.mifuren.values[escort.level - 1] : 0;
+  const lossFactor = (perks.includes('runan') ? 0.5 : 1) * (1 - mifurenCut);
+  const venueLoss = Math.round(venueGold * LOSS_PENALTY_RATE * (mifurenCut > 0 ? Math.max(MIFUREN_MIN_PAY, lossFactor) : lossFactor));
+  const stakeRefundRate = escort?.id === 'mifuren' ? MIFUREN_STAKE_REFUND[escort.level - 1] : 0;
+  const escortPicker = (
+    <EscortPicker options={escortOptions} selectedId={escort?.id ?? null} forcedId={escort && !escortOptions.some((item) => item.id === escort.id) ? escort.id : null} onSelect={(id) => onSelectEscort?.(id)} />
+  );
+  // 攻郡面板只写一行当前随行（选择器只放在场次面板一处，免得同页两份、把开局按钮推下去）
+  const escortSummary = escort ? (
+    <p className="escort-summary">
+      随行：{escort.name}「{partnerSkills[escort.id]?.name ?? ''}」{SKILL_LEVEL_NAME[escort.level]}
+      {stakeRefundRate > 0 ? ` · 未克退还 ${Math.round(stakeRefundRate * 100)}% 军资` : ''}
+      <small>（在「选择场次」处更换）</small>
+    </p>
+  ) : null;
   const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' || selectedRegion.mode === 'frontier' ? selectedRegion.mode : 'land';
   const wording = MODE_CONFIG[mode];
   const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower, frontier: totalPower };
@@ -412,8 +449,12 @@ export function BattleScreen({
         lossGold={0}
         onSfx={onSfx}
         perks={perks}
-        conquest={{ fiefName: fief.name, garrison: fief.garrison, portrait: fief.portrait }}
-        onResolved={(win, _reward, _loss, _forfeit) => onConquestResolved(win)}
+        escort={escort}
+        conquest={{ fiefName: fief.name, garrison: fief.garrison, portrait: fief.portrait, stakeRefund: Math.round(conquestStakeFor(fief) * stakeRefundRate) }}
+        onResolved={(win, _reward, _loss, _forfeit, _multiplier, skillUses = 0) => {
+          if (escort) onSkillUsed?.(escort.id, skillUses);
+          onConquestResolved(win, stakeRefundRate);
+        }}
         onStakeChange={onBattleStakeChange}
         onReturnHome={onReturnHome}
       />
@@ -434,8 +475,15 @@ export function BattleScreen({
         aiSkill={selectedVenue.aiSkill}
         lossGold={venueLoss}
         onSfx={onSfx}
+        escort={escort}
         // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次
-        onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1) => onResolved(win, win ? venueGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true)}
+        onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1, skillUses = 0, refundOrder = false) => {
+          onResolved(win, win ? venueGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true);
+          if (escort) {
+            onSkillUsed?.(escort.id, skillUses);
+            if (refundOrder) onRefundOrder?.(escort.id);
+          }
+        }}
         onStakeChange={onBattleStakeChange}
         onReturnHome={onReturnHome}
       />
@@ -497,6 +545,7 @@ export function BattleScreen({
 
         {!showRegions && (
           <ConquestMap
+            escortPicker={escortOptions.length > 0 && homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? escortSummary : undefined}
             holdings={holdings}
             homeLevel={homeLevel}
             gold={farm.gold}
@@ -506,7 +555,7 @@ export function BattleScreen({
             onChangePolicy={onChangeFiefPolicy}
             onConquer={(fiefId, policyId) => {
               const fief = fiefCatalog.find((item) => item.id === fiefId);
-              if (!fief || !onStartConquest(fiefId, policyId)) return;
+              if (!fief || !onStartConquest(fiefId, policyId, stakeRefundRate)) return;
               onSfx('audio/sfx/sfx_button.mp3', 0.35);
               setConquestTarget({ fief, policyId });
               setDoudizhuOpen(true);
@@ -543,8 +592,9 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}。`}
+              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}${mifurenCut > 0 ? `（舍身：失手少付 ${Math.round(mifurenCut * 100)}%）` : ''}。`}
           </p>
+          {escortOptions.length > 0 && escortPicker}
           </section>
         ) : selectedRegion.mode === 'farm' ? (
           <section className="venue-panel farm-panel" aria-label="屯田" style={{ '--battle-bg': `url(${imageUrl('assets/ui/ui_farm_xishu.png', 512)})` } as CSSProperties}>
@@ -749,5 +799,38 @@ function BattleFighter({ name, title, image, hp, maxHp, hpLabel, enemy = false }
         <small>{hpLabel} {hp} / {maxHp}</small>
       </div>
     </article>
+  );
+}
+
+/** 随行伴侣：横排立绘，点选即换，免费；下方写当前随行的技能与等级 */
+function EscortPicker({ options, selectedId, forcedId, onSelect }: { options: EscortOption[]; selectedId: string | null; forcedId: string | null; onSelect: (id: string) => void }) {
+  const selected = options.find((item) => item.id === selectedId) ?? null;
+  const skill = selected ? partnerSkills[selected.id] : forcedId ? partnerSkills[forcedId] : null;
+  const skillCopy = skill ? (selected ? `${selected.name}「${skill.name}」${SKILL_LEVEL_NAME[selected.level]}：${skill.levelText[selected.level - 1]}` : `测试随行「${skill.name}」`) : '';
+  // 紧凑版：「随行」标签 + 一排小头像（横向可滑）+ 一行技能说明，整块约 70px 高
+  return (
+    <div className="escort-picker is-compact">
+      <div className="escort-picker__title">
+        <span>随行伴侣</span>
+        <small>带上牌桌，各有一招 · 点选即换</small>
+      </div>
+      <div className="escort-picker__row" role="radiogroup" aria-label="随行伴侣">
+        {options.map((item) => {
+          const picked = item.id === selectedId;
+          return (
+            <button key={item.id} type="button" role="radio" aria-checked={picked} aria-label={`${item.name}「${partnerSkills[item.id]?.name ?? ''}」${SKILL_LEVEL_NAME[item.level]}`} className={`escort-chip ${picked ? 'is-picked' : ''}`} title={`${item.name}「${partnerSkills[item.id]?.name ?? ''}」${SKILL_LEVEL_NAME[item.level]}：${partnerSkills[item.id]?.levelText[item.level - 1] ?? ''}`} onClick={() => onSelect(item.id)}>
+              <ImageWithFallback src={imageUrl(item.imagePath, 96)} alt={item.name} className="escort-chip__image" />
+              <strong>{item.name}</strong>
+              <small>{partnerSkills[item.id]?.name ?? ''} · {SKILL_LEVEL_NAME[item.level]}</small>
+            </button>
+          );
+        })}
+      </div>
+      {skill && (
+        <p className="escort-picker__skill" title={skillCopy}>
+          {skillCopy}
+        </p>
+      )}
+    </div>
   );
 }

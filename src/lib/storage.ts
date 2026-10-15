@@ -11,6 +11,7 @@ import { bountyScale, isRealmId, realmIncomePercent, realmRewardScale, realmStat
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
 import { expireFrontier, RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent, partnerIdOfKey } from '../data/partnerEvents';
+import { defaultEscort } from '../data/partnerSkills';
 
 const STORAGE_KEY = 'jiaye-tianxia-save-v1';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -44,6 +45,8 @@ export const defaultGameState: GameState = {
   partnerBoosts: {},
   affairTraining: { strength: 0, civil: 0 },
   resolvedPartnerEvents: {},
+  escortPartnerId: null,
+  skillStats: {},
   incomeBuff: null,
   nextBattleBonus: null,
   activeBattle: null,
@@ -197,6 +200,12 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
   const homeLevel = homeLevels.some((home) => home.level === parsed.homeLevel) ? Number(parsed.homeLevel) : defaultGameState.homeLevel;
   const equippedWeaponId = isKnownId(parsed.equippedWeaponId, weapons) ? parsed.equippedWeaponId : defaultGameState.equippedWeaponId;
 
+  // 随行伴侣须已入府，否则按良缘 > 第一位入府的默认（老存档没有这个字段）
+  const ownedPartnerIds = sanitizeIds(parsed.ownedPartnerIds, partners);
+  const escortPartnerId = typeof parsed.escortPartnerId === 'string' && ownedPartnerIds.includes(parsed.escortPartnerId)
+    ? parsed.escortPartnerId
+    : defaultEscort({ ownedPartnerIds, selectedLordId });
+
   // 家声按读入时的存档即时补记（老存档没有 earnedTitles）
   return collectEarnedTitles({
     ...defaultGameState,
@@ -208,7 +217,9 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     equippedWeaponId,
     // 旧存档没有这个字段：玄铁剑 + 当时装备的兵器视为已拥有
     ownedWeaponIds: [...new Set(['xuanjian', equippedWeaponId, ...sanitizeIds(parsed.ownedWeaponIds, weapons)])],
-    ownedPartnerIds: sanitizeIds(parsed.ownedPartnerIds, partners),
+    ownedPartnerIds,
+    escortPartnerId,
+    skillStats: sanitizeSkillStats(parsed.skillStats),
     claimedQuestIds: sanitizeIds(parsed.claimedQuestIds, quests),
     day: sanitizeNumber(parsed.day, defaultGameState.day, 1),
     battleWins: sanitizeNumber(parsed.battleWins, defaultGameState.battleWins, 0),
@@ -269,9 +280,11 @@ function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
 
 function sanitizeConquest(value: unknown) {
   if (!value || typeof value !== 'object') return null;
-  const c = value as { fiefId?: unknown; policyId?: unknown; stake?: unknown };
+  const c = value as { fiefId?: unknown; policyId?: unknown; stake?: unknown; refundRate?: unknown };
   if (typeof c.fiefId !== 'string' || !fiefCatalog.some((fief) => fief.id === c.fiefId) || !isFiefPolicyId(c.policyId)) return null;
-  return { fiefId: c.fiefId, policyId: c.policyId, stake: typeof c.stake === 'number' && Number.isFinite(c.stake) ? Math.max(0, Math.floor(c.stake)) : 0 };
+  // refundRate：糜夫人「舍身」未克退还比例（v2.1 新增，老存档没有就不退）
+  const refundRate = typeof c.refundRate === 'number' && Number.isFinite(c.refundRate) && c.refundRate > 0 ? Math.min(1, c.refundRate) : 0;
+  return { fiefId: c.fiefId, policyId: c.policyId, stake: typeof c.stake === 'number' && Number.isFinite(c.stake) ? Math.max(0, Math.floor(c.stake)) : 0, ...(refundRate > 0 ? { refundRate } : {}) };
 }
 
 /** 战斗中途刷新/关页：按认输结算（北疆只是退守，不扣金） */
@@ -303,13 +316,17 @@ function settleAbandonedBattle(state: GameState): GameState {
   }
   // 攻郡牌局：军资出兵时已扣，中途离开按攻城失利
   if (state.activeBattle.conquest) {
-    const fief = fiefCatalog.find((item) => item.id === state.activeBattle!.conquest!.fiefId);
+    const { fiefId, stake, refundRate = 0 } = state.activeBattle.conquest;
+    const fief = fiefCatalog.find((item) => item.id === fiefId);
+    // 糜夫人「舍身」：与点「撤兵」一样退还出兵时记下的比例
+    const refund = refundRate > 0 ? Math.round(stake * Math.min(1, refundRate)) : 0;
     return {
       ...state,
       activeBattle: null,
+      gold: state.gold + refund,
       battleLosses: state.battleLosses + 1,
       eventLog: [
-        { id: `abandon-${Date.now()}`, day: state.day, title: '攻郡未果', detail: `攻打${fief?.name ?? '郡城'}时中途撤兵，${state.activeBattle.conquest.stake.toLocaleString()} 金军资没入敌手。` },
+        { id: `abandon-${Date.now()}`, day: state.day, title: '攻郡未果', detail: refund > 0 ? `攻打${fief?.name ?? '郡城'}时中途撤兵，${stake.toLocaleString()} 金军资没入敌手，糜夫人舍身护得 ${refund.toLocaleString()} 金带回。` : `攻打${fief?.name ?? '郡城'}时中途撤兵，${stake.toLocaleString()} 金军资没入敌手。`, ...(refund > 0 ? { goldDelta: refund } : {}) },
         ...state.eventLog
       ].slice(0, MAX_EVENT_LOG)
     };
@@ -435,6 +452,18 @@ function sanitizeBoosts(value: unknown): GameState['partnerBoosts'] {
 function sanitizeResolved(value: unknown): GameState['resolvedPartnerEvents'] {
   if (!value || typeof value !== 'object') return {};
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key, v]) => partners.some((p) => p.id === partnerIdOfKey(key)) && typeof v === 'string') as [string, string][]);
+}
+
+/** 随行统计：非对象置空，只认目录里的伴侣，每项截成非负整数 */
+function sanitizeSkillStats(value: unknown): GameState['skillStats'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: GameState['skillStats'] = {};
+  for (const [id, stat] of Object.entries(value as Record<string, unknown>)) {
+    if (!partners.some((p) => p.id === id) || !stat || typeof stat !== 'object') continue;
+    const s = stat as Record<string, unknown>;
+    out[id] = { games: sanitizeNumber(s.games, 0, 0), uses: sanitizeNumber(s.uses, 0, 0) };
+  }
+  return out;
 }
 
 function sanitizeBuff(value: unknown): GameState['incomeBuff'] {

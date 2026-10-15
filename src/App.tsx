@@ -25,6 +25,7 @@ import { WeaponModal } from './components/WeaponModal';
 import { LordModal } from './components/LordModal';
 import { FiefModal } from './components/FiefModal';
 import { EndingModal } from './components/EndingModal';
+import { escortInfoFor, partnerSkillLevel, partnerSkills } from './data/partnerSkills';
 import './styles.css';
 
 type Modal = 'partner' | 'partnerTalk' | 'weapon' | 'settings' | 'lord' | 'fief' | 'ending' | null;
@@ -300,11 +301,16 @@ export function App() {
           conquestStakeFor={(fief) => conquestStakeFor(game.state, fief)}
           policyChangeCostFor={(fief) => policyChangeCostFor(game.state, fief)}
           onStartConquest={game.startConquest}
-          onConquestResolved={(win) => {
-            game.resolveConquest(win);
+          onConquestResolved={(win, refundRate) => {
+            game.resolveConquest(win, refundRate);
             if (win) audio.playSfx('audio/sfx/sfx_coins.mp3', 0.5);
           }}
           onChangeFiefPolicy={game.setFiefPolicy}
+          escort={escortInfoFor(game.state)}
+          escortOptions={partners.filter((partner) => game.state.ownedPartnerIds.includes(partner.id) && partnerSkills[partner.id]).map((partner) => ({ id: partner.id, name: partner.name, imagePath: partner.imagePath, level: Math.max(1, partnerSkillLevel(partner.id, game.state)) as 1 | 2 | 3 }))}
+          onSelectEscort={game.setEscort}
+          onSkillUsed={game.recordSkillUse}
+          onRefundOrder={game.refundOrder}
         />
       );
     }

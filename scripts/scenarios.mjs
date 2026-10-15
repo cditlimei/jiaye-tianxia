@@ -22,8 +22,10 @@ const save = (extra = {}) => ({
 const browser = await chromium.launch({ headless: true });
 
 async function open(state, contextOptions = {}) {
-  const { bidding = false, turnSeconds = 0, affairs = false, ...rest } = contextOptions;
+  const { bidding = false, turnSeconds = 0, affairs = false, ls = null, ...rest } = contextOptions;
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...rest });
+  // 额外的 localStorage 开关（如 jiaye-ddz-seed 复现牌局、jiaye-escort 指定随行伴侣）
+  if (ls) await ctx.addInitScript((pairs) => { try { for (const [k, v] of Object.entries(pairs)) localStorage.setItem(k, v); } catch { /* 存储被禁用的用例 */ } }, ls);
   // 旧用例按「玩家当地主」写，默认跳过叫地主；叫地主流程单独测（bidding: true）
   if (!bidding) await ctx.addInitScript(() => { try { localStorage.setItem('jiaye-ddz-skip-bid', '1'); } catch { /* 存储被禁用的用例 */ } });
   // 出牌倒计时默认关掉，免得慢机上用例被自动「不要」；倒计时单独测
@@ -1826,6 +1828,378 @@ await scenario('主城入口与加成文案', async () => {
   await g3c.locator('.starter-do').waitFor();
   check('钱够时去兵器库', (await g3c.locator('.starter-do').innerText()) === '去兵器库 →');
   await g3c.context().close();
+});
+
+// ===== v2.1 伴侣上牌桌：每位伴侣一项 + 通用四项（jiaye-ddz-seed 复现牌局，期望值用同一份 doudizhu.ts 在 node 里算） =====
+const ddzLib = await (async () => {
+  const { readFileSync, writeFileSync, mkdtempSync } = await import('node:fs');
+  const { createRequire } = await import('node:module');
+  const { pathToFileURL, fileURLToPath } = await import('node:url');
+  const { join, dirname } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const ts = createRequire(join(root, 'package.json'))('typescript');
+  const file = join(mkdtempSync(join(tmpdir(), 'jiaye-scn-')), 'doudizhu.mjs');
+  writeFileSync(file, ts.transpileModule(readFileSync(join(root, 'src/lib/doudizhu.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText);
+  return import(pathToFileURL(file).href);
+})();
+/** 按种子发 n 副牌（与牌桌同一条随机流）；返回最后一副与随机源 */
+function seededDeals(seed, n = 1) {
+  const rand = ddzLib.seededRandom(seed);
+  const deals = [];
+  for (let i = 0; i < n; i += 1) deals.push(ddzLib.createDoudizhuDeal(rand));
+  return { deals, rand };
+}
+/** 叫地主阶段的 17 张（去掉底牌） */
+const bidHandOf = (deal) => deal.hands[0].filter((card) => !deal.landlordCards.some((k) => k.id === card.id));
+/** 找第一个满足条件的种子 */
+function findSeed(pred, from = 1) {
+  for (let seed = from; seed < from + 5000; seed += 1) if (pred(seededDeals(seed).deals[0], seed)) return seed;
+  throw new Error('no_seed');
+}
+const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
+const skillBar = (page) => page.getByRole('group', { name: '伴侣技能' });
+const flashText = (page) => page.locator('.ddz-flash').evaluate((el) => el.textContent ?? '').catch(() => '');
+async function enterDdz(page, venue = /中级场/) {
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  await page.getByRole('button', { name: venue }).click();
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+}
+/** 键盘选牌：叠放的牌被下一张盖住，鼠标点中心会点到别的牌 */
+async function pickCards(page, cards) {
+  for (const card of cards) await page.locator(`.player-hand .poker-card[data-card-id="${card.id}"]`).press('Enter');
+}
+const strong = { homeLevel: 4, equippedWeaponId: 'fangtian' };
+
+await scenario('伴侣·貂蝉闭月', async () => {
+  const seed = 7;
+  const deal = seededDeals(seed).deals[0];
+  // 吕布 + 貂蝉 = 良缘，二重：探上家（座位 2）最大 3 张
+  const page = await open(save({ ...strong, ownedPartnerIds: ['diaochan'] }), { viewport: { width: 844, height: 390 }, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  const flash = await flashText(page);
+  const bar = skillBar(page);
+  const text = await bar.innerText();
+  const shown = await bar.locator('[data-line="moon"] .mini-card').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+  const expected = ddzLib.sortCardsDescending(deal.hands[2]).slice(0, 3).map((card) => card.label);
+  check('貂蝉闭月：开局播报「貂蝉·闭月」，技能条写二重', flash.includes('貂蝉·闭月') && text.includes('貂蝉·闭月') && text.includes('二重') && text.includes('生效中'), `${flash} | ${text.replace(/\n/g, ' ')}`);
+  check('貂蝉闭月：探得的正是上家手里最大 3 张', sameSet(shown, expected), `${shown.join(' ')} vs ${expected.join(' ')}`);
+  await page.context().close();
+});
+
+await scenario('伴侣·黄月英木牛流马', async () => {
+  const seed = 9;
+  const { deals, rand } = seededDeals(seed);
+  const deal = deals[0];
+  // 一重：盲换。黄月英良缘是诸葛亮，吕布帐下只有一重
+  const page = await open(save({ ...strong, ownedPartnerIds: ['huangyueying'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  const bar = skillBar(page);
+  await bar.getByRole('button', { name: '木牛流马·换牌' }).click();
+  check('木牛流马：点技能后提示点手牌盲换', (await bar.innerText()).includes('盲换'));
+  const give = ddzLib.sortCards(bidHandOf(deal))[0];
+  await pickCards(page, [give]);
+  await page.waitForTimeout(200);
+  // 牌桌在发牌后从同一条随机流里挑一张没亮的底牌
+  const got = deal.landlordCards[[0, 1, 2][Math.floor(rand() * 3)]];
+  const hand = await page.locator('.player-hand .poker-card').evaluateAll((els) => els.map((el) => el.dataset.cardId));
+  const kitty = await page.locator('.ddz-topbar__kitty .mini-card').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+  check('木牛流马盲换：最小的牌换走、换来随机底牌，换出的那张亮在底牌', hand.length === 17 && hand.includes(got.id) && !hand.includes(give.id) && kitty.length === 1 && kitty[0] === give.label, `got=${got.label} kitty=${kitty.join(' ')}`);
+  check('木牛流马：播报换得并用完次数', (await flashText(page)).includes(`换得 ${got.label}`) && (await bar.innerText()).includes('×0'), await flashText(page));
+  await page.context().close();
+
+  // 二重（诸葛亮良缘）：先翻开一张底牌再换
+  const lv2 = await open(save({ ...strong, selectedLordId: 'zhugeliang', ownedPartnerIds: ['huangyueying'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': String(seed) } });
+  // 诸葛亮武力低，进初级场
+  await enterDdz(lv2, /初级场/);
+  await skillBar(lv2).getByRole('button', { name: '木牛流马·翻底牌' }).click();
+  const flipped = deal.landlordCards[0];
+  const kitty1 = await lv2.locator('.ddz-topbar__kitty .mini-card').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+  check('木牛流马二重：先翻开一张底牌', kitty1.length === 1 && kitty1[0] === flipped.label && (await skillBar(lv2).innerText()).includes(`换翻开的 ${flipped.label}`), kitty1.join(' '));
+  await pickCards(lv2, [give]);
+  await lv2.waitForTimeout(200);
+  const hand2 = await lv2.locator('.player-hand .poker-card').evaluateAll((els) => els.map((el) => el.dataset.cardId));
+  check('木牛流马二重：拿手牌换走翻开的那张', hand2.includes(flipped.id) && !hand2.includes(give.id));
+  await lv2.context().close();
+});
+
+await scenario('伴侣·甄姬洛神', async () => {
+  const seed = 13;
+  const { deals } = seededDeals(seed, 2);
+  const page = await open(save({ ...strong, ownedPartnerIds: ['zhenji'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  const ids = () => page.locator('.player-hand .poker-card').evaluateAll((els) => els.map((el) => el.dataset.cardId));
+  const before = await ids();
+  check('洛神：开局手牌就是种子第一副', sameSet(before, bidHandOf(deals[0]).map((c) => c.id)));
+  await skillBar(page).getByRole('button', { name: '洛神·重发' }).click();
+  await page.waitForTimeout(200);
+  const after = await ids();
+  check('洛神：整桌重发成种子第二副、倍数 ×1、播报甄姬·洛神', sameSet(after, bidHandOf(deals[1]).map((c) => c.id)) && (await page.locator('.ddz-multiplier').innerText()).includes('×1') && (await flashText(page)).includes('甄姬·洛神'));
+  check('洛神一重：用完后按钮收起、底牌仍不亮', (await skillBar(page).getByRole('button', { name: '洛神·重发' }).count()) === 0 && (await page.locator('.ddz-topbar__kitty .mini-card').count()) === 0);
+  await page.context().close();
+  // 二重（曹操良缘）：重发后多看 1 张底牌
+  const lv2 = await open(save({ ...strong, selectedLordId: 'caocao', ownedPartnerIds: ['zhenji'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(lv2);
+  await skillBar(lv2).getByRole('button', { name: '洛神·重发' }).click();
+  await lv2.waitForTimeout(200);
+  const kitty = await lv2.locator('.ddz-topbar__kitty .mini-card').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+  check('洛神二重：重发后多看 1 张底牌', kitty.length === 1 && kitty[0] === deals[1].landlordCards[0].label, kitty.join(' '));
+  await lv2.context().close();
+});
+
+await scenario('伴侣·小乔赤壁', async () => {
+  // 跳过叫地主：你当地主，叫完即可选加倍
+  const page = await open(save({ ...strong, gold: 900000, ownedPartnerIds: ['xiaoqiao'] }), { viewport: { width: 844, height: 390 }, ls: { 'jiaye-ddz-seed': '17' } });
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  const gold = await venueGold(page);
+  const loss = Math.round(gold * 0.2);
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  const bar = skillBar(page);
+  check('赤壁：当地主时可加倍，写明对赌失手付缴获 ×4', (await bar.innerText()).includes('可加倍') && (await bar.innerText()).includes('失手付缴获 ×4'), (await bar.innerText()).replace(/\n/g, ' '));
+  await bar.getByRole('button', { name: '加倍', exact: true }).click();
+  const mult = Number((await page.locator('.ddz-multiplier').innerText()).match(/×([\d.]+)/)?.[1]);
+  const quit = await page.locator('.ddz-topbar__quit').innerText();
+  check('赤壁加倍：倍数 ×2，认输额按对赌（两成 × 2 × 10）', mult === 2 && quit.includes(`−${(loss * 2 * 10).toLocaleString()}`) && (await bar.innerText()).includes('已加倍'), `${mult} ${quit}`);
+  const before = await read(page);
+  const ended = await playOut(page);
+  await page.waitForTimeout(400);
+  const after = await read(page);
+  const finalMult = Number((await page.locator('.ddz-multiplier').innerText()).match(/×([\d.]+)/)?.[1]);
+  const banner = await page.locator('.doudizhu-result-banner').innerText().catch(() => '');
+  const won = banner.includes('胜 +');
+  const delta = after.gold - before.gold;
+  check('赤壁加倍：结算金额与倍数一致', ended && /赤壁(加倍|对赌)/.test(banner) && (won ? delta === gold * finalMult : delta === -Math.round(loss * finalMult * 10)), `${won ? '胜' : '失手'} ×${finalMult} Δ=${delta} ${banner.replace(/\n/g, ' ')}`);
+  await page.context().close();
+  // 叫地主流程：叫完之前不弹加倍
+  const bid = await open(save({ ...strong, ownedPartnerIds: ['xiaoqiao'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': '17' } });
+  await enterDdz(bid);
+  check('赤壁：叫地主阶段写明叫完可加倍、没有加倍按钮', (await skillBar(bid).innerText()).includes('叫完地主可加倍') && (await skillBar(bid).getByRole('button', { name: '加倍', exact: true }).count()) === 0);
+  await bid.context().close();
+});
+
+await scenario('伴侣·小乔赤壁（封顶与农民）', async () => {
+  // 叫抢把倍数抢到 ×8：加倍多赢不到，不再弹（种子 442：你叫、两家都抢、你回抢）
+  const capped = await open(save({ ...strong, gold: 900000, ownedPartnerIds: ['xiaoqiao'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': '442' } });
+  await enterDdz(capped);
+  const bidOnce = async () => {
+    const btn = capped.locator('.ddz-btn--hint');
+    await capped.waitForFunction(() => { const b = document.querySelector('.ddz-btn--hint'); return !b || !b.disabled; }, null, { timeout: 15000 });
+    if ((await btn.count()) > 0) await btn.click();
+  };
+  await bidOnce();
+  await bidOnce();
+  await capped.waitForFunction(() => ![...document.querySelectorAll('.ddz-seat__role')].some((el) => el.textContent?.includes('叫牌')), null, { timeout: 15000 });
+  const cappedMult = Number((await capped.locator('.ddz-multiplier').innerText()).match(/×([\d.]+)/)?.[1]);
+  const cappedBar = await skillBar(capped).innerText();
+  check('赤壁：倍数已抢到 ×8 时不弹加倍', cappedMult === 8 && !cappedBar.includes('可加倍') && (await skillBar(capped).getByRole('button', { name: '加倍', exact: true }).count()) === 0 && cappedBar.includes('倍数已满'), `×${cappedMult} ${cappedBar.replace(/\n/g, ' ')}`);
+  await capped.context().close();
+
+  // 二重（周瑜良缘）当农民：加倍未定之前 AI 不出牌；失手付缴获 ×N 按实际扣金（农民半份）
+  const page = await open(save({ ...strong, selectedLordId: 'zhouyu', gold: 900000, ownedPartnerIds: ['xiaoqiao'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': '23' } });
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  const gold = await venueGold(page);
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  await page.getByRole('button', { name: '不叫' }).click();
+  await page.waitForFunction(() => ![...document.querySelectorAll('.ddz-seat__role')].some((el) => el.textContent?.includes('叫牌')), null, { timeout: 15000 });
+  const farmer = (await page.locator('.ddz-seat--self .ddz-seat__role').innerText()).includes('农民');
+  await page.waitForTimeout(2500);
+  const playedWhileOpen = await page.locator('.ddz-seat--left .ddz-seat__play .mini-card, .ddz-seat--right .ddz-seat__play .mini-card').count();
+  const bar = skillBar(page);
+  const offerText = await bar.innerText();
+  check('赤壁当农民：加倍未定前 AI 不出牌，按钮仍在', farmer && playedWhileOpen === 0 && (await bar.getByRole('button', { name: '加倍', exact: true }).count()) === 1, `farmer=${farmer} played=${playedWhileOpen} ${offerText.replace(/\n/g, ' ')}`);
+  // 农民半份：失手付 两成 × 1 × 20 × 0.5 = 缴获 ×2
+  check('赤壁当农民：对赌说明按农民半份写「失手付缴获 ×2」', offerText.includes('失手付缴获 ×2（平时 ×0.1）'), offerText.replace(/\n/g, ' '));
+  await bar.getByRole('button', { name: '加倍', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.ddz-seat--left .ddz-seat__play .mini-card, .ddz-seat--right .ddz-seat__play .mini-card, .ddz-seat__action').length > 0, null, { timeout: 15000 });
+  await page.waitForTimeout(1500);
+  const aiPlayed = await page.locator('.ddz-seat--left .ddz-seat__play .mini-card, .ddz-seat--right .ddz-seat__play .mini-card').count();
+  check('赤壁当农民：选完加倍后牌局继续', aiPlayed > 0, `played=${aiPlayed}`);
+  let message = '';
+  page.on('dialog', (d) => { message = d.message(); d.accept(); });
+  const before = await read(page);
+  await page.getByRole('button', { name: /^认输/ }).click();
+  await page.locator('.home-v2').waitFor();
+  const after = await read(page);
+  const paid = before.gold - after.gold;
+  const ratio = Math.round((paid / gold) * 10) / 10;
+  check('赤壁认输：确认框写牌桌倍数（不超 8）与实际「付缴获 ×N」，扣金一致', paid > 0 && message.includes(`认输将损失 ${paid.toLocaleString()} 金`) && message.includes(`付缴获 ×${ratio}`) && !/×(1[0-9]|[2-9][0-9])）/.test(message) && !/当前 ×(9|[1-9][0-9])/.test(message), `${message} Δ=${paid} gold=${gold}`);
+  await page.context().close();
+});
+
+await scenario('伴侣·孙尚香枭姬', async () => {
+  // 找一副地主 20 张里有炸弹的牌：你先出，直接炸
+  const seed = findSeed((deal) => ddzLib.findPlayableCombos(deal.hands[0], null).some((cards) => ddzLib.evaluateCards(cards).type === 'bomb'));
+  const deal = seededDeals(seed).deals[0];
+  const bomb = ddzLib.findPlayableCombos(deal.hands[0], null).find((cards) => ddzLib.evaluateCards(cards).type === 'bomb');
+  const page = await open(save({ ...strong, ownedPartnerIds: ['sunshangxiang'] }), { viewport: { width: 844, height: 390 }, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  await pickCards(page, bomb);
+  await page.getByRole('button', { name: '出牌', exact: true }).click();
+  await page.waitForTimeout(150);
+  check('枭姬一重：你的炸弹翻 ×2.25 并播报弓腰姬', (await page.locator('.ddz-multiplier').innerText()).includes('×2.25') && (await flashText(page)).includes('弓腰姬 ×2.25'), `${await page.locator('.ddz-multiplier').innerText()} ${await flashText(page)}`);
+  await page.context().close();
+});
+
+await scenario('伴侣·大乔同心', async () => {
+  // 你牌力弱不叫、有家会叫：你当农民，二重（孙权良缘）亮出队友整手
+  const score = (hand) => { const c = new Map(); for (const x of hand) c.set(x.value, (c.get(x.value) ?? 0) + 1); return (c.get(17) ? 3 : 0) + (c.get(16) ? 2 : 0) + (c.get(15) ?? 0) * 2 + (c.get(14) ?? 0) + [...c.values()].filter((n) => n === 4).length * 4; };
+  const seed = findSeed((deal) => score(bidHandOf(deal)) < 8 && (score(deal.hands[1]) >= 8 || score(deal.hands[2]) >= 8));
+  const page = await open(save({ ...strong, selectedLordId: 'sunquan', ownedPartnerIds: ['daqiao'] }), { viewport: { width: 844, height: 390 }, bidding: true, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  await page.getByRole('button', { name: '不叫' }).click();
+  await page.waitForFunction(() => ![...document.querySelectorAll('.ddz-seat__role')].some((el) => el.textContent?.includes('叫牌')), null, { timeout: 15000 });
+  const view = await page.evaluate(() => {
+    const seats = [...document.querySelectorAll('.ddz-seat')].map((seat) => ({ role: seat.querySelector('.ddz-seat__role')?.textContent, name: seat.querySelector('.ddz-seat__name')?.textContent, count: Number(seat.querySelector('.ddz-seat__count')?.textContent?.match(/\d+/)?.[0]) }));
+    const line = document.querySelector('.ddz-skillbar [data-line="mate"]');
+    return { seats, text: line?.textContent ?? '', cards: line ? line.querySelectorAll('.mini-card').length : -1 };
+  });
+  const mate = view.seats.slice(0, 2).find((seat) => seat.role === '农民');
+  check('同心二重：当农民亮出队友整手', view.seats[2]?.role === '农民' && mate && view.text.includes(`队友${mate.name}整手`) && view.cards === mate.count, JSON.stringify(view));
+  await page.context().close();
+});
+
+await scenario('伴侣·蔡文姬胡笳辨音', async () => {
+  const seed = 19;
+  const deal = seededDeals(seed).deals[0];
+  const sum = ddzLib.unseenSummary(deal.hands[0], []);
+  const page = await open(save({ ...strong, ownedPartnerIds: ['caiwenji'] }), { viewport: { width: 844, height: 390 }, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  const text = await skillBar(page).innerText();
+  check('胡笳辨音：写明两家尚余炸弹、王、2 的张数', text.includes(`两家尚余：炸弹 ${sum.bombs} · 王 ${sum.jokers} · 2 ${sum.twos}`), text.replace(/\n/g, ' '));
+  await page.context().close();
+});
+
+await scenario('伴侣·步练师问计', async () => {
+  const seed = 23;
+  const deal = seededDeals(seed).deals[0];
+  const first = ddzLib.findPlayableCombos(deal.hands[0], null)[0];
+  const combo = ddzLib.evaluateCards(first);
+  const verdict = (hand) => (ddzLib.findPlayableCombos(hand, combo).length > 0 ? '有牌可压' : '压不过');
+  const page = await open(save({ ...strong, ownedPartnerIds: ['bulianshi'] }), { viewport: { width: 844, height: 390 }, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  const bar = skillBar(page);
+  check('问计：没选牌时按钮不可点', await bar.getByRole('button', { name: '问计' }).isDisabled());
+  await page.getByRole('button', { name: '提示', exact: true }).click();
+  await bar.getByRole('button', { name: '问计' }).click();
+  const text = await bar.innerText();
+  check('问计：答出下家、上家压不压得过，次数 −1', text.includes(`下家${verdict(deal.hands[1])}`) && text.includes(`上家${verdict(deal.hands[2])}`) && text.includes('×1'), text.replace(/\n/g, ' '));
+  await page.context().close();
+});
+
+await scenario('伴侣·糜夫人舍身', async () => {
+  // 刘备良缘：二重，失手少付 20%
+  const page = await open(save({ ...strong, selectedLordId: 'liubei', gold: 50000, ownedPartnerIds: ['mifuren'] }), { viewport: { width: 844, height: 390 } });
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  await page.getByRole('button', { name: /中级场/ }).click();
+  const gold = await venueGold(page);
+  const summary = await page.locator('.venue-summary').first().innerText();
+  const cut = Math.round(gold * 0.2 * 0.8);
+  check('舍身二重：选场写明失手少付 20%，折损按八成', summary.includes('（舍身：失手少付 20%）') && summary.includes(`败折损 ${cut.toLocaleString()} 金`), summary);
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  const g0 = (await read(page)).gold;
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: /^认输/ }).click();
+  await page.locator('.home-v2').waitFor();
+  const s1 = await read(page);
+  check('舍身：认输按少付后的金额扣，并记一次发动', g0 - s1.gold === cut && s1.skillStats?.mifuren?.games === 1 && s1.skillStats.mifuren.uses === 1, `Δ=${g0 - s1.gold} ${JSON.stringify(s1.skillStats)}`);
+  await page.context().close();
+  // 攻郡未克：退还 15% 军资
+  const siege = await open(save({ ...strong, homeLevel: 5, selectedLordId: 'liubei', gold: 200000, orders: 3, day: 40, ownedPartnerIds: ['mifuren'] }));
+  await siege.getByRole('button', { name: '出征', exact: true }).click();
+  await siege.locator('.conquest-map').getByRole('button', { name: /出兵攻取南阳郡/ }).click();
+  await siege.getByText('攻取南阳郡').first().waitFor();
+  siege.on('dialog', (d) => d.accept());
+  await siege.getByRole('button', { name: '撤兵' }).click();
+  await siege.locator('.home-v2').waitFor();
+  const s2 = await read(siege);
+  check('舍身：攻郡未克护回 15% 军资', s2.gold === 200000 - 75000 + 11250 && (s2.eventLog?.[0]?.detail ?? '').includes('舍身'), `${s2.gold} ${s2.eventLog?.[0]?.detail}`);
+  await siege.context().close();
+  // 攻郡中途刷新离开：与点「撤兵」一样退 15% 军资（比例出兵时写进存档）
+  const fled = await open(save({ ...strong, homeLevel: 5, selectedLordId: 'liubei', gold: 200000, orders: 3, day: 40, ownedPartnerIds: ['mifuren'] }));
+  await fled.getByRole('button', { name: '出征', exact: true }).click();
+  await fled.locator('.conquest-map').getByRole('button', { name: /出兵攻取南阳郡/ }).click();
+  await fled.getByText('攻取南阳郡').first().waitFor();
+  const mid = await read(fled);
+  await fled.reload({ waitUntil: 'domcontentloaded' });
+  await fled.waitForTimeout(500);
+  const s3 = await read(fled);
+  check('舍身：攻郡中途刷新离开同样护回 15% 军资', mid.activeBattle?.conquest?.refundRate === 0.15 && s3.activeBattle === null && s3.gold === 200000 - 75000 + 11250 && (s3.eventLog?.[0]?.detail ?? '').includes('舍身'), `${JSON.stringify(mid.activeBattle?.conquest)} ${s3.gold} ${s3.eventLog?.[0]?.detail}`);
+  await fled.context().close();
+});
+
+await scenario('伴侣·祝融烈火', async () => {
+  const isLong = (cards) => ['straight', 'pair-straight', 'airplane'].includes(ddzLib.evaluateCards(cards).type) && cards.length >= 5;
+  const seed = findSeed((deal) => ddzLib.findPlayableCombos(deal.hands[0], null).some(isLong));
+  const deal = seededDeals(seed).deals[0];
+  const long = ddzLib.findPlayableCombos(deal.hands[0], null).find(isLong);
+  const page = await open(save({ ...strong, ownedPartnerIds: ['zhurong'] }), { viewport: { width: 844, height: 390 }, ls: { 'jiaye-ddz-seed': String(seed) } });
+  await enterDdz(page);
+  await pickCards(page, long);
+  await page.getByRole('button', { name: '出牌', exact: true }).click();
+  await page.waitForTimeout(150);
+  check('烈火：打出长牌型播报 +5%，技能条记 +5%', (await flashText(page)).includes('烈火 +5%') && (await skillBar(page).innerText()).includes('+5%'), `${await flashText(page)} | ${(await skillBar(page).innerText()).replace(/\n/g, ' ')}`);
+  await page.context().close();
+});
+
+await scenario('伴侣·随行选择持久化', async () => {
+  const page = await open(save({ ...strong, homeLevel: 5, gold: 200000, orders: 3, ownedPartnerIds: ['diaochan', 'zhurong'] }), { viewport: { width: 844, height: 390 } });
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  const group = page.locator('.venue-panel').getByRole('radiogroup', { name: '随行伴侣' });
+  check('出征页有随行伴侣，默认良缘貂蝉', (await group.getByRole('radio').count()) === 2 && (await group.getByRole('radio', { checked: true }).innerText()).includes('貂蝉'));
+  check('攻郡面板只写一行当前随行，不重复放选择器', (await page.locator('.conquest-panel').getByRole('radiogroup', { name: '随行伴侣' }).count()) === 0 && (await page.locator('.conquest-panel .escort-summary').innerText()).includes('随行：貂蝉'));
+  await group.getByRole('radio', { name: /祝融/ }).click();
+  check('点选即换并写进存档', (await read(page)).escortPartnerId === 'zhurong');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  check('刷新后仍是祝融随行', (await page.locator('.venue-panel').getByRole('radio', { checked: true }).innerText()).includes('祝融'));
+  await page.getByRole('button', { name: /^进入斗地主/ }).click();
+  await page.getByText('斗地主牌局').first().waitFor();
+  check('牌桌技能条换成祝融·烈火', (await skillBar(page).innerText()).includes('祝融·烈火'));
+  await page.context().close();
+});
+
+await scenario('伴侣·心事卡写明技能升级', async () => {
+  // 关羽帐下貂蝉一重：了却第一段心事升二重
+  const page = await open(save({ selectedLordId: 'guanyu', day: 15, ownedPartnerIds: ['diaochan'], pendingChoice: { eventId: 'partner:diaochan', day: 15, dailyIncome: 100 } }));
+  const card = page.getByRole('dialog', { name: '伴侣心事' });
+  await card.waitFor();
+  check('心事卡写明了却后技能升至二重', (await card.innerText()).includes('了却心事，貂蝉「闭月」升至二重：开局探得上家最大 3 张牌'), (await card.innerText()).replace(/\n/g, ' '));
+  await page.context().close();
+});
+
+await scenario('伴侣·老存档技能等级', async () => {
+  // 老存档没有随行字段：两段心事都了却 → 三重；随行按第一位入府默认；脏的 skillStats 截成非负整数
+  const page = await open(save({ selectedLordId: 'guanyu', ownedPartnerIds: ['zhenji', 'daqiao'], resolvedPartnerEvents: { zhenji: 'a', 'zhenji#2': 'b' }, skillStats: { zhenji: { games: -3, uses: 2.7 }, nobody: { games: 1, uses: 1 } } }));
+  await page.locator('.home-v2').waitFor();
+  await page.waitForTimeout(400);
+  const s = await read(page);
+  check('老存档读入：随行默认第一位入府、统计已清洗', s.escortPartnerId === 'zhenji' && JSON.stringify(s.skillStats) === JSON.stringify({ zhenji: { games: 0, uses: 2 } }), JSON.stringify({ e: s.escortPartnerId, st: s.skillStats }));
+  await page.getByRole('button', { name: '伴侣', exact: true }).click();
+  const modal = page.getByRole('dialog', { name: '伴侣招募' });
+  await modal.waitFor();
+  check('伴侣弹窗：甄姬洛神三重、大乔同心一重', (await modal.getByLabel('牌桌技能 洛神').innerText()).includes('洛神」 · 三重') && (await modal.getByLabel('牌桌技能 同心').innerText()).includes('同心」 · 一重'));
+  await page.context().close();
+});
+
+await scenario('伴侣·随行统计累计', async () => {
+  const page = await open(save({ ...strong, gold: 50000, orders: 3, ownedPartnerIds: ['diaochan'] }), { viewport: { width: 844, height: 390 } });
+  page.on('dialog', (d) => d.accept());
+  for (let i = 0; i < 2; i += 1) {
+    await enterDdz(page, /初级场/);
+    await page.getByRole('button', { name: /^认输/ }).click();
+    await page.locator('.home-v2').waitFor();
+  }
+  const s = await read(page);
+  check('随行两局：skillStats 记 2 局、闭月发动 2 次', s.skillStats?.diaochan?.games === 2 && s.skillStats.diaochan.uses === 2, JSON.stringify(s.skillStats));
+  await page.getByRole('button', { name: '伴侣', exact: true }).click();
+  check('伴侣弹窗写「随行 2 局 · 发动 2 次」', (await page.getByRole('dialog', { name: '伴侣招募' }).getByLabel('牌桌技能 闭月').innerText()).includes('随行 2 局 · 发动 2 次'));
+  await page.context().close();
 });
 
 await browser.close();

@@ -14,6 +14,8 @@ const DDZ = process.env.DDZ !== '0';
 // 官道/江东/许都 10-15 起收起：有斗地主时军令全用在斗地主与攻郡（AUTO=1 恢复旧的自动战对照）
 const DDZ_ONLY = DDZ && process.env.AUTO !== '1';
 const RW = Number(process.env.RW ?? 1), CM = Number(process.env.CM ?? 1);
+// v2.1 伴侣上牌桌：随行技能抬高斗地主净期望，按最坏情况（三重上限 +15%，scripts/doudizhu-partner-sim.mjs 校准）乘上；PARTNER_EV=1 是没有伴侣技能的对照
+const PARTNER_EV = Number(process.env.PARTNER_EV ?? 1.15);
 function run(lordId, clicksPerDay) {
   const lord = g.lords.find((l) => l.id === lordId);
   let gold = 1000, home = 1, farm = 0, day = 1, partners = [g.partners.find((p) => p.bestMatchLordId === lordId) ?? g.partners[0]], weapon = g.weapons[0], owned = ['xuanjian'], claimed = new Set();
@@ -36,7 +38,7 @@ function run(lordId, clicksPerDay) {
     if (home >= 3) arenas.push(['naval', b.matchNavalEnemy(b.calculateNavalPower(lord, partners, H))]);
     if (home >= 4) arenas.push(['court', b.matchCourtEnemy(b.calculateCourtPower(lord, partners, H))]);
     const venue = DDZ ? [...vn.VENUES].reverse().find((v) => power >= v.requiredPower) : null;
-    const ddzEv = venue ? vn.venueReward(venue, vn.venueRewardScale({ land: power, naval: b.calculateNavalPower(lord, partners, H), court: b.calculateCourtPower(lord, partners, H) }, home)) * vn.DDZ_NET_VALUE[venue.aiSkill] : 0;
+    const ddzEv = venue ? vn.venueReward(venue, vn.venueRewardScale({ land: power, naval: b.calculateNavalPower(lord, partners, H), court: b.calculateCourtPower(lord, partners, H) }, home)) * vn.DDZ_NET_VALUE[venue.aiSkill] * PARTNER_EV : 0;
     const autoEv = (e) => 0.75 * e.rewardGold - 0.25 * e.rewardGold * b.battleLossRate(0.75);
     arenas.sort((x, y) => y[1].rewardGold - x[1].rewardGold);
     // 攻郡（10-15 起）：侯府后有军令、军资够就攻最便宜的相邻郡；押开拓价一半，胜率按守将牌艺（笨玩家实测）
@@ -71,5 +73,5 @@ for (const lordId of ['caocao']) for (const clicks of [5, 15]) {
   const k = (key) => { const v = R.map((r) => r.ms[key]).filter(Boolean); return v.length === R.length ? med(v) : v.length ? `${med(v)}(${v.length}%)` : '-'; };
   const inc = R.map((r) => r.income); const tot = inc.map((i) => i.battle + i.work + i.quest + i.ddz);
   const share = (f) => Math.round(100 * med(inc.map((i, j) => i[f] / tot[j])));
-  console.log(`RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 伴侣10 第${k('partners10')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 收入占比 政务${share('work')}% 斗地主${share('ddz')}% 自动战${share('battle')}% | 中/高级场 第${k('ddz_middle')}/${k('ddz_high')}日 | 攻郡 ${med(R.map((r) => r.conquestTries))} 次`);
+  console.log(`PARTNER_EV=${PARTNER_EV} RW=${RW} CM=${CM} 政务${String(clicks).padStart(2)}次/日 | 府邸4 第${k('home4')}日 | 侯府5 第${k('home5')}日 | 王城6 第${k('home6')}日 | 屯田5 第${k('farm5')}日 | 全满 第${k('ALL')}日 | 伴侣10 第${k('partners10')}日 | 封地1/3/6 第${k('fief1')}/${k('fief3')}/${k('fief6')}日 | ${process.env.DAYS ?? 120}日余金 ${Math.round(med(R.map((r) => r.gold)) / 1000)}k | 收入占比 政务${share('work')}% 斗地主${share('ddz')}% 自动战${share('battle')}% | 中/高级场 第${k('ddz_middle')}/${k('ddz_high')}日 | 攻郡 ${med(R.map((r) => r.conquestTries))} 次`);
 }

@@ -30,13 +30,17 @@ export interface GameState {
   /** 本代处理政务练出来的属性：军务练武力，治理练智谋与声望（各封顶 AFFAIR_TRAINING_CAP，传位清零） */
   affairTraining: { strength: number; civil: number };
   resolvedPartnerEvents: Record<string, string>;
+  /** 随行伴侣：带上牌桌、技能生效（须已入府；空或失效时按良缘 > 第一位入府的默认） */
+  escortPartnerId: string | null;
+  /** 伴侣随行统计：随行局数、技能发动次数 */
+  skillStats: Record<string, { games: number; uses: number }>;
   incomeBuff: { percent: number; untilDay: number } | null;
   nextBattleBonus: number | null;
   /** 进入战斗时记下，结算后清空；读档时仍在说明中途离开，按认输处理 */
   /** 进行中的战斗；rewardGold/odds 用于中途离开时按胜率替玩家打完，斗地主中途离开按认输 */
   /** 斗地主另记当前倍数与份额（农民 0.5），刷新逃局按 lossGold×multiplier×share 扣，与认输一致 */
-  /** conquest：攻郡牌局（军资出兵时已扣，胜则得郡；中途离开按败，军资不退） */
-  activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number; conquest?: { fiefId: string; policyId: FiefPolicyId; stake: number } } | null;
+  /** conquest：攻郡牌局（军资出兵时已扣，胜则得郡；中途离开按败；refundRate 是糜夫人「舍身」未克退还比例，出兵时记下，撤兵与刷新离开同样退） */
+  activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number; conquest?: { fiefId: string; policyId: FiefPolicyId; stake: number; refundRate?: number } } | null;
   /** 军令：出征消耗，每 2 个游戏日回 1 道，上限随整军封地增加 */
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */

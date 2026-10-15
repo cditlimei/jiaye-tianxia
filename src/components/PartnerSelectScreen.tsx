@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Lord, Partner } from '../data/gameData';
 import { partners, partnerRank } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
+import { partnerSkills } from '../data/partnerSkills';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 
@@ -46,8 +47,11 @@ export function PartnerSelectScreen({ lord, onConfirm, onBack }: PartnerSelectSc
           <span>{selectedPartner.bestMatchLordId === lord.id ? '良缘推荐' : partnerRank(selectedPartner)}</span>
           <h3>{selectedPartner.name}</h3>
           <p>{selectedPartner.description}</p>
+          {partnerSkills[selectedPartner.id] && (
+            <em className="partner-select-stage__skill">牌桌技能「{partnerSkills[selectedPartner.id].name}」：{partnerSkills[selectedPartner.id].levelText[selectedPartner.bestMatchLordId === lord.id ? 1 : 0]}</em>
+          )}
           <strong>{bonusCopy}</strong>
-          <small className="stat-legend">武力→能进的斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</small>
+          <small className="stat-legend">技能为主、属性为辅：伴侣随你上牌桌各有一招。武力→能进的斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</small>
         </div>
       </section>
 

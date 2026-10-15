@@ -25,8 +25,11 @@ type Action =
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
-  | { type: 'startConquest'; fiefId: string; policyId: FiefPolicyId; stake: number }
-  | { type: 'resolveConquest'; win: boolean }
+  | { type: 'startConquest'; fiefId: string; policyId: FiefPolicyId; stake: number; refundRate?: number }
+  | { type: 'resolveConquest'; win: boolean; refundRate?: number }
+  | { type: 'setEscort'; partnerId: string }
+  | { type: 'recordSkillUse'; partnerId: string; uses: number }
+  | { type: 'refundOrder'; partnerId?: string }
   | { type: 'chooseAmbition'; ambitionId: AmbitionId }
   | { type: 'foundDynasty'; realm: RealmId }
   | { type: 'restart' }
@@ -54,6 +57,11 @@ function inheritedQuestIds(farmLevel: number, fiefs: GameState['fiefs']) {
 function addBoost(current: GameState['partnerBoosts'][string] | undefined, extra: GameState['partnerBoosts'][string]) {
   const sum = (k: 'strength' | 'intelligence' | 'charisma') => (current?.[k] ?? 0) + (extra[k] ?? 0) || undefined;
   return { strength: sum('strength'), intelligence: sum('intelligence'), charisma: sum('charisma') };
+}
+
+/** 糜夫人「舍身」退还军资比例：0~1 */
+function clampRefundRate(rate: number) {
+  return Number.isFinite(rate) ? Math.min(1, Math.max(0, rate)) : 0;
 }
 
 function findPartnerName(partnerId: string) {
@@ -125,6 +133,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         ownedPartnerIds: state.ownedPartnerIds.includes(action.partner.id)
           ? state.ownedPartnerIds
           : [...state.ownedPartnerIds, action.partner.id],
+        escortPartnerId: action.partner.id,
         eventLog: [
           {
             id: `starter-partner-${action.partner.id}-${Date.now()}`,
@@ -298,7 +307,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         ...state,
         gold: state.gold - action.stake,
         orders: state.orders - 1,
-        activeBattle: { mode: 'land', lossGold: 0, doudizhu: true, conquest: { fiefId: fief.id, policyId: policy.id, stake: action.stake } }
+        activeBattle: { mode: 'land', lossGold: 0, doudizhu: true, conquest: { fiefId: fief.id, policyId: policy.id, stake: action.stake, ...(action.refundRate ? { refundRate: clampRefundRate(action.refundRate) } : {}) } }
       };
     }
     case 'resolveConquest': {
@@ -307,16 +316,44 @@ function baseReducer(state: GameState, action: Action): GameState {
       const fief = findFief(conquest.fiefId);
       const policy = findFiefPolicy(conquest.policyId);
       if (!fief || !policy) return { ...state, activeBattle: null };
+      // 糜夫人「舍身」：攻郡未克退还一部分军资
+      // 比例以出兵时记下的为准（与刷新离开一致），老存档没记就用撤兵时传来的
+      const refundRate = conquest.refundRate ?? action.refundRate ?? 0;
+      const refund = !action.win && refundRate ? Math.round(conquest.stake * clampRefundRate(refundRate)) : 0;
       return {
         ...state,
         activeBattle: null,
+        gold: state.gold + refund,
         fiefs: action.win ? { ...state.fiefs, [fief.id]: policy.id } : state.fiefs,
         battleWins: action.win ? state.battleWins + 1 : state.battleWins,
         battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
         eventLog: [
           action.win
             ? { id: `conquest-${fief.id}-${Date.now()}`, day: state.day, title: `攻取${fief.name}`, detail: `牌桌上击败守将${fief.garrison}，${fief.name}归府下，行「${policy.name}」之策（${policy.effect}），所有牌局得「${fief.perk.name}」：${fief.perk.detail}。` }
-            : { id: `conquest-fail-${fief.id}-${Date.now()}`, day: state.day, title: `攻${fief.name}未克`, detail: `败于守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，可整军再攻。` },
+            : { id: `conquest-fail-${fief.id}-${Date.now()}`, day: state.day, title: `攻${fief.name}未克`, detail: refund > 0 ? `未克守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，糜夫人舍身护得 ${refund.toLocaleString()} 金带回。` : `败于守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，可整军再攻。`, goldDelta: refund > 0 ? refund : undefined },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
+    case 'setEscort':
+      // 随行伴侣：须已入府；切换免费
+      if (!state.ownedPartnerIds.includes(action.partnerId) || state.escortPartnerId === action.partnerId) return state;
+      return { ...state, escortPartnerId: action.partnerId };
+    case 'recordSkillUse': {
+      if (!partners.some((partner) => partner.id === action.partnerId)) return state;
+      const prev = state.skillStats[action.partnerId] ?? { games: 0, uses: 0 };
+      return { ...state, skillStats: { ...state.skillStats, [action.partnerId]: { games: prev.games + 1, uses: prev.uses + Math.max(0, Math.floor(action.uses)) } } };
+    }
+    case 'refundOrder': {
+      // 糜夫人「舍身」：失手 ×4 起返还本局军令，不超过上限
+      const cap = orderCapFor(state.fiefs, state.realms);
+      if (state.orders >= cap) return state;
+      const name = action.partnerId ? findPartnerName(action.partnerId) : '';
+      return {
+        ...state,
+        orders: state.orders + 1,
+        eventLog: [
+          { id: `refund-order-${Date.now()}`, day: state.day, title: '舍身护主', detail: `${name || '伴侣'}舍身相护，本局军令返还。` },
           ...state.eventLog
         ].slice(0, 18)
       };
@@ -386,6 +423,8 @@ function baseReducer(state: GameState, action: Action): GameState {
         ...state,
         gold: state.gold - action.cost,
         ownedPartnerIds: [...state.ownedPartnerIds, action.partner.id],
+        // 还没有随行伴侣时，新入府的随行；招到良缘伴侣时换她随行
+        escortPartnerId: !state.escortPartnerId || !state.ownedPartnerIds.includes(state.escortPartnerId) || action.partner.bestMatchLordId === state.selectedLordId ? action.partner.id : state.escortPartnerId,
         eventLog: [
           {
             id: `partner-${action.partner.id}-${Date.now()}`,
@@ -750,17 +789,17 @@ export function useGameState() {
 
   /** 出兵攻郡：押军资、耗 1 军令，进攻郡牌局 */
   const startConquest = useCallback(
-    (fiefId: string, policyId: FiefPolicyId) => {
+    (fiefId: string, policyId: FiefPolicyId, refundRate = 0) => {
       const fief = findFief(fiefId);
       if (!fief) return false;
       const stake = conquestStakeFor(state, fief);
       if (state.gold < stake || state.orders < 1) return false;
-      dispatch({ type: 'startConquest', fiefId, policyId, stake });
+      dispatch({ type: 'startConquest', fiefId, policyId, stake, refundRate });
       return true;
     },
     [state]
   );
-  const resolveConquest = useCallback((win: boolean) => dispatch({ type: 'resolveConquest', win }), []);
+  const resolveConquest = useCallback((win: boolean, refundRate = 0) => dispatch({ type: 'resolveConquest', win, refundRate }), []);
 
   const setFiefPolicy = useCallback(
     (fiefId: string, policyId: FiefPolicyId) => {
@@ -837,6 +876,9 @@ export function useGameState() {
     startBattle: (mode: BattleMode, lossGold: number, extra: { rewardGold?: number; odds?: number; doudizhu?: boolean } = {}) => dispatch({ type: 'startBattle', mode, lossGold, ...extra }),
     updateActiveBattle: (multiplier: number, share: number) => dispatch({ type: 'updateActiveBattle', multiplier, share }),
     resolveChoice: (optionId: string) => dispatch({ type: 'resolveChoice', optionId }),
+    setEscort: (partnerId: string) => dispatch({ type: 'setEscort', partnerId }),
+    recordSkillUse: (partnerId: string, uses: number) => dispatch({ type: 'recordSkillUse', partnerId, uses }),
+    refundOrder: (partnerId?: string) => dispatch({ type: 'refundOrder', partnerId }),
     resetGame: () => dispatch({ type: 'reset' }),
     restartGame: () => dispatch({ type: 'restart' })
   };

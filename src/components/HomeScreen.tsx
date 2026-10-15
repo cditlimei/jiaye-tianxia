@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { partnerSkillLevel, skillUpgradeCopy } from '../data/partnerSkills';
 import { VENUES, venueReward, venueRewardScale } from '../data/venues';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
@@ -145,7 +146,7 @@ export function HomeScreen({
   const starterOrders = useMemo(
     () => [
       { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
-      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < cheapestPartner ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
+      { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < cheapestPartner ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府：伴侣随你上牌桌，各有一招，还加战力、智谋或声望。' },
       { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑。第 5 日伴侣会来说心事，了却后任务「良缘佳话」正好奖 1,500 金。' },
       { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点底栏「出征」，进斗地主初级场打一局，赢了缴获比处理政务多得多。' }
     ],
@@ -176,7 +177,7 @@ export function HomeScreen({
     : currentOrder.target === 'upgrade'
       ? `${currentHome.name}升成${nextHome?.name ?? ''}，每次政务收入从 ${currentHome.dailyIncome} 金涨到 ${nextHome?.dailyIncome ?? ''} 金。`
       : currentOrder.target === 'partner'
-        ? '伴侣入府直接加武力、智谋或声望，最便宜的一位 ' + (Number.isFinite(cheapestPartner) ? cheapestPartner.toLocaleString() : '') + ' 金。'
+        ? '伴侣随你上牌桌，各有一招（技能为主、属性为辅），最便宜的一位 ' + (Number.isFinite(cheapestPartner) ? cheapestPartner.toLocaleString() : '') + ' 金。'
         : currentOrder.target === 'weapon'
           ? `换一把好兵器，武力立刻上涨，出征胜率更高。青釭剑或双股剑 1,500 金。${weaponViaBattle ? `还差 ${shortOf.toLocaleString()} 金：去斗地主初级场打一局，胜可缴获约 ${landFightGold.toLocaleString()} 金，${landFightGold >= shortOf ? '一场就够' : `约 ${Math.ceil(shortOf / landFightGold)} 场凑齐`}。` : ''}`
           : '去斗地主初级场打一局，赢了缴获远多于政务收入。';
@@ -427,6 +428,10 @@ export function HomeScreen({
                 </button>
               ))}
             </div>
+            {/* 心事了却后伴侣的牌桌技能升一重（属性 +6 照旧） */}
+            {partner && event.id.startsWith('partner:') && skillUpgradeCopy(partner.id, partnerSkillLevel(partner.id, state)) && (
+              <p className="choice-card__skill-up">了却心事，{skillUpgradeCopy(partner.id, partnerSkillLevel(partner.id, state))}</p>
+            )}
             <button type="button" className="choice-card__later" onClick={() => setChoiceHiddenKey(choiceKey)}>稍后再说</button>
           </section>
           </div>

@@ -94,8 +94,45 @@ const LEAD_COMBO_PRIORITY: Record<ComboType, number> = {
   rocket: 13
 };
 
-export function createDoudizhuDeal() {
-  const deck = shuffle(createDeck());
+/** mulberry32：给定种子的可复现随机数（测试复现牌局用） */
+export function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 测试开关：localStorage 里 jiaye-ddz-seed=<整数> 时，洗牌与 AI 的随机都走这一条种子流；没设就是 Math.random */
+export const DDZ_SEED_KEY = 'jiaye-ddz-seed';
+let tableRandom: (() => number) | null | undefined;
+function readSeed(): number | null {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(DDZ_SEED_KEY) : null;
+    if (raw === null || raw.trim() === '' || !Number.isFinite(Number(raw))) return null;
+    return Math.floor(Number(raw));
+  } catch {
+    return null;
+  }
+}
+/** 牌桌随机源：首次调用时读开关，之后整页共用同一条流（再来一局接着往下发） */
+export function ddzRandom(): number {
+  if (tableRandom === undefined) {
+    const seed = readSeed();
+    tableRandom = seed === null ? null : seededRandom(seed);
+  }
+  return tableRandom ? tableRandom() : Math.random();
+}
+/** 模拟脚本用：直接换随机源（传 null 回到 Math.random / 开关） */
+export function setDdzRandom(rand: (() => number) | null | undefined) {
+  tableRandom = rand;
+}
+
+export function createDoudizhuDeal(rand: () => number = ddzRandom) {
+  const deck = shuffle(createDeck(), rand);
   const landlordCards = deck.slice(51);
   const hands: Record<PlayerIndex, Card[]> = {
     0: sortCards([...deck.slice(0, 17), ...landlordCards]),
@@ -207,7 +244,7 @@ export function chooseAiPlay(hand: Card[], target: Combo | null, style: AiStyle,
   const playable = findPlayableCombos(hand, target);
   if (playable.length === 0) return null;
   const skill = ctx.skill ?? 'veteran';
-  const rand = ctx.rand ?? Math.random;
+  const rand = ctx.rand ?? ddzRandom;
   // 队友只剩一两张、又是队友的牌：一律不要，让队友走完（自己能一手出完已在上面处理）
   if (ctx.teammateLeads && ctx.teammateCards !== undefined && ctx.teammateCards <= 2) return null;
 
@@ -358,6 +395,27 @@ function chooseMasterPlay(hand: Card[], target: Combo | null, playable: Card[][]
   return undefined;
 }
 
+export interface CardSummary {
+  bombs: number;
+  jokers: number;
+  twos: number;
+}
+
+/** 一手牌里的炸弹（含王炸）、王、2 的张数 */
+export function handSummary(cards: Card[]): CardSummary {
+  const counts = new Map<number, number>();
+  for (const card of cards) counts.set(card.value, (counts.get(card.value) ?? 0) + 1);
+  const jokers = (counts.get(16) ?? 0) + (counts.get(17) ?? 0);
+  const bombs = [...counts.entries()].filter(([value, n]) => value <= 15 && n === 4).length + (jokers === 2 ? 1 : 0);
+  return { bombs, jokers, twos: counts.get(15) ?? 0 };
+}
+
+/** 另外两家合起来尚余：54 张减去自己手牌和已出的牌；炸弹按「四张都没现身的点数 + 双王都没现身」算 */
+export function unseenSummary(own: Card[], played: Card[]): CardSummary {
+  const gone = new Set([...own, ...played].map((card) => card.id));
+  return handSummary(createDeck().filter((card) => !gone.has(card.id)));
+}
+
 export function findFirstPlayable(hand: Card[], target: Combo | null) {
   return findPlayableCombos(hand, target)[0] ?? null;
 }
@@ -390,10 +448,10 @@ function createDeck() {
   return cards;
 }
 
-function shuffle(cards: Card[]) {
+function shuffle(cards: Card[], rand: () => number) {
   const next = [...cards];
   for (let index = next.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const swapIndex = Math.floor(rand() * (index + 1));
     [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
   }
   return next;

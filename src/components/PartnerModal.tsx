@@ -3,6 +3,7 @@ import type { Lord, Partner } from '../data/gameData';
 import { partnerRank, partners } from '../data/gameData';
 import { imageUrl } from '../lib/assets';
 import type { GameState } from '../types';
+import { partnerSkillLevel, partnerSkills, SKILL_LEVEL_NAME } from '../data/partnerSkills';
 import { GameButton } from './common/GameButton';
 import { ImageWithFallback } from './common/ImageWithFallback';
 import { ModalShell } from './common/ModalShell';
@@ -55,7 +56,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
         {onTalk && state.ownedPartnerIds.length > 0 && (
           <button type="button" className="partner-market__talk" onClick={onTalk}>与入府伴侣闲话家常 →</button>
         )}
-        <p className="stat-legend">武力→能进的斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</p>
+        <p className="stat-legend">技能为主、属性为辅：伴侣随你上牌桌各有一招（出征页选随行），入府一重，了却两段心事各升一重，良缘再升一重。属性：武力→斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</p>
         {notice && (
           <p className="partner-market__notice" role="status">
             {notice}
@@ -83,6 +84,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
                     <em>{best ? `良缘 · ${cost.toLocaleString()}` : cost.toLocaleString()}</em>
                   </div>
                   <p>{partner.description}</p>
+                  <PartnerSkillInfo partnerId={partner.id} state={state} owned={owned} />
                   <strong>{bonusCopy}</strong>
                   <GameButton
                     variant={owned || missingGold > 0 ? 'ghost' : 'primary'}
@@ -108,6 +110,25 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+/** 牌桌技能三级说明 + 随行统计（「随行 23 局 · 发动 17 次」） */
+function PartnerSkillInfo({ partnerId, state, owned }: { partnerId: string; state: GameState; owned: boolean }) {
+  const skill = partnerSkills[partnerId];
+  if (!skill) return null;
+  const level = owned ? partnerSkillLevel(partnerId, state) : 0;
+  const stats = state.skillStats[partnerId];
+  return (
+    <div className="partner-skill" aria-label={`牌桌技能 ${skill.name}`}>
+      <b>牌桌技能「{skill.name}」{level > 0 ? ` · ${SKILL_LEVEL_NAME[level as 1 | 2 | 3]}` : ''}</b>
+      <ol>
+        {skill.levelText.map((text, index) => (
+          <li key={text} className={level >= index + 1 ? 'is-reached' : ''}>{SKILL_LEVEL_NAME[(index + 1) as 1 | 2 | 3]}：{text}</li>
+        ))}
+      </ol>
+      {owned && <small>随行 {stats?.games ?? 0} 局 · 发动 {stats?.uses ?? 0} 次{state.escortPartnerId === partnerId ? ' · 当前随行' : ''}</small>}
+    </div>
   );
 }
 

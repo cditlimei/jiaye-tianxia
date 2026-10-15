@@ -7325,3 +7325,553 @@ body.is-doudizhu-table .ddz-screen .mini-card.is-joker .mini-card__suit {
     max-height: calc(100dvh - 170px);
   }
 }
+
+/* ===== v2.1 伴侣上牌桌：牌桌技能条（放在牌桌里，不占 ddz-screen 的网格行）===== */
+body .ddz-screen .ddz-table .ddz-skillbar {
+  position: absolute;
+  z-index: 5;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  gap: 4px;
+  max-width: min(36%, 300px);
+  padding: 5px 8px 6px;
+  border-radius: 12px;
+  background: rgba(46, 6, 8, 0.74);
+  box-shadow: inset 0 0 0 1px rgba(240, 200, 120, 0.38), 0 2px 8px rgba(0, 0, 0, 0.35);
+  color: #ffeec8;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__avatar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 50% 12%;
+  box-shadow: 0 0 0 1px #d2a54a;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__name {
+  overflow: hidden;
+  color: #ffe08a;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__lv {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(212, 168, 67, 0.28);
+  color: #ffe9a8;
+  font-size: 10px;
+  font-style: normal;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__state {
+  flex: none;
+  margin-left: auto;
+  padding-left: 4px;
+  color: #bfe3ff;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__btn {
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid rgba(240, 200, 120, 0.55);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #ffeec8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__btn.is-primary {
+  border-color: transparent;
+  background: linear-gradient(180deg, #ffd76a, #d4a843);
+  color: #3a2400;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__btn:disabled {
+  cursor: default;
+  filter: grayscale(0.85) brightness(0.65);
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+}
+
+body .ddz-screen .ddz-skillbar .ddz-skillbar__line.is-desc {
+  color: rgba(255, 238, 214, 0.68);
+}
+
+/* 技能条里的小牌：缩小、叠放，整手牌也放得下 */
+body .ddz-screen .ddz-skillbar .mini-card-strip {
+  min-height: 0;
+  gap: 0;
+  overflow: visible;
+}
+
+body .ddz-screen .ddz-skillbar .mini-card {
+  width: 20px;
+  height: 26px;
+  padding: 1px;
+  border-radius: 4px;
+  box-shadow: -1px 0 2px rgba(0, 0, 0, 0.25);
+  animation: none;
+}
+
+body .ddz-screen .ddz-skillbar .mini-card + .mini-card {
+  margin-left: -5px;
+}
+
+/* 叠放后只露左侧一条：点数写在左上、花色在下 */
+body .ddz-screen .ddz-skillbar .mini-card__rank {
+  left: 2px;
+  top: 2px;
+  font-size: 11px;
+  transform: none;
+}
+
+body .ddz-screen .ddz-skillbar .mini-card[data-rank="10"]:not(.is-joker) .mini-card__rank {
+  left: 1px;
+  letter-spacing: -0.12em;
+  transform: scaleX(0.72);
+  transform-origin: 0 0;
+}
+
+body .ddz-screen .ddz-skillbar .mini-card__suit {
+  left: 3px;
+  top: 14px;
+  font-size: 8px;
+}
+
+body .ddz-screen .ddz-skillbar .mini-card.is-joker .mini-card__rank {
+  left: 2px;
+  top: 2px;
+  font-size: 10px;
+}
+
+body .ddz-screen .ddz-skillbar .mini-card.is-joker .mini-card__suit {
+  left: 2px;
+  top: 14px;
+  font-size: 9px;
+}
+
+/* 木牛流马换牌中：手牌描金边提示可点 */
+body .ddz-screen .player-hand.is-swapping .poker-card {
+  box-shadow: 0 0 0 2px #ffd76a, 0 4px 10px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+/* 竖屏：牌桌中下方空着，技能条放在那里居中，离自己出的牌远一点 */
+@media (orientation: portrait) {
+  body .ddz-screen .ddz-table .ddz-skillbar {
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    top: 60%;
+    max-width: calc(100% - 24px);
+    width: max-content;
+    transform: translateX(-50%);
+  }
+}
+
+/* 横屏矮屏：牌桌只有一百多像素高，技能条收紧，说明行藏掉 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body .ddz-screen .ddz-table .ddz-skillbar {
+    right: 8px;
+    bottom: 6px;
+    gap: 3px;
+    padding: 4px 7px;
+    max-width: min(34%, 290px);
+  }
+
+  body .ddz-screen .ddz-skillbar .ddz-skillbar__line.is-desc {
+    display: none;
+  }
+
+  body .ddz-screen .ddz-skillbar .ddz-skillbar__avatar {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+/* ===== v2.1 出征页「随行伴侣」===== */
+.escort-picker {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(212, 168, 67, 0.28);
+}
+
+.escort-picker .escort-picker__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.escort-picker .escort-picker__title span {
+  color: var(--gold-light, #f3d58a);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.escort-picker .escort-picker__title small {
+  color: rgba(255, 238, 214, 0.65);
+  font-size: 11px;
+}
+
+.escort-picker .escort-picker__row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.escort-picker .escort-chip {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  width: 64px;
+  padding: 4px 2px 5px;
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5e6c8;
+  cursor: pointer;
+}
+
+.escort-picker .escort-chip.is-picked {
+  border-color: #ffd76a;
+  background: rgba(212, 168, 67, 0.2);
+  box-shadow: 0 0 0 1px #ffd76a;
+}
+
+.escort-picker .escort-chip .escort-chip__image {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 50% 12%;
+}
+
+.escort-picker .escort-chip strong {
+  font-size: 12px;
+}
+
+.escort-picker .escort-chip small {
+  color: rgba(255, 238, 214, 0.7);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.escort-picker .escort-picker__skill {
+  margin: 0;
+  color: #ffe08a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 疆域图攻郡面板里的随行选择 */
+.conquest-panel .escort-picker {
+  margin-top: 2px;
+}
+
+/* ===== v2.1 伴侣弹窗：技能三级说明与随行统计 ===== */
+.partner-card .partner-skill {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(212, 168, 67, 0.1);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.partner-card .partner-skill b {
+  color: #ffe08a;
+}
+
+.partner-card .partner-skill li {
+  color: rgba(255, 238, 214, 0.62);
+  list-style: none;
+}
+
+.partner-card .partner-skill li.is-reached {
+  color: #f5e6c8;
+}
+
+.partner-card .partner-skill ol {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+}
+
+.partner-card .partner-skill small {
+  color: #bfe3ff;
+}
+
+/* 心事卡：了却后技能升级的一行 */
+.choice-card .choice-card__skill-up {
+  margin: 0;
+  color: #ffe08a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* 选伴侣页：牌桌技能一行 */
+.partner-select-stage__copy .partner-select-stage__skill {
+  display: block;
+  color: #ffe08a;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+/* 技能条小牌：数字、花色都收进 20×26 的牌面里（压过上面「小牌数字左上、花色左下」的通用尺寸） */
+body .ddz-screen .ddz-table .ddz-skillbar .mini-card:not(.is-joker) .mini-card__rank {
+  left: 2px;
+  top: 2px;
+  font-size: 11px;
+}
+
+body .ddz-screen .ddz-table .ddz-skillbar .mini-card svg.mini-card__suit,
+body .ddz-screen .ddz-table .ddz-skillbar .mini-card:not(.is-joker) svg.mini-card__suit {
+  top: 14px;
+  bottom: auto;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+}
+
+/* ===== v2.1 修订：技能条小牌整手不出条、矮横屏不压上家、自己长牌不钻到技能条下 ===== */
+body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards {
+  display: flex;
+  min-width: 0;
+}
+
+/* 牌多（大乔亮整手）：单独占一行，叠放步长 = (条宽 − 一张牌宽) ÷ (张数 − 1)，最松露 15px、最紧露 8px */
+body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-card-strip {
+  width: 100%;
+  max-width: 100%;
+}
+
+body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-card + .mini-card {
+  margin-left: max(-12px, min(-5px, calc((100% - 20px) / (var(--n, 17) - 1) - 20px)));
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  /* 高度预算：表头 + 按钮行 + 一行字不超过约 64px，顶边不碰右侧座位的「农民/地主」和风格字 */
+  body .ddz-screen .ddz-table .ddz-skillbar {
+    gap: 2px;
+    padding: 3px 7px 4px;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__avatar {
+    width: 18px;
+    height: 18px;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__head {
+    gap: 5px;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__name {
+    font-size: 11px;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__btn {
+    min-height: 20px;
+    padding: 0 8px;
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  /* 说明、答复、对赌条件都只占一行（主动技能的用法提示不再整行藏掉） */
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__line {
+    flex-wrap: nowrap;
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__line > span {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__line:has(> .ddz-skillbar__cards.is-many) {
+    flex-wrap: wrap;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__line > .ddz-skillbar__cards:not(.is-many) {
+    flex: none;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .mini-card {
+    width: 18px;
+    height: 23px;
+  }
+
+  body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-card + .mini-card {
+    margin-left: max(-11px, min(-5px, calc((100% - 18px) / (var(--n, 17) - 1) - 18px)));
+  }
+
+  /* 有技能条时，自己打出 10 张以上的长牌：叠得更紧、整体左移，右端不钻到技能条下面 */
+  body .ddz-screen .ddz-table:has(.ddz-skillbar) .ddz-seat--self .ddz-seat__play:has(.mini-card:nth-child(10)) {
+    --ddz-play-overlap: -15px;
+    transform: translateX(calc(-50% - 44px));
+  }
+}
+
+/* 更矮的横屏（360 高等安卓机）：技能条再往下贴几像素，顶边让开上家的风格字 */
+@media (orientation: landscape) and (max-height: 380px) {
+  body .ddz-screen .ddz-table .ddz-skillbar {
+    bottom: 2px;
+    padding-top: 2px;
+    padding-bottom: 3px;
+  }
+}
+
+/* ===== v2.1 修订：出征页随行伴侣改紧凑版（一行头像 + 一行技能），攻郡面板只写一行当前随行 ===== */
+.venue-panel .escort-picker.is-compact,
+.escort-picker.is-compact {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  padding: 5px 8px;
+}
+
+.escort-picker.is-compact .escort-picker__title {
+  display: block;
+}
+
+.escort-picker.is-compact .escort-picker__title span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.escort-picker.is-compact .escort-picker__title small {
+  display: none;
+}
+
+.escort-picker.is-compact .escort-picker__row {
+  gap: 5px;
+  padding-bottom: 0;
+}
+
+.escort-picker.is-compact .escort-chip {
+  display: grid;
+  grid-template-columns: 26px auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  justify-items: start;
+  column-gap: 5px;
+  row-gap: 0;
+  width: auto;
+  min-height: 34px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 999px;
+  text-align: left;
+}
+
+.escort-picker.is-compact .escort-chip .escort-chip__image {
+  grid-row: 1 / 3;
+  width: 26px;
+  height: 26px;
+}
+
+.escort-picker.is-compact .escort-chip strong {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.escort-picker.is-compact .escort-chip small {
+  font-size: 9.5px;
+  line-height: 1.2;
+}
+
+.escort-picker.is-compact .escort-picker__skill {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 竖屏宽度够读：技能说明允许折两行 */
+@media (orientation: portrait) {
+  .escort-picker.is-compact .escort-picker__skill {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+.conquest-panel .escort-summary {
+  margin: 2px 0 4px;
+  color: #ffe08a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.conquest-panel .escort-summary small {
+  margin-left: 4px;
+  color: rgba(255, 238, 214, 0.62);
+  font-size: 11px;
+}
+
+/* 矮横屏：随行只占一行（标签 + 头像），技能说明见头像下的「技能 · 几重」与伴侣弹窗 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .venue-panel .escort-picker.is-compact .escort-picker__skill {
+    display: none;
+  }
+
+  .venue-panel .escort-picker.is-compact {
+    margin-top: 4px;
+    padding: 4px 8px;
+  }
+}

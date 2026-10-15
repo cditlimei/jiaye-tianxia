@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { AI_SKILL_LABEL } from '../lib/doudizhu';
 import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_UNLOCK_HOME_LEVEL, fiefPolicies, fiefs, findFiefPolicy, HOME_NODE, ownedFiefCount, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
 
@@ -11,6 +11,8 @@ interface ConquestMapProps {
   policyChangeCostFor: (fief: Fief) => number;
   onConquer: (fiefId: string, policyId: FiefPolicyId) => void;
   onChangePolicy: (fiefId: string, policyId: FiefPolicyId) => boolean;
+  /** 攻郡确认里的「随行伴侣」选择 */
+  escortPicker?: ReactNode;
 }
 
 type NodeState = 'owned' | 'attackable' | 'far';
@@ -21,7 +23,7 @@ const nodeById = (id: string) => (id === 'home' ? HOME_NODE : fiefs.find((fief) 
  * 疆域图：本府荆州 + 六郡。已归府下的郡染金插旗，与疆域相邻的郡可出兵（红圈），其余待开疆。
  * 点城看守将、特权与军资；攻郡打一局斗地主，胜则得郡。
  */
-export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, policyChangeCostFor, onConquer, onChangePolicy }: ConquestMapProps) {
+export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, policyChangeCostFor, onConquer, onChangePolicy, escortPicker }: ConquestMapProps) {
   const attackable = useMemo(() => attackableFiefs(holdings), [holdings]);
   const stateOf = (fief: Fief): NodeState => (holdings[fief.id] ? 'owned' : attackable.some((item) => item.id === fief.id) ? 'attackable' : 'far');
   const [selectedId, setSelectedId] = useState<string>(() => [...attackable].sort((a, b) => a.cost - b.cost)[0]?.id ?? 'home');
@@ -111,6 +113,7 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
             </button>
           ))}
         </div>
+        {escortPicker}
         <button type="button" className="conquest-go" disabled={Boolean(blocker)} onClick={() => onConquer(selected.id, policyId)}>
           {blocker || `出兵攻取${selected.name} · 耗 1 军令 · 押 ${stake.toLocaleString()} 金`}
         </button>
