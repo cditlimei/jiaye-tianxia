@@ -84,7 +84,6 @@ interface PlayerProfile {
 }
 
 const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu', 'machao', 'sunce', 'luxun'];
-const HAND_EDGE_PERCENT = 7.2;
 // 竖屏手牌超过这个张数就分两行，避免 20 张挤成一排看不清点数
 const TWO_ROW_THRESHOLD = 12;
 const PORTRAIT_QUERY = '(orientation: portrait) and (max-width: 700px)';
@@ -398,7 +397,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   const cardUnderPointer = (target: HTMLElement, clientX: number, clientY: number) => {
     const visibleCardId = cardIdFromPointer(target, clientX, clientY);
     if (visibleCardId && playerHand.some((card) => card.id === visibleCardId)) return visibleCardId;
-    const index = handIndexFromPointer(target.getBoundingClientRect(), clientX, clientY, displayedHand.length, twoRows);
+    const index = handIndexFromPointer(target, clientX, clientY, twoRows);
     return displayedHand[index]?.id ?? null;
   };
 
@@ -676,7 +675,7 @@ function MiniCard({ card }: { card: Card }) {
   // 大小王小牌放不下两个字：中间单字「大」「小」，角上标「王」，大王红、小王黑
   const joker = isJoker(card);
   return (
-    <span className={`mini-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''}`} aria-label={card.label}>
+    <span className={`mini-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''}`} aria-label={card.label} data-rank={card.rank}>
       <b className="mini-card__rank">{joker ? (card.value === 17 ? '大' : '小') : card.rank}</b>
       {joker ? <i className="mini-card__suit">王</i> : <SuitIcon suit={card.suit} className="mini-card__suit" />}
     </span>
@@ -696,34 +695,57 @@ function handRowLayout(index: number, count: number, twoRows: boolean) {
     : { row: 1, indexInRow: index - upper, countInRow: count - upper, rows: 2 };
 }
 
+// 手牌紧密叠放（参照黄金岛跑得快）：后一张压住前一张，只露左侧一条角标，整手居中。
+// 步长 = min(露出宽度, 手牌区放得下的宽度)；露出宽度按牌宽比例算，牌少时放宽一些
+const HAND_OVERLAP_SAFE_GAP = 6;
+function handStepRatio(countInRow: number) {
+  if (countInRow <= 6) return 0.6;
+  if (countInRow >= 11) return 0.46;
+  return 0.6 - ((countInRow - 6) / 5) * 0.14;
+}
+
 function handCardStyle(index: number, count: number, selected: boolean, twoRows: boolean): CSSProperties {
   const { row, indexInRow, countInRow, rows } = handRowLayout(index, count, twoRows);
-  const progress = countInRow <= 1 ? 0.5 : indexInRow / (countInRow - 1);
-  const left = HAND_EDGE_PERCENT + progress * (100 - HAND_EDGE_PERCENT * 2);
+  const offset = indexInRow - (countInRow - 1) / 2;
+  const cardWidth = 'var(--hand-card-edge) * 2';
+  const step = countInRow <= 1
+    ? '0px'
+    : `min(${cardWidth} * ${handStepRatio(countInRow).toFixed(3)}, (100% - ${cardWidth} - ${HAND_OVERLAP_SAFE_GAP * 2}px) / ${countInRow - 1})`;
   const rowLift = rows === 2 && row === 0 ? 46 : 0;
   // 选中的牌要一眼看得出来
   const selectedRise = selected ? (rows === 2 ? 12 : 18) : 0;
 
   return {
-    left: `${left}%`,
+    left: `calc(50% + ${offset} * ${step})`,
     transform: `translateX(-50%) translateY(${-rowLift - selectedRise}px)`,
     zIndex: row * 100 + indexInRow + 1
   };
 }
 
-function handIndexFromPointer(handBox: DOMRect, clientX: number, clientY: number, count: number, twoRows: boolean) {
-  if (count <= 1) return 0;
-
-  const edge = handBox.width * (HAND_EDGE_PERCENT / 100);
-  const span = Math.max(1, handBox.width - edge * 2);
-  const progress = Math.min(1, Math.max(0, (clientX - handBox.left - edge) / span));
-  if (!twoRows) return Math.round(progress * (count - 1));
-
-  const upper = Math.ceil(count / 2);
-  const inUpperRow = clientY < handBox.top + handBox.height * 0.45;
-  const countInRow = inUpperRow ? upper : count - upper;
-  const indexInRow = Math.round(progress * Math.max(0, countInRow - 1));
-  return inUpperRow ? indexInRow : upper + indexInRow;
+/**
+ * 手指没落在任何一张牌上（牌缝、上抬留下的空当）时按实际排布反算：
+ * 先按纵向定行（两行时下排在上排之上叠放），再取左边缘在手指左侧的最后一张——叠放下露出的就是它。
+ */
+function handIndexFromPointer(hand: HTMLElement, clientX: number, clientY: number, twoRows: boolean) {
+  const cards = [...hand.querySelectorAll<HTMLElement>('.poker-card')];
+  if (cards.length === 0) return -1;
+  const boxes = cards.map((card, index) => ({ index, box: card.getBoundingClientRect(), upper: card.classList.contains('is-upper-row') }));
+  let candidates = boxes;
+  if (twoRows) {
+    const lower = boxes.filter((item) => !item.upper);
+    const resting = lower.filter((item) => !cards[item.index].classList.contains('is-selected'));
+    const lowerTop = resting.length > 0 ? Math.min(...resting.map((item) => item.box.top)) : Math.min(...lower.map((item) => item.box.top)) + 12;
+    candidates = clientY >= lowerTop ? lower : boxes.filter((item) => item.upper);
+    if (candidates.length === 0) candidates = boxes;
+  }
+  // 只在牌的实际范围内吸附：手牌居中后两侧空出一大片桌面，点那里不该选中端牌
+  const rowLeft = Math.min(...candidates.map((item) => item.box.left));
+  const rowRight = Math.max(...candidates.map((item) => item.box.right));
+  const rowTop = Math.min(...candidates.map((item) => item.box.top));
+  const rowBottom = Math.max(...candidates.map((item) => item.box.bottom));
+  if (clientX < rowLeft || clientX > rowRight || clientY < rowTop || clientY > rowBottom) return -1;
+  const hit = candidates.filter((item) => item.box.left <= clientX).at(-1);
+  return hit ? hit.index : -1;
 }
 
 function cardIdFromPointer(hand: EventTarget & HTMLElement, clientX: number, clientY: number) {

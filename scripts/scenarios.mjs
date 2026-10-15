@@ -682,7 +682,8 @@ await scenario('竖屏两行手牌', async () => {
   check('20 张手牌在竖屏分两行', n === 20 && tops.size === 2 && Math.min(...widths) >= 56, `rows=${tops.size} width=${Math.min(...widths)}`);
   const target = cards.nth(3);
   const id = await target.getAttribute('data-card-id');
-  await target.click();
+  // 手牌紧密叠放：每张只露左侧一条角标，点露出的那条（点牌中心会点到压在上面的下一张）
+  await target.click({ position: { x: 10, y: 20 } });
   await page.waitForTimeout(200);
   const selected = await page.locator('.player-hand .poker-card.is-selected').getAttribute('data-card-id');
   check('点上排的牌能选中正确的那张', selected === id, `${id} → ${selected}`);

@@ -6654,3 +6654,247 @@ body .ddz-screen .mini-card.is-joker {
 body .ddz-screen .poker-card.is-upper-row .poker-card__index-br {
   display: none;
 }
+
+/* ===== 手牌紧密叠放（参照黄金岛跑得快手牌）=====
+   位置由 handCardStyle() 按「居中 + 步长 = min(牌宽×比例, 可用宽/张数)」算；
+   这里只把左上角标收窄、贴左边，保证露出的那一条里数字 + 花色完整（「10」单独压窄） */
+body .ddz-screen .player-hand .poker-card .poker-card__corner {
+  left: 2px;
+  width: calc(var(--hand-card-edge) * 0.8);
+}
+
+body .ddz-screen .player-hand .poker-card[data-rank="10"] .poker-card__corner b,
+body .ddz-screen .player-hand .poker-card[data-rank="10"] .poker-card__index-br b {
+  justify-self: start;
+  margin-left: 1px;
+  font-size: 21px;
+  letter-spacing: -0.1em;
+  transform: scaleX(0.7);
+  transform-origin: left center;
+}
+
+/* 叠放后每张左缘要分得清：左侧加一道细阴影 */
+body .ddz-screen .player-hand .poker-card:not(.is-selected) {
+  box-shadow:
+    -2px 0 3px rgba(0, 0, 0, 0.18),
+    0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== 红色牌桌（参照黄金岛跑得快：深红毡面、中心略亮 + 金边木框）=====
+   只作用于斗地主牌桌 .ddz-screen，其它页面不受影响 */
+body .ddz-screen,
+body.is-doudizhu-table .ddz-screen {
+  background:
+    radial-gradient(ellipse at 50% 38%, #9c1d22 0%, #7a1418 42%, #4e0a0e 78%, #34070a 100%);
+}
+
+body .ddz-screen .ddz-table,
+body.is-doudizhu-table .ddz-screen .ddz-table {
+  border: 3px solid #d2a54a;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(255, 210, 170, 0.12), transparent 58%),
+    radial-gradient(ellipse at 50% 48%, #c42c2c 0%, #a61f23 46%, #82141a 82%, #6c1015 100%);
+  box-shadow:
+    0 0 0 3px #6b3a17,
+    0 0 0 4px rgba(240, 200, 120, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 228, 160, 0.4),
+    inset 0 0 42px rgba(40, 0, 0, 0.55);
+}
+
+/* 红底上原来的半透明黑底块偏脏，换成深酒红 + 细金边，文字对比度不变 */
+body .ddz-screen .ddz-seat__count,
+body .ddz-screen .ddz-seat__action,
+body .ddz-screen .ddz-counter__cell,
+body .ddz-screen .ddz-topbar__quit,
+body .ddz-screen .ddz-btn--reset,
+body .ddz-screen .ddz-btn--auto {
+  background: rgba(46, 6, 8, 0.55);
+}
+
+body .ddz-screen .ddz-counter__cell {
+  box-shadow: inset 0 0 0 1px rgba(240, 200, 120, 0.16);
+}
+
+body .ddz-screen .ddz-topbar__quit {
+  border-color: rgba(240, 200, 120, 0.4);
+}
+
+body .ddz-screen .ddz-seat__action--active {
+  background: #ffe27a;
+  color: #3a2400;
+}
+
+body .ddz-screen .ddz-seat__action--pass {
+  color: #bfe3ff;
+}
+
+/* 地主徽章本身是红色，放在红毡上要描金边才分得出来 */
+body .ddz-screen .ddz-seat__role {
+  box-shadow: 0 0 0 1px rgba(255, 236, 190, 0.85), 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+body .ddz-screen .ddz-seat__role.is-landlord {
+  background: linear-gradient(180deg, #e0a526, #b5730c);
+  color: #fff;
+}
+
+body .ddz-screen .ddz-center span,
+body .ddz-screen .ddz-readout,
+body .ddz-screen .ddz-seat__badge,
+body .ddz-screen .ddz-counter__label,
+body .ddz-screen .ddz-topbar__kitty > span,
+body .ddz-screen .ddz-topbar__stake span {
+  color: rgba(255, 238, 214, 0.8);
+}
+
+/* 出牌按钮的绿在红底上偏暗，提亮一点；不可点时不再半透明发灰发紫 */
+body .ddz-screen .ddz-btn--play {
+  background: linear-gradient(180deg, #7ad86f, #2f9a3a);
+}
+
+body .ddz-screen .ddz-btn:disabled {
+  opacity: 1;
+  filter: grayscale(0.85) brightness(0.62);
+}
+
+/* ===== 复核修正（叠放手牌 + 红桌之后）===== */
+
+/* 触屏滑动多选：manipulation 允许浏览器把横划当平移接管，发 pointercancel 打断连选；手牌区不需要浏览器手势 */
+body .ddz-screen .player-hand {
+  touch-action: none;
+}
+
+/* 叠放后只有每行最后一张的右下角露在外面；其余牌的倒置角标 / 大小王图案平时被下一张盖住，
+   下一张选中升起时会从缝里露出半个残字，统一藏掉 */
+body .ddz-screen .player-hand .poker-card:not(:last-child) .poker-card__index-br,
+body .ddz-screen .player-hand .poker-card:not(:last-child) .poker-card__art {
+  visibility: hidden;
+}
+
+/* 横屏矮屏：记牌器并入顶栏同一行，省出的高度还给牌桌，牌桌金边不再压住按钮条 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.is-doudizhu-table .ddz-screen,
+  body .ddz-screen {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    column-gap: 10px;
+  }
+
+  body .ddz-screen .ddz-topbar {
+    display: contents;
+  }
+
+  body .ddz-screen .ddz-topbar__quit {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  body .ddz-screen .ddz-topbar__kitty {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  body .ddz-screen .ddz-counter {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+    justify-self: center;
+    min-width: 0;
+  }
+
+  body .ddz-screen .ddz-topbar__stake {
+    grid-column: 4;
+    grid-row: 1;
+  }
+
+  body .ddz-screen .ddz-table {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 0;
+  }
+
+  body .ddz-screen .ddz-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  body.is-doudizhu-table .ddz-screen .player-hand,
+  body .ddz-screen .player-hand {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+}
+
+/* 横屏：选中的牌上抬 18px；手牌整体下移 6px（原来离底 8px，用不上），升起后与按钮条留出空隙，不压「出牌」下沿 */
+@media (orientation: landscape) {
+  body.is-doudizhu-table .ddz-screen .player-hand .poker-card {
+    bottom: 2px;
+  }
+}
+
+/* 平板竖屏（≥701 宽）：原来套横屏的 560 高固定盒子，上下各空出一大段黑带；改成铺满屏高 */
+@media (orientation: portrait) and (min-width: 701px) {
+  body.is-doudizhu-table .phone-shell:has(.ddz-screen) {
+    height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
+  }
+}
+
+/* 出牌区：桌上的牌横向叠放，每张只露左侧一条角标（参照跑得快牌桌） */
+body .ddz-screen .ddz-seat__play .mini-card-strip {
+  gap: 0;
+  overflow: visible;
+}
+
+body .ddz-screen .ddz-seat__play .mini-card + .mini-card {
+  margin-left: var(--ddz-play-overlap, -10px);
+  box-shadow: -2px 0 3px rgba(0, 0, 0, 0.2), 0 2px 5px rgba(0, 0, 0, 0.28);
+}
+
+/* 叠放后露出 16px：「10」两位数压窄、贴左，免得被下一张盖掉半个「0」 */
+body .ddz-screen .ddz-seat__play .mini-card[data-rank="10"]:not(.is-joker) .mini-card__rank {
+  left: 2px;
+  letter-spacing: -0.12em;
+  transform: scaleX(0.68);
+}
+
+/* 大小王小牌的「大」「小」写在正中，压太多看不见：王后面那张少压一些 */
+body .ddz-screen .ddz-seat__play .mini-card.is-joker + .mini-card {
+  margin-left: -4px;
+}
+
+/* 横屏矮屏：记牌器并到顶栏后，窄屏（667 宽）放不下 15 格 + 标签，会压到右侧「斗地主牌局」；
+   格子允许收窄，窄屏藏掉「记牌器」三个字 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body .ddz-screen .ddz-counter {
+    justify-self: stretch;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body .ddz-screen .ddz-counter__cell {
+    flex: 0 1 22px;
+    min-width: 0;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 760px) {
+  body .ddz-screen .ddz-counter__label {
+    display: none;
+  }
+}
+
+/* 横屏矮屏：外框原来留 10px 边 + min-height 360，360 高的手机会把手牌底部挤出屏幕；边距收到 4px、去掉下限 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.is-doudizhu-table .app-shell {
+    padding: 4px;
+  }
+
+  body.is-doudizhu-table .phone-shell:has(.ddz-screen) {
+    height: calc(100vh - 8px);
+    height: calc(100dvh - 8px);
+    min-height: 0;
+  }
+}

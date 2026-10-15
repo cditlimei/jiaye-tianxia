@@ -145,7 +145,13 @@ try {
   await assertPlayerHandFits(page);
   await assertThreeSeatActions(page);
   await assertVisibleCardCornerSelection(page);
-  await clickHand(page, { x: 32, y: 72 });
+  // 手牌居中叠放后两侧是空桌面（点空白不再吸附端牌），改点第一张牌露出的角标条
+  const firstCardPos = await page.locator('.player-hand .poker-card').first().evaluate((card) => {
+    const hand = card.closest('.player-hand').getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    return { x: Math.round(box.left - hand.left + 8), y: Math.round(box.top - hand.top + 24) };
+  });
+  await clickHand(page, firstCardPos);
   await assertPlayerHandFits(page);
   await page.getByRole('button', { name: '出牌' }).click();
   await expectText(page, '19 张');
