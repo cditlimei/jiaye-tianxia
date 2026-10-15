@@ -7123,3 +7123,205 @@ body.is-doudizhu-table .ddz-screen .mini-card.is-joker .mini-card__suit {
     width: min(94vw, 780px);
   }
 }
+
+/* ===== 天下疆域：攻郡地图 ===== */
+.conquest-map {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(212, 168, 67, 0.4);
+  border-radius: 14px;
+  background: rgba(20, 16, 10, 0.72);
+}
+
+.conquest-map__svg {
+  display: block;
+  width: 100%;
+  max-height: 46vh;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(120, 90, 30, 0.6), 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.conquest-map__river {
+  font-size: 2.6px;
+  fill: #6b5a33;
+  opacity: 0.8;
+}
+
+.conquest-edge {
+  stroke: #8a7046;
+  stroke-width: 0.5;
+  stroke-dasharray: 1.2 1;
+}
+
+.conquest-edge.is-held {
+  stroke: #b8860b;
+  stroke-width: 0.9;
+  stroke-dasharray: none;
+}
+
+.conquest-node {
+  cursor: pointer;
+}
+
+.conquest-node text {
+  font-size: 3.2px;
+  font-weight: 800;
+  text-anchor: middle;
+  fill: #3a2a10;
+  paint-order: stroke;
+  stroke: #f3e6c4;
+  stroke-width: 0.8px;
+}
+
+.conquest-node circle {
+  stroke-width: 0.7;
+}
+
+.conquest-node.is-owned circle {
+  fill: #d9a520;
+  stroke: #6b4a08;
+}
+
+.conquest-node.is-attackable circle {
+  fill: #f6efe0;
+  stroke: #b3261e;
+}
+
+.conquest-node.is-far circle {
+  fill: #c9bfa6;
+  stroke: #8a7f66;
+}
+
+.conquest-node.is-far text {
+  fill: #7a6c4e;
+}
+
+.conquest-node__ring {
+  fill: none !important;
+  stroke: #d0352b !important;
+  stroke-width: 0.6 !important;
+  animation: conquest-ring 1.6s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes conquest-ring {
+  from { opacity: 0.9; transform: scale(0.8); }
+  to { opacity: 0; transform: scale(1.35); }
+}
+
+.conquest-node__flag {
+  fill: #c0392b;
+  stroke: #5a1a12;
+  stroke-width: 0.35;
+}
+
+.conquest-node.is-home rect {
+  fill: #7a1f1a;
+  stroke: #f2c45a;
+  stroke-width: 0.7;
+}
+
+.conquest-node.is-selected circle,
+.conquest-node.is-selected rect {
+  stroke: #fff6c8;
+  stroke-width: 1.1;
+}
+
+.conquest-panel {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(10, 10, 18, 0.7);
+  color: #f5e6c8;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.conquest-panel > strong {
+  color: var(--gold-light);
+  font-size: 15px;
+}
+
+.conquest-perk {
+  color: #ffd27a;
+  font-weight: 700;
+}
+
+.conquest-policies {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.conquest-policies button {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid rgba(212, 168, 67, 0.4);
+  border-radius: 10px;
+  background: rgba(40, 30, 12, 0.7);
+  color: #f5e6c8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.conquest-policies button.is-picked {
+  border-color: #ffd27a;
+  background: rgba(150, 105, 20, 0.55);
+}
+
+.conquest-policies button:disabled {
+  opacity: 0.5;
+}
+
+.conquest-go {
+  padding: 11px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #e0655a, #9b2a22);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.conquest-go:disabled {
+  background: #4a3f37;
+  color: #cfc2ad;
+  cursor: default;
+}
+
+.conquest-notice {
+  margin: 0;
+  color: #ffe08a;
+  font-size: 13px;
+}
+
+/* 颍川特权：开局探得下家三张牌 */
+.ddz-scout {
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  justify-self: center;
+  background: rgba(40, 10, 10, 0.55);
+  color: #ffe08a;
+  font-size: 12px;
+}
+
+/* 手机横屏：疆域图占左列（同旧地图位置），斗地主选场在右列 */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* 旧规则 `.expedition-screen > :not(.screen-header):not(.expedition-map)` 把非地图都推到右列，这里要更高优先级 */
+  .expedition-screen > section.conquest-map:not(.screen-header):not(.expedition-map) {
+    grid-column: 1;
+    grid-row: 2 / span 4;
+    max-height: calc(100dvh - 110px);
+    overflow-y: auto;
+  }
+
+  .expedition-screen > .conquest-map .conquest-map__svg {
+    max-height: calc(100dvh - 170px);
+  }
+}

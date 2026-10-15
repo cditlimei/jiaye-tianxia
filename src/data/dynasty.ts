@@ -22,9 +22,9 @@ export const REALM_STAT_BONUS = 6;
 export const DYNASTY_START_GOLD = 20000;
 
 export const realms: Realm[] = [
-  { id: 'wei', name: '魏', motto: '挟天子以令诸侯', effect: `军令上限 +${REALM_ORDER_BONUS}，许都朝议缴获 +20%` },
+  { id: 'wei', name: '魏', motto: '挟天子以令诸侯', effect: `军令上限 +${REALM_ORDER_BONUS}，攻郡军资九折` },
   { id: 'shu', name: '蜀', motto: '兴复汉室，还于旧都', effect: `政务收入 +${REALM_INCOME_PERCENT}%，西蜀屯田九折` },
-  { id: 'wu', name: '吴', motto: '据长江之险，保江东之地', effect: `武力、智谋、声望各 +${REALM_STAT_BONUS}，江东水战缴获 +20%` }
+  { id: 'wu', name: '吴', motto: '据长江之险，保江东之地', effect: `武力、智谋、声望各 +${REALM_STAT_BONUS}，斗地主胜利缴获 +20%` }
 ];
 
 export type RealmCounts = Record<RealmId, number>;
@@ -48,9 +48,16 @@ export const dynastyCount = (realms: RealmCounts) => realms.wei + realms.shu + r
 export const REALM_BATTLE_BONUS = 0.2;
 export const REALM_FARM_DISCOUNT = 0.1;
 export function realmRewardScale(realms: RealmCounts, mode: string) {
+  // 10-15 起官道/江东/许都自动战收起：吴的加成改给斗地主，魏改为攻郡军资折扣（realmConquestDiscount）
+  if (mode === 'doudizhu') return 1 + Math.min(3, realms.wu) * REALM_BATTLE_BONUS;
   if (mode === 'court') return 1 + Math.min(3, realms.wei) * REALM_BATTLE_BONUS;
   if (mode === 'naval') return 1 + Math.min(3, realms.wu) * REALM_BATTLE_BONUS;
   return 1;
+}
+
+/** 魏：每立一次攻郡军资再打九折（最多三次） */
+export function realmConquestDiscount(realms: RealmCounts) {
+  return Math.pow(0.9, Math.min(3, realms.wei));
 }
 /** 今日军功：官道/江东/许都按日轮换，当日该战场缴获 +30%，让后期不只盯着一个战场 */
 export const BOUNTY_MODES = ['land', 'naval', 'court'] as const;

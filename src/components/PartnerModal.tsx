@@ -55,7 +55,7 @@ export function PartnerModal({ state, lord, costFor, discount, onClose, onRecrui
         {onTalk && state.ownedPartnerIds.length > 0 && (
           <button type="button" className="partner-market__talk" onClick={onTalk}>与入府伴侣闲话家常 →</button>
         )}
-        <p className="stat-legend">武力→官道讨伐与北疆边患 · 智谋→政务收入与江东水战 · 声望→招募折扣与许都朝堂</p>
+        <p className="stat-legend">武力→能进的斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</p>
         {notice && (
           <p className="partner-market__notice" role="status">
             {notice}

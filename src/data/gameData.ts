@@ -201,7 +201,7 @@ export const lords: Lord[] = [
     strength: 90,
     intelligence: 70,
     charisma: 92,
-    description: '少年横扫江东，武力与人望俱佳，官道与朝堂两头得利，唯独水战要靠周郎。',
+    description: '少年横扫江东，武力与人望俱佳，牌桌上攻守兼备，唯独谋算要靠周郎。',
     imagePath: 'assets/lords/lord_sunce.png'
   },
   {

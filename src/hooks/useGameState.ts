@@ -9,10 +9,10 @@ import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, pars
 import type { BattleMode, GameState, Screen } from '../types';
 import { isOrderDay } from '../types';
 import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
-import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
+import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmConquestDiscount, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
 import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
-import { FIEF_INCOME_PERCENT, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type FiefPolicyId } from '../data/fiefs';
+import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, type Fief, type FiefPolicyId } from '../data/fiefs';
 import { advanceFrontier, FRONTIER_UNLOCK_HOME_LEVEL, RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 
 const HEARTBEAT_MS = 15000;
@@ -25,6 +25,8 @@ type Action =
   | { type: 'upgradeHome'; nextLevel: number; cost: number }
   | { type: 'upgradeFarm'; nextLevel: number; cost: number }
   | { type: 'claimFief'; fiefId: string; policyId: FiefPolicyId; cost: number }
+  | { type: 'startConquest'; fiefId: string; policyId: FiefPolicyId; stake: number }
+  | { type: 'resolveConquest'; win: boolean }
   | { type: 'chooseAmbition'; ambitionId: AmbitionId }
   | { type: 'foundDynasty'; realm: RealmId }
   | { type: 'restart' }
@@ -280,6 +282,41 @@ function baseReducer(state: GameState, action: Action): GameState {
             detail: `以 ${action.cost.toLocaleString()} 金开拓${fief.name}，行「${policy.name}」之策：${policy.effect}。`,
             goldDelta: -action.cost
           },
+          ...state.eventLog
+        ].slice(0, 18)
+      };
+    }
+    case 'startConquest': {
+      const fief = findFief(action.fiefId);
+      const policy = findFiefPolicy(action.policyId);
+      // 只能攻相邻的郡；侯府开放；要 1 道军令和足额军资
+      if (!fief || !policy || state.activeBattle || state.homeLevel < FIEF_UNLOCK_HOME_LEVEL || !attackableFiefs(state.fiefs).some((item) => item.id === fief.id)
+        || state.orders < 1 || action.stake !== conquestStakeFor(state, fief) || state.gold < action.stake) {
+        return state;
+      }
+      return {
+        ...state,
+        gold: state.gold - action.stake,
+        orders: state.orders - 1,
+        activeBattle: { mode: 'land', lossGold: 0, doudizhu: true, conquest: { fiefId: fief.id, policyId: policy.id, stake: action.stake } }
+      };
+    }
+    case 'resolveConquest': {
+      const conquest = state.activeBattle?.conquest;
+      if (!conquest) return state;
+      const fief = findFief(conquest.fiefId);
+      const policy = findFiefPolicy(conquest.policyId);
+      if (!fief || !policy) return { ...state, activeBattle: null };
+      return {
+        ...state,
+        activeBattle: null,
+        fiefs: action.win ? { ...state.fiefs, [fief.id]: policy.id } : state.fiefs,
+        battleWins: action.win ? state.battleWins + 1 : state.battleWins,
+        battleLosses: action.win ? state.battleLosses : state.battleLosses + 1,
+        eventLog: [
+          action.win
+            ? { id: `conquest-${fief.id}-${Date.now()}`, day: state.day, title: `攻取${fief.name}`, detail: `牌桌上击败守将${fief.garrison}，${fief.name}归府下，行「${policy.name}」之策（${policy.effect}），所有牌局得「${fief.perk.name}」：${fief.perk.detail}。` }
+            : { id: `conquest-fail-${fief.id}-${Date.now()}`, day: state.day, title: `攻${fief.name}未克`, detail: `败于守将${fief.garrison}，${conquest.stake.toLocaleString()} 金军资没入敌手，可整军再攻。` },
           ...state.eventLog
         ].slice(0, 18)
       };
@@ -711,6 +748,20 @@ export function useGameState() {
     [state]
   );
 
+  /** 出兵攻郡：押军资、耗 1 军令，进攻郡牌局 */
+  const startConquest = useCallback(
+    (fiefId: string, policyId: FiefPolicyId) => {
+      const fief = findFief(fiefId);
+      if (!fief) return false;
+      const stake = conquestStakeFor(state, fief);
+      if (state.gold < stake || state.orders < 1) return false;
+      dispatch({ type: 'startConquest', fiefId, policyId, stake });
+      return true;
+    },
+    [state]
+  );
+  const resolveConquest = useCallback((win: boolean) => dispatch({ type: 'resolveConquest', win }), []);
+
   const setFiefPolicy = useCallback(
     (fiefId: string, policyId: FiefPolicyId) => {
       const fief = findFief(fiefId);
@@ -770,6 +821,8 @@ export function useGameState() {
     buyWeapon,
     upgradeFarm,
     claimFief,
+    startConquest,
+    resolveConquest,
     setFiefPolicy,
     chooseAmbition: (ambitionId: AmbitionId) => dispatch({ type: 'chooseAmbition', ambitionId }),
     foundDynasty: (realm: RealmId) => dispatch({ type: 'foundDynasty', realm }),
@@ -787,4 +840,9 @@ export function useGameState() {
     resetGame: () => dispatch({ type: 'reset' }),
     restartGame: () => dispatch({ type: 'restart' })
   };
+}
+
+/** 攻郡军资：开拓价（含开疆家风折扣）的一半，国号魏再打折 */
+export function conquestStakeFor(state: Pick<GameState, 'chronicle' | 'realms'>, fief: Fief) {
+  return Math.round(fiefCostFor(state, fief) * CONQUEST_STAKE_RATE * realmConquestDiscount(state.realms));
 }

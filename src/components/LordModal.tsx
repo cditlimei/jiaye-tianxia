@@ -41,7 +41,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
           </dl>
           {dynastyCount(state.realms) > 0 && <small className="lord-sheet__realms">第 {dynastyCount(state.realms) + 1} 朝 · 国号加成：{(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')}</small>}
           {tradition && <small className="lord-sheet__realms">家风「{tradition.name}」：{tradition.effect}（连续两代达成同一志向，换志向即断）</small>}
-          <small>武力→官道与北疆 · 智谋→政务收入与江东 · 声望→招募折扣与许都{state.legacyPoints > 0 ? ` · 家业点 ${state.legacyPoints}（收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%）` : ''}</small>
+          <small>武力→斗地主场次与北疆 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获{state.legacyPoints > 0 ? ` · 家业点 ${state.legacyPoints}（收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%）` : ''}</small>
         </div>
       </div>
       {ambition && (

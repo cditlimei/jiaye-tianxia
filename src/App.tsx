@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { homeLevels, lords, partners, weapons } from './data/gameData';
 import { useAudioManager } from './hooks/useAudioManager';
 import { useEffectOverlay } from './hooks/useEffectOverlay';
-import { useGameState } from './hooks/useGameState';
+import { conquestStakeFor, useGameState } from './hooks/useGameState';
+import { policyChangeCostFor } from './data/traditions';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
 import { ambitionSummary } from './data/ambitions';
@@ -295,6 +296,15 @@ export function App() {
           onBattleStart={game.startBattle}
           onBattleStakeChange={game.updateActiveBattle}
           onReturnHome={() => game.setScreen('home')}
+          fiefs={game.state.fiefs}
+          conquestStakeFor={(fief) => conquestStakeFor(game.state, fief)}
+          policyChangeCostFor={(fief) => policyChangeCostFor(game.state, fief)}
+          onStartConquest={game.startConquest}
+          onConquestResolved={(win) => {
+            game.resolveConquest(win);
+            if (win) audio.playSfx('audio/sfx/sfx_coins.mp3', 0.5);
+          }}
+          onChangeFiefPolicy={game.setFiefPolicy}
         />
       );
     }
@@ -341,7 +351,8 @@ export function App() {
           onCompleteTutorial={game.completeTutorial}
           onOpenSettings={() => setModal('settings')}
           onOpenLord={() => setModal('lord')}
-          onOpenFief={() => setModal('fief')}
+          // 封地在出征页的疆域图上：看郡、攻郡、改方略都在那里
+          onOpenFief={() => handleBattle('jingzhou')}
           onOpenEnding={() => setModal('ending')}
           onChooseAmbition={(id) => {
             game.chooseAmbition(id);

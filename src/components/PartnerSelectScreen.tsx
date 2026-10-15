@@ -47,7 +47,7 @@ export function PartnerSelectScreen({ lord, onConfirm, onBack }: PartnerSelectSc
           <h3>{selectedPartner.name}</h3>
           <p>{selectedPartner.description}</p>
           <strong>{bonusCopy}</strong>
-          <small className="stat-legend">武力→官道讨伐与北疆边患 · 智谋→政务收入与江东水战 · 声望→招募折扣与许都朝堂</small>
+          <small className="stat-legend">武力→能进的斗地主场次与北疆边患 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获</small>
         </div>
       </section>
 

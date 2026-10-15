@@ -126,10 +126,11 @@ try {
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: '出征', exact: true }).click();
-  // 出征直达斗地主选场，地图收在「其他战场」
+  // 出征页：疆域图 + 斗地主选场；屯田、北疆收在「其他战场」
   await page.getByRole('button', { name: /^进入斗地主/ }).waitFor({ state: 'visible', timeout: 7000 });
+  await page.locator('.conquest-map').waitFor({ state: 'visible', timeout: 5000 });
   await page.getByRole('button', { name: '其他战场 ›' }).click();
-  await expectText(page, '九州征途');
+  await expectText(page, '其他战场');
   await assertExpeditionModes(page);
   await assertVenueGate(page);
   await page.getByRole('button', { name: /中级场/ }).click();
@@ -412,17 +413,18 @@ async function assertPortraitDoudizhuFits(page) {
 }
 
 async function assertExpeditionModes(page) {
-  const doudizhu = page.getByRole('button', { name: /荆州/ });
-  const autoBattle = page.getByRole('button', { name: /官道/ });
+  // 官道/江东/许都自动战 10-15 收起；其他战场只剩荆州（斗地主）、西蜀屯田、北疆
+  const doudizhu = page.locator('.map-node').filter({ hasText: '荆州' });
+  const frontier = page.locator('.map-node').filter({ hasText: '北疆' });
   await doudizhu.waitFor({ state: 'visible', timeout: 5000 });
-  await autoBattle.waitFor({ state: 'visible', timeout: 5000 });
+  await frontier.waitFor({ state: 'visible', timeout: 5000 });
 
   if (!(await doudizhu.isEnabled())) {
     throw new Error('smoke_doudizhu_region_should_be_available');
   }
 
-  if (!(await autoBattle.isEnabled())) {
-    throw new Error('smoke_auto_battle_region_should_be_available');
+  if ((await page.locator('.map-node').filter({ hasText: /官道|江东|许都/ }).count()) > 0) {
+    throw new Error('smoke_retired_auto_battle_regions_still_shown');
   }
 }
 

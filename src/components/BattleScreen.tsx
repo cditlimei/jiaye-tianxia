@@ -3,6 +3,8 @@ import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
 import { VENUES, venueReward, venueRewardScale, type VenueId } from '../data/venues';
+import { fiefs as fiefCatalog, ownedFiefIds, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
+import { ConquestMap } from './ConquestMap';
 import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
@@ -42,6 +44,13 @@ interface BattleScreenProps {
   onSfx: (path: string, volume?: number) => void;
   onResolved: (win: boolean, rewardGold: number, mode: BattleMode, retreat?: boolean, lossGold?: number, doudizhu?: boolean) => void;
   onReturnHome: () => void;
+  /** 疆域：已有封地、攻郡与改方略 */
+  fiefs: FiefHoldings;
+  conquestStakeFor: (fief: Fief) => number;
+  policyChangeCostFor: (fief: Fief) => number;
+  onStartConquest: (fiefId: string, policyId: FiefPolicyId) => boolean;
+  onConquestResolved: (win: boolean) => void;
+  onChangeFiefPolicy: (fiefId: string, policyId: FiefPolicyId) => boolean;
 }
 
 type BattlePhase = 'intro' | 'battle' | 'result';
@@ -65,14 +74,13 @@ interface BattleRuntime {
   result: 'win' | 'loss' | 'retreat' | null;
 }
 
+// 官道、江东、许都三处自动战 10-15 收起：开疆改为攻郡打斗地主（见 ConquestMap），旧入口一律落到荆州
 const MAP_REGIONS: MapRegion[] = [
   { id: 'jingzhou', name: '荆州', state: '斗地主', x: 47, y: 58, mode: 'doudizhu' },
-  { id: 'guandao', name: '官道', state: '自动讨伐', x: 52, y: 38, mode: 'land' },
-  { id: 'jiangdong', name: '江东', state: '水战', x: 76, y: 72, mode: 'naval' },
-  { id: 'xuchang', name: '许都', state: '朝堂', x: 70, y: 18, mode: 'court' },
   { id: 'xishu', name: '西蜀', state: '屯田', x: 19, y: 52, mode: 'farm' },
   { id: 'beijiang', name: '北疆', state: '边境安宁', x: 30, y: 16, mode: 'frontier' }
 ];
+const RETIRED_REGIONS: RegionId[] = ['guandao', 'jiangdong', 'xuchang'];
 
 interface ModeConfig {
   region: string;
@@ -163,15 +171,26 @@ export function BattleScreen({
   onPlayEffect,
   onSfx,
   onResolved,
-  onReturnHome
+  onReturnHome,
+  fiefs: holdings,
+  conquestStakeFor,
+  policyChangeCostFor,
+  onStartConquest,
+  onConquestResolved,
+  onChangeFiefPolicy
 }: BattleScreenProps) {
   const settledRef = useRef(false);
   const startedRef = useRef(false);
   const [mapOpen, setMapOpen] = useState(true);
   const [doudizhuOpen, setDoudizhuOpen] = useState(false);
-  const [selectedRegionId, setSelectedRegionId] = useState<RegionId>(initialRegion ?? 'jingzhou');
-  // 从「出征」直接进来（没指定地区）先只摆斗地主选场；其他战场点「其他战场」再展开地图
-  const [showRegions, setShowRegions] = useState(initialRegion !== undefined && initialRegion !== 'jingzhou');
+  const entryRegion: RegionId = initialRegion && !RETIRED_REGIONS.includes(initialRegion) ? initialRegion : 'jingzhou';
+  const [selectedRegionId, setSelectedRegionId] = useState<RegionId>(entryRegion);
+  // 从「出征」直接进来先摆疆域图与斗地主选场；屯田、北疆点「其他战场」再展开
+  const [showRegions, setShowRegions] = useState(entryRegion !== 'jingzhou');
+  // 攻郡牌局：选好的郡与方略；ddzKey 变了就重开一桌（再来一局）
+  const [conquestTarget, setConquestTarget] = useState<{ fief: Fief; policyId: FiefPolicyId } | null>(null);
+  const [ddzKey, setDdzKey] = useState(0);
+  const perks = ownedFiefIds(holdings);
   // 默认选能进的最高场
   const [venueId, setVenueId] = useState<VenueId>(() => [...VENUES].reverse().find((venue) => totalPower >= venue.requiredPower)?.id ?? 'beginner');
   // 每个战场自选的对手档位；null = 推荐档。边患不可选
@@ -181,7 +200,11 @@ export function BattleScreen({
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
   // 斗地主缴获随战力涨（不低于场次底价）；进牌桌那一刻由 DouDizhuGame 冻结
   const venueScale = useMemo(() => venueRewardScale({ land: totalPower, naval: navalPower, court: courtPower }, homeLevel), [totalPower, navalPower, courtPower, homeLevel]);
-  const venueGold = venueReward(selectedVenue, venueScale);
+  // 南阳「帝乡沃土」胜利缴获 +20%；汝南「门生故吏」失手只付一半
+  // 国号吴：斗地主胜利缴获 +20%/次（realmScale('doudizhu')），与南阳同样直接算进本场缴获
+  const nanyangBoost = (perks.includes('nanyang') ? 1.2 : 1) * realmScale('doudizhu');
+  const venueGold = Math.round(venueReward(selectedVenue, venueScale) * nanyangBoost);
+  const venueLoss = Math.round(venueGold * LOSS_PENALTY_RATE * (perks.includes('runan') ? 0.5 : 1));
   const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' || selectedRegion.mode === 'frontier' ? selectedRegion.mode : 'land';
   const wording = MODE_CONFIG[mode];
   const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower, frontier: totalPower };
@@ -376,15 +399,40 @@ export function BattleScreen({
 
   const resultTitle = runtime.result === 'win' ? wording.win : runtime.result === 'retreat' ? wording.retreat : runtime.result === 'loss' ? wording.loss : wording.fighting;
 
+  if (doudizhuOpen && conquestTarget) {
+    const { fief } = conquestTarget;
+    return (
+      <DouDizhuGame
+        key={`conquest-${ddzKey}`}
+        lord={lord}
+        wins={wins}
+        losses={losses}
+        rewardGold={0}
+        aiSkill={fief.skill}
+        lossGold={0}
+        onSfx={onSfx}
+        perks={perks}
+        conquest={{ fiefName: fief.name, garrison: fief.garrison, portrait: fief.portrait }}
+        onResolved={(win, _reward, _loss, _forfeit) => onConquestResolved(win)}
+        onStakeChange={onBattleStakeChange}
+        onReturnHome={onReturnHome}
+      />
+    );
+  }
+
   if (doudizhuOpen) {
     return (
       <DouDizhuGame
+        key={`ddz-${ddzKey}`}
+        perks={perks}
+        onPlayAgain={orders >= 1 ? () => { onBattleStart('land', venueLoss, { doudizhu: true }); setDdzKey((key) => key + 1); } : undefined}
+        playAgainLabel={`再来一局 · 耗 1 军令（剩 ${orders}）`}
         lord={lord}
         wins={wins}
         losses={losses}
         rewardGold={venueGold * (battleBonus && battleBonus > 1 ? battleBonus : 1)}
         aiSkill={selectedVenue.aiSkill}
-        lossGold={Math.round(venueGold * LOSS_PENALTY_RATE)}
+        lossGold={venueLoss}
         onSfx={onSfx}
         // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次
         onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1) => onResolved(win, win ? venueGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true)}
@@ -400,7 +448,7 @@ export function BattleScreen({
         <header className="screen-header">
           <div>
             <span className="eyebrow">{showRegions ? '出征地图' : '荆州'} · 军令 {orders}/{orderCap}{orders < orderCap ? `（${daysUntilNextOrder(day, homeLevel)} 日后 +1）` : ''}</span>
-            <h2>{showRegions ? '九州征途' : '斗地主'}</h2>
+            <h2>{showRegions ? '其他战场' : '出征'}</h2>
           </div>
           <div className="expedition-header__actions">
             {showRegions ? (
@@ -419,7 +467,7 @@ export function BattleScreen({
         </header>
 
         {!showRegions && (
-          <p className="orders-note ddz-only-note">官道、江东、许都、西蜀屯田、北疆边患在「其他战场」，系统按胜率自动打{raidActive ? '；北疆正有边患！' : '。'}</p>
+          <p className="orders-note ddz-only-note">西蜀屯田、北疆边患在「其他战场」{raidActive ? '；北疆正有边患！' : '。'}</p>
         )}
 
         {showRegions && <section className="expedition-map" aria-label="三国地图">
@@ -446,7 +494,26 @@ export function BattleScreen({
           })}
         </section>}
         {/* 术语小注：「今日军功」第一次出现在地图上，就地说明 */}
-        {showRegions && <p className="orders-note map-term-note">「今日军功」：官道、江东、许都每日轮换一处，当天在那里得胜缴获 +{Math.round(BOUNTY_BONUS * 100)}%。</p>}
+
+        {!showRegions && (
+          <ConquestMap
+            holdings={holdings}
+            homeLevel={homeLevel}
+            gold={farm.gold}
+            orders={orders}
+            stakeFor={conquestStakeFor}
+            policyChangeCostFor={policyChangeCostFor}
+            onChangePolicy={onChangeFiefPolicy}
+            onConquer={(fiefId, policyId) => {
+              const fief = fiefCatalog.find((item) => item.id === fiefId);
+              if (!fief || !onStartConquest(fiefId, policyId)) return;
+              onSfx('audio/sfx/sfx_button.mp3', 0.35);
+              setConquestTarget({ fief, policyId });
+              setDoudizhuOpen(true);
+              setMapOpen(false);
+            }}
+          />
+        )}
 
         {selectedRegion.mode === 'doudizhu' ? (
           <section className="venue-panel" aria-label="场次选择">
@@ -467,8 +534,8 @@ export function BattleScreen({
                   onClick={() => setVenueId(venue.id)}
                 >
                   <strong>{venue.name}</strong>
-                  <span>推荐战力 {venue.requiredPower}+</span>
-                  <em>{locked ? `战力不足，还差 ${powerGap}` : `${venue.prize} · 胜 ${venueReward(venue, venueScale).toLocaleString()}`}</em>
+                  <span>{venue.requiredPower > 0 ? `推荐战力 ${venue.requiredPower}+` : "人人可进"}</span>
+                  <em>{locked ? `战力不足，还差 ${powerGap}` : `${venue.prize} · 胜 ${Math.round(venueReward(venue, venueScale) * nanyangBoost).toLocaleString()}`}</em>
                 </button>
               );
             })}
@@ -476,7 +543,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${Math.round(venueGold * LOSS_PENALTY_RATE).toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}。`}
+              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}。`}
           </p>
           </section>
         ) : selectedRegion.mode === 'farm' ? (
@@ -576,7 +643,7 @@ export function BattleScreen({
             setResultReward(winGold(enemy.rewardGold));
             onBattleStart(
               selectedRegion.mode === 'doudizhu' ? 'land' : mode,
-              selectedRegion.mode === 'doudizhu' ? Math.round(venueGold * LOSS_PENALTY_RATE) : lossGold,
+              selectedRegion.mode === 'doudizhu' ? venueLoss : lossGold,
               selectedRegion.mode === 'doudizhu' ? { doudizhu: true } : { rewardGold: enemy.rewardGold, odds: tierOddsFor(roster, selectedTier, attackPower) }
             );
             setDoudizhuOpen(selectedRegion.mode === 'doudizhu');

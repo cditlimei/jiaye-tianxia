@@ -9,9 +9,9 @@ import { minorGoldValue, parseMinorKey } from './minorEvents';
 
 /** 宅邸升到某级时新开放的内容（升阶画面与纪事用） */
 export const HOME_UNLOCKS: Record<number, string> = {
-  3: '江东水战 · 西蜀屯田',
-  4: '许都朝堂 · 北疆边患（三日后起）',
-  5: '封地经略'
+  3: '西蜀屯田',
+  4: '北疆边患（三日后起）',
+  5: '攻郡开疆'
 };
 
 export interface Quest {
@@ -78,18 +78,20 @@ export const quests: Quest[] = [
     isComplete: (_state, context) => context.totalPower >= 180
   },
   {
+    // id 沿用旧「江东扬帆」，已领过的不重复领；江东水战 10-15 收起后改为牌局连捷
     id: 'naval-first-win',
-    title: '江东扬帆',
-    description: '在江东赢得一场水战。',
+    title: '牌桌连捷',
+    description: '累计赢下 5 局。',
     rewardGold: 2000,
-    isComplete: (state) => state.navalWins >= 1
+    isComplete: (state) => state.battleWins >= 5
   },
   {
+    // id 沿用旧「名动许都」；许都朝议收起后改为据有两郡
     id: 'court-first-win',
-    title: '名动许都',
-    description: '在许都赢得一场朝议。',
-    rewardGold: 3000,
-    isComplete: (state) => state.courtWins >= 1
+    title: '连下两城',
+    description: '拿下两座郡城。',
+    rewardGold: 12000,
+    isComplete: (state) => ownedFiefCount(state.fiefs) >= 2
   },
   {
     id: 'farm-first',
@@ -152,8 +154,8 @@ export const titles: Title[] = [
   { id: 'warlord', name: '一方豪强', requirement: '累计 10 场胜利', isEarned: (s) => s.battleWins >= 10 },
   { id: 'magnate', name: '府邸之主', requirement: '宅邸升至府邸', isEarned: (s) => s.homeLevel >= 4 },
   { id: 'marquis-house', name: '侯门显贵', requirement: '宅邸升至侯府', isEarned: (s) => s.homeLevel >= 5 },
-  { id: 'river-tiger', name: '江表虎臣', requirement: '赢得 5 场水战', isEarned: (s) => s.navalWins >= 5 },
-  { id: 'court-star', name: '朝堂新贵', requirement: '赢得 5 场朝议', isEarned: (s) => s.courtWins >= 5 },
+  { id: 'river-tiger', name: '百战之将', requirement: '累计 20 场胜利', isEarned: (s) => s.battleWins >= 20 },
+  { id: 'court-star', name: '坐拥两郡', requirement: '封地两郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 2 },
   { id: 'north-general', name: '镇北将军', requirement: '击退 3 次边患', isEarned: (s) => s.frontierWins >= 3 },
   { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
   { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => partnersWithResolvedEvent(s.resolvedPartnerEvents) >= 5 },

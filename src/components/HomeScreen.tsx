@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { VENUES, venueReward, venueRewardScale } from '../data/venues';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
@@ -13,7 +14,8 @@ import { bountyScale, dynastyCount, endingHint, findRealm, isEndingReached, lega
 import { daysUntilNextOrder } from '../types';
 import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
-import { fiefCostFor, legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
+import { legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
+import { conquestStakeFor } from '../hooks/useGameState';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { AFFAIR_KIND_LABEL, AFFAIR_TRAINING_CAP, affairChoicesFor, affairOutcome, type Affair, type AffairKind } from '../data/affairs';
 import { GameButton } from './common/GameButton';
@@ -43,7 +45,7 @@ interface HomeScreenProps {
   onOpenPartnerTalk: () => void;
   onOpenWeapon: () => void;
   onBattle: () => void;
-  /** 带预选区域进出征地图（边患告警进北疆、引导出征进官道） */
+  /** 带预选区域进出征页（边患告警进北疆，其余进荆州：疆域图 + 斗地主） */
   onBattleAt: (region: RegionId) => void;
   onOpenFarm: () => void;
   onClaimQuest: (questId: string) => void;
@@ -130,7 +132,8 @@ export function HomeScreen({
     try { window.sessionStorage.setItem('jiaye-ambition-deferred', String(state.generation)); } catch { /* 无存储也能用 */ }
   };
   const nextFiefToClaim = nextFief(state.fiefs);
-  const nextFiefCost = nextFiefToClaim ? fiefCostFor(state, nextFiefToClaim) : 0;
+  // 攻郡押的军资（开拓价的一半）；还要有军令才能出兵
+  const nextFiefCost = nextFiefToClaim ? conquestStakeFor(state, nextFiefToClaim) : 0;
   const fiefAffordable = state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim !== null && state.gold >= nextFiefCost;
   const tradition = traditionOf(state.chronicle);
   const candidate = traditionCandidate(state.chronicle);
@@ -144,15 +147,14 @@ export function HomeScreen({
       { label: '升级木屋', done: state.homeLevel >= 2, target: 'upgrade' as const, hint: nextHome && state.gold < nextHome.upgradeCost ? `先点「处理政务」攒到 ${nextHome.upgradeCost.toLocaleString()} 金，再升级宅邸。` : '点「升级宅邸」把茅草屋升成木屋，收入翻三倍。' },
       { label: '招募伴侣', done: state.ownedPartnerIds.length >= 2, target: 'partner' as const, hint: state.gold < cheapestPartner ? '金币不够招人：先领上方任务奖励或点「处理政务」攒钱，再去「招募伴侣」请一位入府。' : '去「招募伴侣」再请一位入府，伴侣直接加战力、智谋或声望。' },
       { label: '换一把兵器', done: state.equippedWeaponId !== 'xuanjian', target: 'weapon' as const, hint: '攒 1,500 金去「兵器库」买把青釭剑或双股剑。第 5 日伴侣会来说心事，了却后任务「良缘佳话」正好奖 1,500 金。' },
-      { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点「出征讨伐」，到官道挑一个推荐对手打一场，缴获比处理政务多得多。' }
+      { label: '初战告捷', done: state.battleWins >= 1, target: 'battle' as const, hint: '点底栏「出征」，进斗地主初级场打一局，赢了缴获比处理政务多得多。' }
     ],
     [cheapestPartner, nextHome, state.battleWins, state.equippedWeaponId, state.gold, state.homeLevel, state.ownedPartnerIds.length]
   );
   const currentOrder = starterOrders.find((order) => !order.done) ?? null;
-  // 官道一场推荐对手的缴获（与出征地图同口径：没赢过用高胜率档，否则用性价比档；含今日军功与练兵之策）
-  const landTier = state.battleWins === 0 ? safeTierIndex(ROSTERS.land, totalPower) : bestValueTierIndex(ROSTERS.land, totalPower);
-  const landFightGold = Math.round(enemyForTier(ROSTERS.land, landTier, totalPower).rewardGold * (state.nextBattleBonus && state.nextBattleBonus > 1 ? state.nextBattleBonus : 1) * bountyScale(state.day, 'land'));
-  // 第 3 步买兵器差钱时，有军令就去官道打一场，别让新人连点二十多天政务干等
+  // 斗地主初级场一局的胜利缴获（与出征页同口径，含练兵之策）；新手引导缺钱时指去打一局
+  const landFightGold = Math.round(venueReward(VENUES[0], venueRewardScale({ land: totalPower, naval: 0, court: 0 }, 1)) * (state.nextBattleBonus && state.nextBattleBonus > 1 ? state.nextBattleBonus : 1));
+  // 第 3 步买兵器差钱时，有军令就去打一局斗地主，别让新人连点二十多天政务干等
   const weaponViaBattle = currentOrder?.target === 'weapon' && state.gold < 1500 && state.orders >= 1 && landFightGold > 0;
   const guidedTarget: 'income' | 'upgrade' | 'partner' | 'weapon' | 'battle' | null = state.tutorialDone || !currentOrder
     ? null
@@ -176,14 +178,14 @@ export function HomeScreen({
       : currentOrder.target === 'partner'
         ? '伴侣入府直接加武力、智谋或声望，最便宜的一位 ' + (Number.isFinite(cheapestPartner) ? cheapestPartner.toLocaleString() : '') + ' 金。'
         : currentOrder.target === 'weapon'
-          ? `换一把好兵器，武力立刻上涨，出征胜率更高。青釭剑或双股剑 1,500 金。${weaponViaBattle ? `还差 ${shortOf.toLocaleString()} 金：去官道打一场推荐对手，胜可缴获约 ${landFightGold.toLocaleString()} 金，${landFightGold >= shortOf ? '一场就够' : `约 ${Math.ceil(shortOf / landFightGold)} 场凑齐`}。` : ''}`
-          : '去官道挑「推荐」的对手打一场，赢了缴获远多于政务收入。';
+          ? `换一把好兵器，武力立刻上涨，出征胜率更高。青釭剑或双股剑 1,500 金。${weaponViaBattle ? `还差 ${shortOf.toLocaleString()} 金：去斗地主初级场打一局，胜可缴获约 ${landFightGold.toLocaleString()} 金，${landFightGold >= shortOf ? '一场就够' : `约 ${Math.ceil(shortOf / landFightGold)} 场凑齐`}。` : ''}`
+          : '去斗地主初级场打一局，赢了缴获远多于政务收入。';
   const guideAction: { label: string; run: () => void } | null = !currentOrder
     ? null
     : shortOf > 0 && claimableGold > 0
       ? { label: `先领任务奖励 +${claimableGold.toLocaleString()} 金`, run: () => claimableQuests.forEach((quest) => onClaimQuest(quest.id)) }
       : weaponViaBattle
-        ? { label: '去出征赚钱 →', run: () => onBattleAt('guandao') }
+        ? { label: '去打一局斗地主 →', run: () => onBattleAt('jingzhou') }
       : shortOf > 0
         ? { label: `过一天 · +${dailyIncome.toLocaleString()} 金（还差 ${shortOf.toLocaleString()}）`, run: () => handleCollectIncome() }
         : currentOrder.target === 'upgrade'
@@ -192,7 +194,7 @@ export function HomeScreen({
             ? { label: '去招募伴侣 →', run: onOpenPartner }
             : currentOrder.target === 'weapon'
               ? { label: '去兵器库 →', run: onOpenWeapon }
-              : { label: '去出征 →', run: () => onBattleAt('guandao') };
+              : { label: '去打一局斗地主 →', run: () => onBattleAt('jingzhou') };
   const completedStarterOrders = starterOrders.filter((order) => order.done).length;
   useEffect(() => {
     if (!state.tutorialDone && completedStarterOrders === starterOrders.length) {
@@ -282,7 +284,7 @@ export function HomeScreen({
     ...(state.tutorialDone && Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10 ? [{ key: 'partner', label: '可再招一位伴侣', detail: `最便宜 ${cheapestPartner.toLocaleString()} 金`, onClick: onOpenPartner }] : []),
     ...goalChip,
     ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => setSheet('goals') }] : []),
-    ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可开拓${nextFiefToClaim.name}`, detail: `${nextFiefCost.toLocaleString()} 金，余 ${(state.gold - nextFiefCost).toLocaleString()}`, onClick: onOpenFief }] : []),
+    ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可攻${nextFiefToClaim.name}`, detail: `押 ${nextFiefCost.toLocaleString()} 金军资，和守将${nextFiefToClaim.garrison}打一局斗地主`, onClick: onOpenFief }] : []),
     ...(state.homeLevel >= 6 && state.gold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
       ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [endingHint(state)?.replace(/。$/, '') ?? `下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state)))) - 1) * 100)}%、开局 ${(1000 + Math.min(20, state.legacyPoints + legacyPointsGainable(state.gold, state.legacyPoints, legacyGoldPerPointFor(state))) * 3000).toLocaleString()} 金`, ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
       : []),
@@ -602,7 +604,7 @@ export function HomeScreen({
                 </article>
               ))}
             </div>
-            <p className="home-record">战绩：官道与牌局 {state.battleWins - state.navalWins - state.courtWins - state.frontierWins} · 水战 {state.navalWins} · 朝议 {state.courtWins} · 靖边 {state.frontierWins} · 负 {state.battleLosses}</p>
+            <p className="home-record">战绩：胜 {state.battleWins}（牌局与攻郡 {state.battleWins - state.frontierWins} · 靖边 {state.frontierWins}）· 负 {state.battleLosses}</p>
           </section>
         </ModalShell>
       )}

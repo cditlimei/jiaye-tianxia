@@ -1,3 +1,4 @@
+import type { FiefPolicyId } from './data/fiefs';
 import type { FiefHoldings } from './data/fiefs';
 import type { AmbitionId } from './data/ambitions';
 import type { RealmCounts, RealmId } from './data/dynasty';
@@ -34,7 +35,8 @@ export interface GameState {
   /** 进入战斗时记下，结算后清空；读档时仍在说明中途离开，按认输处理 */
   /** 进行中的战斗；rewardGold/odds 用于中途离开时按胜率替玩家打完，斗地主中途离开按认输 */
   /** 斗地主另记当前倍数与份额（农民 0.5），刷新逃局按 lossGold×multiplier×share 扣，与认输一致 */
-  activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number } | null;
+  /** conquest：攻郡牌局（军资出兵时已扣，胜则得郡；中途离开按败，军资不退） */
+  activeBattle: { mode: BattleMode; lossGold: number; rewardGold?: number; odds?: number; doudizhu?: boolean; multiplier?: number; share?: number; conquest?: { fiefId: string; policyId: FiefPolicyId; stake: number } } | null;
   /** 军令：出征消耗，每 2 个游戏日回 1 道，上限随整军封地增加 */
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */

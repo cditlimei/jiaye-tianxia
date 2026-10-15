@@ -5,7 +5,7 @@ import { choiceGoldValue, collectEarnedTitles, ENDING_LINEAGE_TITLE_IDS, getChoi
 import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
 import { isOrderDay, ORDER_START } from '../types';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, isFiefPolicyId, orderCapFor, type FiefHoldings } from '../data/fiefs';
-import { fiefs as fiefCatalog } from '../data/fiefs';
+import { connectedHoldings, fiefs as fiefCatalog } from '../data/fiefs';
 import { findAmbition, isAmbitionId, trimChronicle } from '../data/ambitions';
 import { bountyScale, isRealmId, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
@@ -248,7 +248,7 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
 
 function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
   if (!value || typeof value !== 'object') return null;
-  const b = value as { mode?: unknown; lossGold?: unknown; rewardGold?: unknown; odds?: unknown; doudizhu?: unknown; multiplier?: unknown; share?: unknown };
+  const b = value as { mode?: unknown; lossGold?: unknown; rewardGold?: unknown; odds?: unknown; doudizhu?: unknown; multiplier?: unknown; share?: unknown; conquest?: unknown };
   if (b.mode !== 'land' && b.mode !== 'naval' && b.mode !== 'court' && b.mode !== 'frontier') return null;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
   const odds = num(b.odds);
@@ -262,8 +262,16 @@ function sanitizeActiveBattle(value: unknown): GameState['activeBattle'] {
     ...(odds !== undefined ? { odds: Math.min(1, Math.max(0, odds)) } : {}),
     ...(b.doudizhu === true ? { doudizhu: true } : {}),
     ...(multiplier !== undefined && multiplier > 0 ? { multiplier } : {}),
-    ...(share !== undefined && share > 0 && share <= 1 ? { share } : {})
+    ...(share !== undefined && share > 0 && share <= 1 ? { share } : {}),
+    ...(sanitizeConquest(b.conquest) ? { conquest: sanitizeConquest(b.conquest)! } : {})
   };
+}
+
+function sanitizeConquest(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const c = value as { fiefId?: unknown; policyId?: unknown; stake?: unknown };
+  if (typeof c.fiefId !== 'string' || !fiefCatalog.some((fief) => fief.id === c.fiefId) || !isFiefPolicyId(c.policyId)) return null;
+  return { fiefId: c.fiefId, policyId: c.policyId, stake: typeof c.stake === 'number' && Number.isFinite(c.stake) ? Math.max(0, Math.floor(c.stake)) : 0 };
 }
 
 /** 战斗中途刷新/关页：按认输结算（北疆只是退守，不扣金） */
@@ -293,6 +301,19 @@ function settleAbandonedBattle(state: GameState): GameState {
       ].slice(0, MAX_EVENT_LOG)
     };
   }
+  // 攻郡牌局：军资出兵时已扣，中途离开按攻城失利
+  if (state.activeBattle.conquest) {
+    const fief = fiefCatalog.find((item) => item.id === state.activeBattle!.conquest!.fiefId);
+    return {
+      ...state,
+      activeBattle: null,
+      battleLosses: state.battleLosses + 1,
+      eventLog: [
+        { id: `abandon-${Date.now()}`, day: state.day, title: '攻郡未果', detail: `攻打${fief?.name ?? '郡城'}时中途撤兵，${state.activeBattle.conquest.stake.toLocaleString()} 金军资没入敌手。` },
+        ...state.eventLog
+      ].slice(0, MAX_EVENT_LOG)
+    };
+  }
   // 斗地主按刷新前的倍数与份额扣（与认输同额）；老存档没记这两项按 ×1 全额
   const loss = mode === 'frontier' ? 0 : Math.min(state.gold, doudizhu ? Math.round(lossGold * multiplier * share) : lossGold);
   return {
@@ -315,7 +336,7 @@ function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
   return { eventId: c.eventId, day: Math.floor(c.day), dailyIncome: Math.max(0, Math.floor(c.dailyIncome)) };
 }
 
-/** 只认目录里的郡和三条方略；郡必须按顺序持有，中间断档的后续郡作废 */
+/** 只认目录里的郡和三条方略；郡必须与本府连成一片，飞地作废 */
 function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): FiefHoldings {
   if (!value || typeof value !== 'object') return {};
   // 第一代没到侯府不可能有封地（传下来的除外）
@@ -324,10 +345,9 @@ function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): F
   const out: FiefHoldings = {};
   for (const fief of fiefCatalog) {
     const policy = raw[fief.id];
-    if (!isFiefPolicyId(policy)) break;
-    out[fief.id] = policy;
+    if (isFiefPolicyId(policy)) out[fief.id] = policy;
   }
-  return out;
+  return connectedHoldings(out);
 }
 
 function sanitizeRealms(value: unknown): GameState['realms'] {

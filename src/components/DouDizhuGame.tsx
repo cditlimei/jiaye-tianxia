@@ -23,6 +23,13 @@ interface DouDizhuGameProps {
   /** 倍数或身份变化时回写存档，中途刷新按当前认输金额结算 */
   onStakeChange?: (multiplier: number, share: number) => void;
   onReturnHome: () => void;
+  /** 已拿下的郡（牌局特权）：changsha 农民赢也拿全份、bajun 赢牌至少 ×2、yingchuan 开局探下家三张、liaodong 叫地主前看一张底牌 */
+  perks?: string[];
+  /** 攻郡牌局：对面坐守将，不赢金币，赢了拿下这郡 */
+  conquest?: { fiefName: string; garrison: string; portrait: string };
+  /** 结算后「再来一局」；不传则只有返回家业 */
+  onPlayAgain?: () => void;
+  playAgainLabel?: string;
 }
 
 interface PlayedMove {
@@ -89,7 +96,7 @@ const TWO_ROW_THRESHOLD = 12;
 // 平板竖屏也用两行手牌：样式里平板竖屏整桌 zoom 放大，排布按手机竖屏算
 const PORTRAIT_QUERY = '(orientation: portrait)';
 
-export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, aiSkill, lossGold, onSfx, onResolved, onStakeChange, onReturnHome }: DouDizhuGameProps) {
+export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, aiSkill, lossGold, onSfx, onResolved, onStakeChange, onReturnHome, perks = [], conquest, onPlayAgain, playAgainLabel }: DouDizhuGameProps) {
   // 缴获按开局时定：练兵之策的翻倍在结算入账后就清掉，不冻结的话横幅会跟着掉回一半
   const [rewardGold] = useState(rewardGoldProp);
   const [table, setTable] = useState<TableState>(() => createInitialTable());
@@ -99,7 +106,20 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   const [gamesPlayedAtStart] = useState(() => wins + losses);
   // 新手局：倒计时加倍，超时只代这一手、不进托管
   const novice = gamesPlayedAtStart < NOVICE_GAMES;
-  const profiles = useMemo(() => createPlayerProfiles(lord, gamesPlayedAtStart, aiSkill), [aiSkill, lord, gamesPlayedAtStart]);
+  const profiles = useMemo(() => {
+    const base = createPlayerProfiles(lord, gamesPlayedAtStart, aiSkill);
+    // 攻郡：下家换成该郡守将
+    return conquest ? { ...base, 1: { ...base[1], name: conquest.garrison, title: `${conquest.fiefName}守将`, imagePath: `assets/enemies/enemy_${conquest.portrait}.png` } } : base;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiSkill, lord, gamesPlayedAtStart]);
+  const hasPerk = (id: string) => perks.includes(id);
+  // 颍川「谋士献策」：开局探得下家手里最大的三张（重新发牌时底牌变了就重探）
+  const dealKey = table.landlordCards.map((card) => card.id).join(',');
+  const scouted = useMemo(
+    () => (hasPerk('yingchuan') ? sortCardsDescending(table.hands[1]).slice(0, 3) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dealKey]
+  );
   const playerNames = useMemo(
     () => ({
       0: profiles[0].name,
@@ -149,18 +169,28 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
   const playerWins = table.winner !== null && (table.landlord === 0 ? table.winner === 0 : table.winner !== table.landlord);
   // 农民输赢按地主的一半结算（主流规则里地主一打二、输赢翻倍）
   const share = !bidding && table.landlord !== 0 ? 0.5 : 1;
+  // 长沙「兵源充沛」：当农民赢了也拿全份（输仍按半份）
+  const winShare = hasPerk('changsha') ? 1 : share;
   const spring = springOf(table);
   const finalMultiplier = Math.min(MAX_MULTIPLIER, table.multiplier * (spring ? 2 : 1));
-  const winGold = Math.round(rewardGold * finalMultiplier * share);
+  // 巴郡「盐铁之利」：赢牌倍数至少 ×2
+  const winMultiplier = hasPerk('bajun') ? Math.max(2, finalMultiplier) : finalMultiplier;
+  const winGold = Math.round(rewardGold * winMultiplier * winShare);
   const loseGold = Math.round(lossGold * finalMultiplier * share);
   // 记牌器：去掉自己手牌和已出的牌，剩下的就是另外两家手里的
   const counter = COUNTER_RANKS.map((item) => ({
     label: item.label,
     left: item.total - playerHand.filter(item.match).length - table.played.filter(item.match).length
   }));
-  const multTag = finalMultiplier > 1 || share < 1 ? `（×${finalMultiplier}${share < 1 ? ' · 农民半份' : ''}${spring ? ` · ${spring}` : ''}）` : '';
+  const shownMult = playerWins ? winMultiplier : finalMultiplier;
+  const shownShare = playerWins ? winShare : share;
+  const multTag = shownMult > 1 || shownShare < 1 ? `（×${shownMult}${shownShare < 1 ? ' · 农民半份' : ''}${spring ? ` · ${spring}` : ''}${playerWins && winMultiplier > finalMultiplier ? ' · 巴郡保底' : ''}${playerWins && winShare > share ? ' · 长沙全份' : ''}）` : '';
   const statusCopy = table.winner !== null
-    ? playerWins
+    ? conquest
+      ? playerWins
+        ? `击败守将${conquest.garrison}，${conquest.fiefName}归府下`
+        : `${playerNames[table.winner]}先走完，军资没入敌手`
+      : playerWins
       ? `胜 +${winGold.toLocaleString()} 金${multTag}`
       : `${playerNames[table.winner]}先走完 −${loseGold.toLocaleString()} 金${multTag}`
     : bidding
@@ -222,8 +252,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
     settledRef.current = true;
     const win = playerWins;
     onSfx(win ? 'audio/sfx/sfx_victory.mp3' : 'audio/sfx/sfx_defeat.mp3', 0.58);
-    onResolved(win, win ? winGold : 0, loseGold, false, finalMultiplier * share);
-  }, [finalMultiplier, loseGold, onResolved, onSfx, playerWins, share, table.winner, winGold]);
+    onResolved(win, win ? winGold : 0, loseGold, false, win ? winMultiplier * winShare : finalMultiplier * share);
+  }, [finalMultiplier, loseGold, onResolved, onSfx, playerWins, share, table.winner, winGold, winMultiplier, winShare]);
 
   // AI 叫抢：轮到 AI 表态时停顿一下再叫，像真人在看牌
   useEffect(() => {
@@ -429,16 +459,17 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
     <main className="screen ddz-screen">
       <header className="ddz-topbar">
         {table.winner === null ? (
-          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>认输 −{Math.round(lossGold * table.multiplier * share).toLocaleString()}</button>
+          <button type="button" className="ddz-topbar__quit" onClick={leaveTable}>{conquest ? '撤兵' : `认输 −${Math.round(lossGold * table.multiplier * share).toLocaleString()}`}</button>
         ) : (
           <span className="ddz-topbar__quit is-idle">牌局结束</span>
         )}
         <div className="ddz-topbar__kitty" aria-label="地主底牌">
           <span>底牌</span>
-          <MiniCardStrip cards={bidding ? [] : table.landlordCards} emptyLabel="叫完地主后亮出" center />
+          {/* 辽东「良马斥候」：叫地主前先看到一张底牌 */}
+          <MiniCardStrip cards={bidding ? (hasPerk('liaodong') ? table.landlordCards.slice(0, 1) : []) : table.landlordCards} emptyLabel="叫完地主后亮出" center />
         </div>
         <div className="ddz-topbar__stake">
-          <h2>斗地主牌局</h2>
+          <h2>{conquest ? `攻取${conquest.fiefName}` : '斗地主牌局'}</h2>
           <span className="ddz-multiplier">倍数 ×{finalMultiplier}</span>
           <span>胜 {wins} · 负 {losses}</span>
         </div>
@@ -453,6 +484,10 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
           </span>
         ))}
       </div>
+
+      {scouted.length > 0 && table.winner === null && (
+        <p className="ddz-scout" role="note">谋士探得 {playerNames[1]} 手里有：<b>{formatCards(scouted)}</b></p>
+      )}
 
       <section className="ddz-table" aria-label="三人斗地主牌桌">
         <PlayerSeat
@@ -494,7 +529,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
 
       {table.winner !== null && (
         <div className={`doudizhu-result-banner ${playerWins ? 'is-win' : 'is-loss'}`} role="status">
-          <strong>{playerWins ? '牌局得胜' : '下局再战'}</strong>
+          <strong>{conquest ? (playerWins ? `${conquest.fiefName}归附` : '攻城未克') : playerWins ? '牌局得胜' : '下局再战'}</strong>
           <span>{statusCopy}</span>
         </div>
       )}
@@ -531,6 +566,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
           </>
         ) : (
           <div className="ddz-actions__row">
+            {onPlayAgain && <button type="button" className="ddz-btn ddz-btn--hint" onClick={onPlayAgain}>{playAgainLabel ?? '再来一局'}</button>}
             <button type="button" className="ddz-btn ddz-btn--play" onClick={onReturnHome}>返回家业</button>
           </div>
         )}

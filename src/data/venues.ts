@@ -14,7 +14,7 @@ export interface Venue {
 export const VENUES: Venue[] = [
   // 斗地主靠真本事：下面是底价，战力上来后按 venueRewardScale 随最佳自动战一起涨
   // 场次越高农民牌艺越好：生手会放水，老手中规中矩，高手会配合卡牌
-  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '对手生手', rewardGold: 3000, aiSkill: 'novice' },
+  { id: 'beginner', name: '初级场', requiredPower: 0, prize: '对手生手', rewardGold: 3000, aiSkill: 'novice' },
   { id: 'middle', name: '中级场', requiredPower: 140, prize: '对手老手', rewardGold: 8000, aiSkill: 'veteran' },
   { id: 'high', name: '高级场', requiredPower: 190, prize: '对手高手', rewardGold: 20000, aiSkill: 'master' }
 ];
@@ -54,7 +54,16 @@ export function venueRewardScale(powers: BattlePowers, homeLevel: number) {
   const top = [...VENUES].reverse().find((venue) => powers.land >= venue.requiredPower) ?? VENUES[0];
   const ddzValue = top.rewardGold * DDZ_NET_VALUE[top.aiSkill];
   const target = Math.max(DDZ_VS_AUTO * bestAutoBattleValue(powers, homeLevel), DDZ_VS_BEST_AUTO * bestAutoBattleValue(powers, homeLevel, 'bestValue'));
-  return Math.max(1, target / ddzValue);
+  return Math.max(1, target / ddzValue) * venueStageFactor(homeLevel);
+}
+
+/**
+ * 宅邸档次放开缴获：茅草屋一局牌就顶上千天政务、第 10 日买空伴侣兵器（10-15 整体审视的头号问题），
+ * 府邸前按档次打折，府邸起全额
+ */
+export const VENUE_STAGE_FACTOR = [0.15, 0.3, 0.6, 1, 1, 1];
+export function venueStageFactor(homeLevel: number) {
+  return VENUE_STAGE_FACTOR[Math.min(VENUE_STAGE_FACTOR.length, Math.max(1, homeLevel)) - 1];
 }
 
 /** 场次实际缴获（取整到百位） */
