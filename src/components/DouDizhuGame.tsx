@@ -86,7 +86,8 @@ interface PlayerProfile {
 const OPPONENT_POOL = ['caocao', 'sunquan', 'liubei', 'zhouyu', 'zhaoyun', 'simayi', 'zhugeliang', 'guanyu', 'zhangfei', 'lvbu', 'machao', 'sunce', 'luxun'];
 // 竖屏手牌超过这个张数就分两行，避免 20 张挤成一排看不清点数
 const TWO_ROW_THRESHOLD = 12;
-const PORTRAIT_QUERY = '(orientation: portrait) and (max-width: 700px)';
+// 平板竖屏也用两行手牌：样式里平板竖屏整桌 zoom 放大，排布按手机竖屏算
+const PORTRAIT_QUERY = '(orientation: portrait)';
 
 export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, aiSkill, lossGold, onSfx, onResolved, onStakeChange, onReturnHome }: DouDizhuGameProps) {
   // 缴获按开局时定：练兵之策的翻倍在结算入账后就清掉，不冻结的话横幅会跟着掉回一半
@@ -560,7 +561,11 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
             >
               <span className="poker-card__corner" aria-hidden="true">
                 {joker ? (
-                  <span className="poker-card__joker-word">JOKER</span>
+                  <>
+                    <span className="poker-card__joker-word">JOKER</span>
+                    {/* 两行手牌的上排只露上半截，竖排 JOKER 只看得到「JO」，改显示「大王」「小王」 */}
+                    <span className="poker-card__joker-cn">{card.value === 17 ? '大' : '小'}王</span>
+                  </>
                 ) : (
                   <>
                     <b>{card.rank}</b>
@@ -672,7 +677,7 @@ function MiniCardStrip({ cards, emptyLabel, center = false }: { cards: Card[]; e
 }
 
 function MiniCard({ card }: { card: Card }) {
-  // 大小王小牌放不下两个字：中间单字「大」「小」，角上标「王」，大王红、小王黑
+  // 大小王小牌：同数字牌排法，左上「大」「小」、其下「王」，大王红、小王黑
   const joker = isJoker(card);
   return (
     <span className={`mini-card ${card.red ? 'is-red' : ''} ${joker ? 'is-joker' : ''}`} aria-label={card.label} data-rank={card.rank}>

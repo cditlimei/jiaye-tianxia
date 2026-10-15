@@ -6898,3 +6898,103 @@ body .ddz-screen .ddz-seat__play .mini-card.is-joker + .mini-card {
     min-height: 0;
   }
 }
+
+/* 平板竖屏（≥701 宽）：牌桌按大屏手机竖屏排好后整体放大，牌、头像、按钮跟屏幕相称，不再中间空一大片；
+   手牌同手机一样分两行（DouDizhuGame 的 PORTRAIT_QUERY 已不限宽）。
+   用 transform 不用 zoom：WebKit 下 zoom 会让 elementsFromPoint 与 getBoundingClientRect 坐标不一致，行首行尾的牌点不中 */
+@media (orientation: portrait) and (min-width: 701px) {
+  body.is-doudizhu-table .phone-shell:has(.ddz-screen) {
+    --ddz-tablet-scale: 1.6;
+    position: relative;
+    overflow: hidden;
+  }
+
+  body.is-doudizhu-table .phone-shell:has(.ddz-screen) > .ddz-screen {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: calc(100% / var(--ddz-tablet-scale));
+    height: calc(100% / var(--ddz-tablet-scale));
+    min-height: 0;
+    transform: scale(var(--ddz-tablet-scale));
+    transform-origin: 0 0;
+  }
+
+  body.is-doudizhu-table .player-hand--two-rows {
+    --hand-card-edge: 30px;
+    height: 150px;
+    min-height: 150px;
+    padding-top: 10px;
+  }
+}
+
+@media (orientation: portrait) and (min-width: 900px) {
+  body.is-doudizhu-table .phone-shell:has(.ddz-screen) {
+    --ddz-tablet-scale: 2;
+  }
+}
+
+/* 大小王：上排手牌改显示「大王」「小王」竖排 */
+body .ddz-screen .poker-card .poker-card__joker-cn {
+  display: none;
+}
+
+body .ddz-screen .poker-card.is-upper-row .poker-card__joker-word {
+  display: none;
+}
+
+body .ddz-screen .poker-card.is-upper-row .poker-card__joker-cn {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.05;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+body .ddz-screen .poker-card.is-joker.is-red .poker-card__joker-cn {
+  color: #e3141f;
+}
+
+/* 大小王小牌：和数字牌一样左上「大/小」、紧贴其下「王」，不再读成「王小」 */
+body .ddz-screen .mini-card.is-joker .mini-card__rank,
+body.is-doudizhu-table .ddz-screen .mini-card.is-joker .mini-card__rank,
+body.is-doudizhu-table .ddz-screen .mini-card-strip--center .mini-card.is-joker .mini-card__rank {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  font-size: 15px;
+  line-height: 1;
+  transform: none;
+  text-align: left;
+}
+
+body .ddz-screen .mini-card.is-joker .mini-card__suit,
+body.is-doudizhu-table .ddz-screen .mini-card.is-joker .mini-card__suit {
+  position: absolute;
+  left: 3px;
+  top: 20px;
+  right: auto;
+  bottom: auto;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  transform: none;
+}
+
+@media (orientation: portrait) {
+  body .ddz-screen .ddz-topbar__kitty .mini-card.is-joker .mini-card__rank {
+    left: 2px;
+    top: 2px;
+    font-size: 13px;
+  }
+
+  body .ddz-screen .ddz-topbar__kitty .mini-card.is-joker .mini-card__suit {
+    left: 2px;
+    top: 17px;
+    font-size: 11px;
+  }
+}
