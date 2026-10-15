@@ -424,15 +424,16 @@ export interface FarmLevel {
   description: string;
 }
 
+// 宅邸（木屋除外，开局 1000 金要能立刻升）与屯田价格 10-15 第三十四轮 ×1.5（斗地主缴获随战力涨后，econ 轻度玩家王城 第14→20 次上线、全满 23→31）
 // 西蜀屯田：独立于宅邸的田产，每级一次性投入，永久提高每日收入（dailyIncome 为该级总额）。
 // 2026-10-05：屯田改为按比例加政务收入（5/10/20/35/50%），后期随宅邸收入一起增长
 export const farmLevels: FarmLevel[] = [
   { level: 0, name: '荒地', cost: 0, incomePercent: 0, flatIncome: 0, description: '蜀地山间尚是一片荒坡。' },
-  { level: 1, name: '开荒', cost: 6000, incomePercent: 5, flatIncome: 20, description: '垦出第一块田，种下稻谷。' },
-  { level: 2, name: '引水', cost: 16000, incomePercent: 10, flatIncome: 60, description: '引山泉入田，旱涝无忧。' },
-  { level: 3, name: '修渠', cost: 40000, incomePercent: 20, flatIncome: 150, description: '沟渠纵横，梯田层层。' },
-  { level: 4, name: '筑仓', cost: 100000, incomePercent: 35, flatIncome: 400, description: '谷仓满囤，可供一军。' },
-  { level: 5, name: '沃野千里', cost: 240000, incomePercent: 50, flatIncome: 1000, description: '蜀地粮仓，天下闻名。' }
+  { level: 1, name: '开荒', cost: 9000, incomePercent: 5, flatIncome: 20, description: '垦出第一块田，种下稻谷。' },
+  { level: 2, name: '引水', cost: 24000, incomePercent: 10, flatIncome: 60, description: '引山泉入田，旱涝无忧。' },
+  { level: 3, name: '修渠', cost: 60000, incomePercent: 20, flatIncome: 150, description: '沟渠纵横，梯田层层。' },
+  { level: 4, name: '筑仓', cost: 150000, incomePercent: 35, flatIncome: 400, description: '谷仓满囤，可供一军。' },
+  { level: 5, name: '沃野千里', cost: 360000, incomePercent: 50, flatIncome: 1000, description: '蜀地粮仓，天下闻名。' }
 ];
 
 export function findFarmLevel(level: number) {
@@ -444,10 +445,10 @@ export const FARM_UNLOCK_HOME_LEVEL = 3;
 export const homeLevels: HomeLevel[] = [
   { level: 1, name: '茅草屋', upgradeCost: 0, dailyIncome: 10, imagePath: 'assets/homes/home_level1.png' },
   { level: 2, name: '木屋', upgradeCost: 1000, dailyIncome: 30, imagePath: 'assets/homes/home_level2.png' },
-  { level: 3, name: '砖瓦宅', upgradeCost: 4000, dailyIncome: 80, imagePath: 'assets/homes/home_level3.png' },
-  { level: 4, name: '府邸', upgradeCost: 12000, dailyIncome: 200, imagePath: 'assets/homes/home_level4.png' },
-  { level: 5, name: '侯府', upgradeCost: 30000, dailyIncome: 500, imagePath: 'assets/homes/home_level5.png' },
-  { level: 6, name: '王城', upgradeCost: 120000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
+  { level: 3, name: '砖瓦宅', upgradeCost: 6000, dailyIncome: 80, imagePath: 'assets/homes/home_level3.png' },
+  { level: 4, name: '府邸', upgradeCost: 18000, dailyIncome: 200, imagePath: 'assets/homes/home_level4.png' },
+  { level: 5, name: '侯府', upgradeCost: 45000, dailyIncome: 500, imagePath: 'assets/homes/home_level5.png' },
+  { level: 6, name: '王城', upgradeCost: 180000, dailyIncome: 1500, imagePath: 'assets/homes/home_level6.png' }
 ];
 
 export const enemies: Enemy[] = [

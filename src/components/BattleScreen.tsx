@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { Enemy, FarmLevel, Lord, Weapon } from '../data/gameData';
 import { enemyImagePath } from '../data/gameData';
 import { FARM_UNLOCK_HOME_LEVEL } from '../data/gameData';
-import type { AiSkill } from '../lib/doudizhu';
+import { VENUES, venueReward, venueRewardScale, type VenueId } from '../data/venues';
 import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
@@ -45,18 +45,8 @@ interface BattleScreenProps {
 }
 
 type BattlePhase = 'intro' | 'battle' | 'result';
-type VenueId = 'beginner' | 'middle' | 'high';
 export type RegionId = 'jingzhou' | 'guandao' | 'jiangdong' | 'xuchang' | 'xishu' | 'beijiang';
 type RegionMode = 'doudizhu' | BattleMode | 'farm' | 'locked';
-interface Venue {
-  id: VenueId;
-  name: string;
-  requiredPower: number;
-  prize: string;
-  rewardGold: number;
-  aiSkill: AiSkill;
-}
-
 interface MapRegion {
   id: RegionId;
   name: string;
@@ -143,14 +133,6 @@ const MODE_CONFIG: Record<BattleMode, ModeConfig> = {
   }
 };
 
-const VENUES: Venue[] = [
-  // 斗地主靠真本事，缴获约为同级自动战的两倍
-  // 场次越高农民牌艺越好：生手会放水，老手中规中矩，高手会配合卡牌
-  { id: 'beginner', name: '初级场', requiredPower: 80, prize: '对手生手 · 基础缴获', rewardGold: 3000, aiSkill: 'novice' },
-  { id: 'middle', name: '中级场', requiredPower: 140, prize: '对手老手 · 更高缴获', rewardGold: 8000, aiSkill: 'veteran' },
-  { id: 'high', name: '高级场', requiredPower: 190, prize: '对手高手 · 名望重赏', rewardGold: 20000, aiSkill: 'master' }
-];
-
 // 出征开场动画（旌旗入阵 + 兵器特效）每次打开游戏只在第一场播放
 let introPlayedThisSession = false;
 
@@ -197,6 +179,9 @@ export function BattleScreen({
   const [farmNotice, setFarmNotice] = useState('');
   const selectedRegion = MAP_REGIONS.find((region) => region.id === selectedRegionId) ?? MAP_REGIONS[0];
   const selectedVenue = VENUES.find((venue) => venue.id === venueId) ?? VENUES[0];
+  // 斗地主缴获随战力涨（不低于场次底价）；进牌桌那一刻由 DouDizhuGame 冻结
+  const venueScale = useMemo(() => venueRewardScale({ land: totalPower, naval: navalPower, court: courtPower }, homeLevel), [totalPower, navalPower, courtPower, homeLevel]);
+  const venueGold = venueReward(selectedVenue, venueScale);
   const mode: BattleMode = selectedRegion.mode === 'naval' || selectedRegion.mode === 'court' || selectedRegion.mode === 'frontier' ? selectedRegion.mode : 'land';
   const wording = MODE_CONFIG[mode];
   const powerByMode: Record<BattleMode, number> = { land: totalPower, naval: navalPower, court: courtPower, frontier: totalPower };
@@ -397,12 +382,12 @@ export function BattleScreen({
         lord={lord}
         wins={wins}
         losses={losses}
-        rewardGold={selectedVenue.rewardGold * (battleBonus && battleBonus > 1 ? battleBonus : 1)}
+        rewardGold={venueGold * (battleBonus && battleBonus > 1 ? battleBonus : 1)}
         aiSkill={selectedVenue.aiSkill}
-        lossGold={Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE)}
+        lossGold={Math.round(venueGold * LOSS_PENALTY_RATE)}
         onSfx={onSfx}
         // 牌桌显示翻倍后的数，结算只传基础缴获，翻倍由 recordBattle 统一乘一次
-        onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1) => onResolved(win, win ? selectedVenue.rewardGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true)}
+        onResolved={(win, _shownReward, lossGold, forfeit, multiplier = 1) => onResolved(win, win ? venueGold * multiplier : 0, 'land', Boolean(forfeit), lossGold, true)}
         onStakeChange={onBattleStakeChange}
         onReturnHome={onReturnHome}
       />
@@ -483,7 +468,7 @@ export function BattleScreen({
                 >
                   <strong>{venue.name}</strong>
                   <span>推荐战力 {venue.requiredPower}+</span>
-                  <em>{locked ? `战力不足，还差 ${powerGap}` : venue.prize}</em>
+                  <em>{locked ? `战力不足，还差 ${powerGap}` : `${venue.prize} · 胜 ${venueReward(venue, venueScale).toLocaleString()}`}</em>
                 </button>
               );
             })}
@@ -491,7 +476,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(selectedVenue.rewardGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE).toLocaleString()} 金。`}
+              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${Math.round(venueGold * LOSS_PENALTY_RATE).toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}。`}
           </p>
           </section>
         ) : selectedRegion.mode === 'farm' ? (
@@ -591,7 +576,7 @@ export function BattleScreen({
             setResultReward(winGold(enemy.rewardGold));
             onBattleStart(
               selectedRegion.mode === 'doudizhu' ? 'land' : mode,
-              selectedRegion.mode === 'doudizhu' ? Math.round(selectedVenue.rewardGold * LOSS_PENALTY_RATE) : lossGold,
+              selectedRegion.mode === 'doudizhu' ? Math.round(venueGold * LOSS_PENALTY_RATE) : lossGold,
               selectedRegion.mode === 'doudizhu' ? { doudizhu: true } : { rewardGold: enemy.rewardGold, odds: tierOddsFor(roster, selectedTier, attackPower) }
             );
             setDoudizhuOpen(selectedRegion.mode === 'doudizhu');
