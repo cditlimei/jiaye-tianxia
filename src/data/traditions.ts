@@ -1,8 +1,5 @@
 import type { GameState } from '../types';
 import type { AmbitionId } from './ambitions';
-import type { Fief } from './fiefs';
-import { policyChangeCost } from './fiefs';
-import { LEGACY_GOLD_PER_POINT } from '../lib/battle';
 
 /**
  * 家风：连续两代达成同一志向即成家风，只认最近两代（换志向就断）。
@@ -14,11 +11,12 @@ export interface Tradition {
   effect: string;
 }
 
-export const TRADITION_LEGACY_GOLD_PER_POINT = 80000;
+/** 富国家风：传位折家业点八折（v3.1 起家业点递增价，见 lib/battle.ts legacyPointCost） */
+export const TRADITION_LEGACY_PRICE_RATE = 0.8;
 export const TRADITION_FIEF_DISCOUNT = 0.9;
 
 export const traditions: Tradition[] = [
-  { id: 'wealth', name: '富国家风', effect: `传位时每 ${TRADITION_LEGACY_GOLD_PER_POINT.toLocaleString()} 金换 1 点家业点` },
+  { id: 'wealth', name: '富国家风', effect: '传位折家业点八折' },
   { id: 'might', name: '强兵家风', effect: '每代开局军令直接满额' },
   { id: 'expansion', name: '开疆家风', effect: '封地开拓与改方略九折' }
 ];
@@ -36,14 +34,8 @@ export function traditionCandidate(chronicle: GameState['chronicle']) {
   return last?.ambitionDone && last.ambition && !traditionOf(chronicle) ? last.ambition : null;
 }
 
-export function legacyGoldPerPointFor(state: Pick<GameState, 'chronicle'>) {
-  return traditionOf(state.chronicle)?.id === 'wealth' ? TRADITION_LEGACY_GOLD_PER_POINT : LEGACY_GOLD_PER_POINT;
+/** 传位折家业点的价格系数：富国家风 0.8 */
+export function legacyPriceRateFor(state: Pick<GameState, 'chronicle'>) {
+  return traditionOf(state.chronicle)?.id === 'wealth' ? TRADITION_LEGACY_PRICE_RATE : 1;
 }
-
-export function fiefCostFor(state: Pick<GameState, 'chronicle'>, fief: Fief) {
-  return traditionOf(state.chronicle)?.id === 'expansion' ? Math.round(fief.cost * TRADITION_FIEF_DISCOUNT) : fief.cost;
-}
-
-export function policyChangeCostFor(state: Pick<GameState, 'chronicle'>, fief: Fief) {
-  return traditionOf(state.chronicle)?.id === 'expansion' ? Math.round(policyChangeCost(fief) * TRADITION_FIEF_DISCOUNT) : policyChangeCost(fief);
-}
+// 开拓价、改方略价 v3.1 起统一走 lib/prices.ts（fiefCostOf / policyChangeCostOf），这里只留家风判定

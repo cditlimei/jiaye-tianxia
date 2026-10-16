@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { ORDER_CAP } from '../types';
 import { FIEF_ORDER_BONUS, FIEF_STAT_BONUS, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefPolicies, fiefStatBonus, fiefs, findFiefPolicy, nextFief, orderCapFor, ownedFiefCount, type FiefPolicyId } from '../data/fiefs';
 import { findHomeLevel } from '../data/gameData';
-import { fiefCostFor, policyChangeCostFor, traditionOf } from '../data/traditions';
+import { traditionOf } from '../data/traditions';
+import { fiefCostOf, policyChangeCostOf } from '../lib/prices';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
 import { ModalShell } from './common/ModalShell';
@@ -26,7 +27,7 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
   const [editing, setEditing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const chosen = findFiefPolicy(policy)!;
-  const nextCost = next ? fiefCostFor(state, next) : 0;
+  const nextCost = next ? fiefCostOf(state, next) : 0;
   const tradition = traditionOf(state.chronicle);
   const canClaim = unlocked && next !== null && state.gold >= nextCost;
   // 方略卡第二行按当前状态算具体数，三条量纲不同也能比
@@ -48,7 +49,7 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
   const change = (fiefId: string, nextPolicy: FiefPolicyId) => {
     const fief = fiefs.find((item) => item.id === fiefId)!;
     if (!onChangePolicy(fiefId, nextPolicy)) {
-      setNotice(`改弦更张需 ${policyChangeCostFor(state, fief).toLocaleString()} 金，金不足。`);
+      setNotice(`改弦更张需 ${policyChangeCostOf(state, fief).toLocaleString()} 金，金不足。`);
       return;
     }
     setEditing(null);
@@ -113,10 +114,10 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
               <article key={fief.id} className={`fief-row ${held ? 'is-held' : ''}`}>
                 <div>
                   <strong>{fief.name}</strong>
-                  <span>{held && heldPolicy ? `${heldPolicy.name} · ${heldPolicy.effect}` : `${fief.cost.toLocaleString()} 金 · ${fief.description}`}</span>
+                  <span>{held && heldPolicy ? `${heldPolicy.name} · ${heldPolicy.effect}` : `${fiefCostOf(state, fief).toLocaleString()} 金 · ${fief.description}`}</span>
                 </div>
                 {held && !isEditing && (
-                  <button type="button" onClick={() => setEditing(fief.id)}>改方略 {policyChangeCostFor(state, fief).toLocaleString()} 金</button>
+                  <button type="button" onClick={() => setEditing(fief.id)}>改方略 {policyChangeCostOf(state, fief).toLocaleString()} 金</button>
                 )}
                 {held && isEditing && (
                   <div className="fief-row__edit">

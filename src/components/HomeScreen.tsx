@@ -4,20 +4,23 @@ import { VENUES, venueReward, venueRewardScale } from '../data/venues';
 import type { HomeLevel, Lord, Partner, Weapon } from '../data/gameData';
 import type { QuestStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
-import { bestValueTierIndex, enemyForTier, legacyIncomeMultiplier, legacyPointsGainable, ROSTERS, safeTierIndex, weaponBonusForLord } from '../lib/battle';
+import { legacyIncomeMultiplier, weaponBonusForLord } from '../lib/battle';
 import { formatRemaining } from '../lib/frontier';
 import { FIEF_WALLS, reclaimRemainingMs, SIEGE_ENABLED } from '../lib/siege';
 import { resolvePendingEvent } from '../data/progression';
 import { partners } from '../data/gameData';
 import { partnerIdOfKey } from '../data/partnerEvents';
 import type { GameState } from '../types';
-import { ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
-import { bountyScale, dynastyCount, endingHint, findRealm, isEndingReached, legacyMaxedHint, realmIncomePercent } from '../data/dynasty';
+import { AMBITION_FULL_GOLD, ambitionPreview, ambitionStatus, availableAmbitions, type AmbitionId } from '../data/ambitions';
+import { dynastyCount, endingHint, findRealm, isEndingReached, realmIncomePercent } from '../data/dynasty';
 import { clockManual, formatWait, foundedDays, nextDayInMs, nextOrderInMs, TRAIN_MIN_DAYS, TREASURY_HARD_CAP_DAYS, treasuryCapDays, treasuryOutcome } from '../lib/clock';
 import { farmLevels, weapons } from '../data/gameData';
 import { realmFarmCost } from '../data/dynasty';
-import { legacyGoldPerPointFor, traditionCandidate, traditionOf } from '../data/traditions';
-import { conquestStakeFor } from '../hooks/useGameState';
+import { traditionCandidate, traditionOf } from '../data/traditions';
+import { conquestStakeOf, legacyPreview } from '../lib/prices';
+import { titleBonuses } from '../data/titleEffects';
+import { LEGACY_MAX_POINTS } from '../lib/battle';
+import { HomeHonors } from './HomeHonors';
 import { FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefs, fiefStatBonus, nextFief, ownedFiefCount } from '../data/fiefs';
 import { AFFAIR_KIND_LABEL, AFFAIR_TRAINING_CAP, affairChoicesFor, affairOutcome, type Affair, type AffairKind } from '../data/affairs';
 import { GameButton } from './common/GameButton';
@@ -133,13 +136,14 @@ export function HomeScreen({
   const orderWait = orderWaitMs === null ? '' : `约${Math.max(1, Math.ceil(orderWaitMs / 60000))}分`;
   const openDays = foundedDays(state.foundedAt, clock);
   const ambition = ambitionStatus(state);
-  // 家业点已满：传位不再可行，志向无从结算，志向卡/进度改提示还差几郡
-  const maxedHint = legacyMaxedHint(state);
-  const ambitionOpen = !isEndingReached(state) && !maxedHint;
-  // 「稍后再定」只记在本次会话里，刷新后再提醒一次
-  const [ambitionDeferred, setAmbitionDeferred] = useState(() => {
-    try { return window.sessionStorage.getItem('jiaye-ambition-deferred') === String(state.generation); } catch { return false; }
-  });
+  // v3.1：家业点满了志向照常（奖励改发金），只有天下归心时收起
+  const ambitionOpen = !isEndingReached(state);
+  // 「稍后再定」只在本次打开页面内有效（模块变量，刷新即失效，不落存储）
+  const [ambitionDeferred, setAmbitionDeferredState] = useState(() => ambitionDeferredGen === state.generation);
+  const setAmbitionDeferred = (value: boolean) => {
+    ambitionDeferredGen = value ? state.generation : null;
+    setAmbitionDeferredState(value);
+  };
   const [endingSeen, setEndingSeen] = useState(() => {
     try { return window.sessionStorage.getItem('jiaye-ending-seen') === String(state.pastDynasties.length); } catch { return false; }
   });
@@ -147,13 +151,10 @@ export function HomeScreen({
     setEndingSeen(true);
     try { window.sessionStorage.setItem('jiaye-ending-seen', String(state.pastDynasties.length)); } catch { /* 无存储也能用 */ }
   };
-  const deferAmbition = () => {
-    setAmbitionDeferred(true);
-    try { window.sessionStorage.setItem('jiaye-ambition-deferred', String(state.generation)); } catch { /* 无存储也能用 */ }
-  };
+  const deferAmbition = () => setAmbitionDeferred(true);
   const nextFiefToClaim = nextFief(state.fiefs);
   // 攻郡押的军资（开拓价的一半）；还要有军令才能出兵
-  const nextFiefCost = nextFiefToClaim ? conquestStakeFor(state, nextFiefToClaim) : 0;
+  const nextFiefCost = nextFiefToClaim ? conquestStakeOf(state, nextFiefToClaim) : 0;
   const fiefAffordable = state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim !== null && state.gold >= nextFiefCost;
   const tradition = traditionOf(state.chronicle);
   const candidate = traditionCandidate(state.chronicle);
@@ -305,8 +306,8 @@ export function HomeScreen({
     }
   };
 
-  // 传位前府库会先按钱粮并入，传位提示按手上 + 府库算
-  const heirGold = state.gold + state.treasury.gold;
+  // 传位前府库会先按钱粮并入，传位提示按手上 + 府库算（与传位面板、reducer 实扣同一组函数）
+  const heir = legacyPreview(state);
   // 机会栏：封郡 / 传位 / 志向未定 / 天下归心 等非阻塞选择合成一行，首屏只留真正要决断的事
   const claimable = questStatuses.filter((quest) => quest.complete && !quest.claimed).length;
   // 钱够就亮：比手上更强、买得起的兵器里最强的一把；屯田下一级
@@ -317,10 +318,10 @@ export function HomeScreen({
   const nextFarmLevel = farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null;
   // 侯府以后的长线目标：王城与下一郡里更近的一个，显示还差多少（不可点，只是进度）
   const longGoals = [
-    ...(state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextHome ? [{ name: nextHome.name, cost: nextHome.upgradeCost }] : []),
-    ...(state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim ? [{ name: nextFiefToClaim.name, cost: nextFiefCost }] : [])
-  ].filter((goal) => state.gold < goal.cost).sort((a, b) => a.cost - b.cost);
-  const goalChip = longGoals.length > 0 ? [{ key: 'goal', label: `下一目标 · ${longGoals[0].name}`, detail: `还差 ${(longGoals[0].cost - state.gold).toLocaleString()} 金`, onClick: undefined }] : [];
+    ...(state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextHome ? [{ name: nextHome.name, price: nextHome.upgradeCost }] : []),
+    ...(state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim ? [{ name: nextFiefToClaim.name, price: nextFiefCost }] : [])
+  ].filter((goal) => state.gold < goal.price).sort((a, b) => a.price - b.price);
+  const goalChip = longGoals.length > 0 ? [{ key: 'goal', label: `下一目标 · ${longGoals[0].name}`, detail: `还差 ${(longGoals[0].price - state.gold).toLocaleString()} 金`, onClick: undefined }] : [];
   const nextFarmCost = state.homeLevel >= 3 && nextFarmLevel ? realmFarmCost(state.realms, nextFarmLevel.cost) : null;
   const chances = [
     ...(state.tutorialDone && nextFarmCost !== null && state.gold >= nextFarmCost ? [{ key: 'farm', label: '可升西蜀屯田', detail: `${nextFarmCost.toLocaleString()} 金${state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && nextFiefToClaim && state.gold < nextFiefCost + nextFarmCost ? `，升后距${nextFiefToClaim.name}还差 ${(nextFiefCost - (state.gold - nextFarmCost)).toLocaleString()}` : ''}`, onClick: onOpenFarm }] : []),
@@ -329,15 +330,16 @@ export function HomeScreen({
     ...goalChip,
     ...(claimable > 0 ? [{ key: 'claim', label: `可领赏 ${claimable} 项`, detail: '家业目标已达成', onClick: () => setSheet('goals') }] : []),
     ...(fiefAffordable && nextFiefToClaim ? [{ key: 'fief', label: `可攻${nextFiefToClaim.name}`, detail: `押 ${nextFiefCost.toLocaleString()} 金军资，和守将${nextFiefToClaim.garrison}打一局斗地主`, onClick: onOpenFief }] : []),
-    ...(state.homeLevel >= 6 && heirGold >= 100000 && state.legacyPoints < 20 && !isEndingReached(state)
-      ? [{ key: 'succeed', label: `可传位换 ${legacyPointsGainable(heirGold, state.legacyPoints, legacyGoldPerPointFor(state))} 点家业点`, detail: [state.treasury.gold > 0 ? `含府库未收 ${state.treasury.gold.toLocaleString()} 金` : '', endingHint(state)?.replace(/。$/, '') ?? `下一代收入 +${Math.round((legacyIncomeMultiplier(Math.min(20, state.legacyPoints + legacyPointsGainable(heirGold, state.legacyPoints, legacyGoldPerPointFor(state)))) - 1) * 100)}%、开局 ${(1000 + Math.min(20, state.legacyPoints + legacyPointsGainable(heirGold, state.legacyPoints, legacyGoldPerPointFor(state))) * 3000).toLocaleString()} 金`, ambition && !ambition.done ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.ambition.unit}` : ''].filter(Boolean).join('；'), onClick: onOpenSettings }]
+    // 传位（v3.1）：王城后能折到 1 点家业点，或志向已达成待领赏，就提示；只换主公、家业全留
+    ...(state.homeLevel >= 6 && !isEndingReached(state) && (heir.gained >= 1 || ambition?.done)
+      ? [{ key: 'succeed', label: heir.gained >= 1 ? `可传位换 ${heir.gained} 点家业点` : '可传位领志向之赏', detail: [state.treasury.gold > 0 ? `含府库未收 ${state.treasury.gold.toLocaleString()} 金` : '', heir.gained >= 1 ? `花 ${heir.spent.toLocaleString()} 金、余 ${heir.left.toLocaleString()} 金，收入 +${Math.round((legacyIncomeMultiplier(heir.after) - 1) * 100)}%` : '', ambition?.done ? `志向已达成，${[heir.rewardPoints > 0 ? `再得 ${heir.rewardPoints} 点` : '', heir.rewardGold > 0 ? `得 ${heir.rewardGold.toLocaleString()} 金` : ''].filter(Boolean).join('、')}` : ambition ? `志向还差 ${(ambition.target - ambition.progress).toLocaleString()} ${ambition.unit}` : '', '宅邸封地伴侣全留'].filter(Boolean).join('；'), onClick: onOpenSettings }]
       : []),
     ...(state.generation >= 2 && !state.ambition && ambitionOpen && ambitionDeferred ? [{ key: 'ambition', label: '本代志向未定', detail: '定下志向才有传位结算', onClick: () => setAmbitionDeferred(false) }] : []),
-    // 家业点已满：传位不再加点，首页直接告诉玩家离天下归心还差什么
-    ...(state.tutorialDone && maxedHint ? [{ key: 'maxed', label: '天下归心在望', detail: maxedHint.replace(/。$/, ''), onClick: state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? onOpenFief : undefined }] : []),
+    // 离天下归心只差一样（六郡或王城）：首页直接告诉玩家
+    ...(state.tutorialDone && endingHint(state) ? [{ key: 'maxed', label: '天下归心在望', detail: endingHint(state)!.replace(/。$/, ''), onClick: state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL && ownedFiefCount(state.fiefs) < 6 ? onOpenFief : undefined }] : []),
     ...(isEndingReached(state) && endingSeen ? [{ key: 'ending', label: '天下归心', detail: '展开卷轴开创新朝', onClick: onOpenEnding }] : [])
   ];
-  // 下一步按轻重排：终局 > 家业点满差几郡 > 领赏 > 传位 > 封郡 > 屯田 > 兵器 > 伴侣 > 志向 > 长线目标（长线目标不可点，只作进度）
+  // 下一步按轻重排：终局 > 天下归心在望 > 领赏 > 传位 > 封郡 > 屯田 > 兵器 > 伴侣 > 志向 > 长线目标（长线目标不可点，只作进度）
   const CHANCE_ORDER = ['ending', 'maxed', 'claim', 'succeed', 'fief', 'farm', 'weapon', 'partner', 'ambition', 'goal'];
   const sortedChances = [...chances].sort((a, b) => CHANCE_ORDER.indexOf(a.key) - CHANCE_ORDER.indexOf(b.key));
   const [topChance, ...moreChances] = sortedChances;
@@ -345,7 +347,7 @@ export function HomeScreen({
   const latestLog = state.eventLog[0];
   const canRecruit = Number.isFinite(cheapestPartner) && state.gold >= cheapestPartner && state.ownedPartnerIds.length < 10;
   const battleDot = Boolean(siegeFief) || state.orders >= orderCap;
-  const incomeDetail = `宅邸 ${currentHome.dailyIncome} 金${farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}${fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}${realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}${state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +${Math.floor(intelligence / 10)}%${state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}% 至第 ${state.incomeBuff.untilDay} 日` : ''}`;
+  const incomeDetail = `宅邸 ${currentHome.dailyIncome} 金${farmPercent > 0 ? `，西蜀屯田 +${farmFlat} 金且 +${farmPercent}%` : ''}${fiefIncomePercent(state.fiefs) > 0 ? `，劝农封地 +${fiefIncomePercent(state.fiefs)}%` : ''}${realmIncomePercent(state.realms) > 0 ? `，国号蜀 +${realmIncomePercent(state.realms)}%` : ''}${titleBonuses(state).incomePct > 0 ? `，称号 +${titleBonuses(state).incomePct}%` : ''}${state.legacyPoints > 0 ? `，家业点 +${state.legacyPoints * 5}%` : ''}，智谋加成 +${Math.floor(intelligence / 10)}%${state.incomeBuff && state.day < state.incomeBuff.untilDay ? `，减税招商 +${state.incomeBuff.percent}% 至第 ${state.incomeBuff.untilDay} 日` : ''}`;
 
   return (
     <main className="screen home-screen home-v2">
@@ -402,6 +404,7 @@ export function HomeScreen({
 
       <section className="home-banner" aria-label="主城">
         <ImageWithFallback src={imageUrl(currentHome.imagePath, 512)} alt={currentHome.name} className="home-banner__image" loading="eager" />
+        <HomeHonors state={state} />
         <div className="income-floats">
           {floating.map((item) => (
             <span key={item.id}>+{item.amount}金</span>
@@ -533,7 +536,7 @@ export function HomeScreen({
       {state.tutorialDone && isEndingReached(state) && !endingSeen && (
         <section className="succession-hint ending-hint" aria-label="天下归心">
           <strong>天下归心</strong>
-          <span>六郡尽归、王城巍峨、家业点已满。可开创新朝：定一国号，加成永久保留，历朝叠加。</span>
+          <span>六郡尽归、王城巍峨。可开创新朝：定一国号，加成永久保留，历朝叠加。</span>
           <button type="button" onClick={() => { markEndingSeen(); onOpenEnding(); }}>展开卷轴 →</button>
         </section>
       )}
@@ -544,15 +547,18 @@ export function HomeScreen({
             <span>第 {state.generation} 代 · 本代志向</span>
             <strong>三选一，传位时结算</strong>
           </div>
-          <p className="starter-hint">先祖已留下家业，这一代要做成什么？达成者载入家谱，下一代开局多得 10,000 金；三代达成得家声「家学渊源」。</p>
+          <p className="starter-hint">先祖已留下家业，这一代要做成什么？达成者载入家谱，传位时得 {heir.ambitionPoints} 点家业点{state.legacyPoints >= LEGACY_MAX_POINTS ? `（家业点已满，改得 ${(AMBITION_FULL_GOLD * heir.ambitionPoints).toLocaleString()} 金）` : ''}；累计三代达成得家声「家学渊源」。</p>
           <div className="ambition-options">
-            {availableAmbitions(state).map((item) => (
-              <button key={item.id} type="button" onClick={() => onChooseAmbition(item.id)}>
-                <strong>{item.name}</strong>
-                <span>{item.describe(item.target(state.generation))}</span>
-                <small>{candidate === item.id ? '上一代刚达成，再成一次即立家风 · ' : ''}{item.hint(state, item.target(state.generation))}</small>
-              </button>
-            ))}
+            {availableAmbitions(state).map((item) => {
+              const preview = ambitionPreview(item, state);
+              return (
+                <button key={item.id} type="button" onClick={() => onChooseAmbition(item.id)}>
+                  <strong>{item.name}</strong>
+                  <span>{preview.text}</span>
+                  <small>{candidate === item.id ? '上一代刚达成，再成一次即立家风 · ' : ''}{preview.hint}</small>
+                </button>
+              );
+            })}
           </div>
           <div className="starter-actions">
             <button type="button" onClick={deferAmbition}>稍后再定</button>
@@ -670,9 +676,9 @@ export function HomeScreen({
               {claimable > 1 && <button type="button" className="quest-claim-all" onClick={() => claimableQuests.forEach((quest) => onClaimQuest(quest.id))}>全部领取 +{claimableGold.toLocaleString()} 金</button>}
             </div>
             {ambition && ambitionOpen && (
-              <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.ambition.describe(ambition.target)}，现 {ambition.progress.toLocaleString()} {ambition.ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
+              <p className="ambition-progress">本代志向「{ambition.ambition.name}」：{ambition.text}，现 {ambition.progress.toLocaleString()} {ambition.unit}{ambition.done ? '，已达成，传位即载入家谱' : ''}。</p>
             )}
-            {maxedHint && <p className="ambition-progress legacy-maxed-hint">{maxedHint}</p>}
+            {endingHint(state) && <p className="ambition-progress legacy-maxed-hint">{endingHint(state)}</p>}
             <p className="honor-hint">
               当前称号「{titleStatus.current.name}」{titleStatus.next ? `，${titleStatus.next.requirement}可得「${titleStatus.next.name}」` : titleStatus.missing > 0 ? `，已是本代最高称号，另有 ${titleStatus.missing} 个称号待集齐（点头像查看）` : '，本代称号已集齐'}。
             </p>
@@ -719,6 +725,9 @@ export function HomeScreen({
     </main>
   );
 }
+
+/** 「稍后再定」志向：只在本次打开页面内有效（记哪一代推迟过；刷新即清） */
+let ambitionDeferredGen: number | null = null;
 
 /** 测试用：设了这个开关，「处理政务」不弹三件事，直接办钱粮 */
 const AFFAIR_QUICK_KEY = 'jiaye-affair-quick';

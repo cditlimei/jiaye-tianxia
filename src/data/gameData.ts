@@ -470,6 +470,14 @@ export function findWeapon(id: string) {
   return weapons.find((weapon) => weapon.id === id) ?? weapons[0];
 }
 
+/** 王城价按造价曲线：v2 18 万（老存档本朝沿用）、v3 36 万；其余各级不分曲线 */
+export const ROYAL_COST_V3 = 360000;
+export function homeUpgradeCost(level: number, paceCurve: 'v2' | 'v3' = 'v2') {
+  const home = homeLevels.find((item) => item.level === level);
+  if (!home) return 0;
+  return level === 6 && paceCurve === 'v3' ? ROYAL_COST_V3 : home.upgradeCost;
+}
+
 export function findHomeLevel(level: number) {
   return homeLevels.find((home) => home.level === level) ?? homeLevels[0];
 }

@@ -31,14 +31,14 @@ export function EndingModal({ state, dailyIncome, onClose, onFound }: EndingModa
     <ModalShell title="天下归心" onClose={onClose}>
       <div className="ending-sheet">
         <p className="ending-sheet__scroll">
-          六郡尽归府下，王城巍峨，家业点已满。自开国至{lordName}，共 {summary.generations} 代、{summary.openDays ? `开府 ${summary.openDays.toLocaleString()} 天（第 ${summary.days.toLocaleString()} 日）` : `${summary.days.toLocaleString()} 日`}，{summary.wins.toLocaleString()} 场胜利，{summary.ambitions} 代志向达成。天下归心，可开创新朝。
+          六郡尽归府下，王城巍峨。自开国至{lordName}，共 {summary.generations} 代、{summary.openDays ? `开府 ${summary.openDays.toLocaleString()} 天（第 ${summary.days.toLocaleString()} 日）` : `${summary.days.toLocaleString()} 日`}，{summary.wins.toLocaleString()} 场胜利，{summary.ambitions} 代志向达成。天下归心，可开创新朝。
         </p>
         <section className="fief-claim" aria-label="开创新朝">
           <div className="section-title">
             <span>新朝国号</span>
             <strong>第 {dynastyCount(state.realms) + 2} 朝</strong>
           </div>
-          <p>定下新朝国号后，金、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来；国号加成永久保留，历朝可叠加。新朝开局每朝多得 20,000 金。{state.realm ? `本朝国号「${findRealm(state.realm)?.name}」将随本朝入前朝。` : ''}</p>
+          <p>定下新朝国号后，金、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来；国号加成永久保留，历朝可叠加。新朝开局每朝多得 20,000 金，按新制造价开拓（郡价 ×2.2、王城 36 万）。{state.realm ? `本朝国号「${findRealm(state.realm)?.name}」将随本朝入前朝。` : ''}</p>
           <div className="fief-policies" role="radiogroup" aria-label="选择国号">
             {realms.map((item) => (
               <button key={item.id} type="button" role="radio" aria-checked={realm === item.id} className={realm === item.id ? 'is-selected' : ''} onClick={() => setRealm(item.id)}>

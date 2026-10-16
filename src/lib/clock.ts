@@ -2,8 +2,9 @@ import type { GameEvent, GameState } from '../types';
 import { isOrderDay, ORDER_FAST_HOME_LEVEL } from '../types';
 import { findFarmLevel, findHomeLevel, lords, partners } from '../data/gameData';
 import { calculateIntelligence, totalDailyIncome } from './battle';
-import { fiefIncomePercent, fiefStatBonus, orderCapFor } from '../data/fiefs';
-import { realmIncomePercent, realmStatBonus } from '../data/dynasty';
+import { fiefStatBonus } from '../data/fiefs';
+import { realmStatBonus } from '../data/dynasty';
+import { incomePercentOf, orderCapOf } from './prices';
 import { choiceGoldValue, getChoiceEvent, getDailyEvent, resolvePendingEvent } from '../data/progression';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
@@ -94,7 +95,7 @@ export function dailyIncomeOf(state: GameState): number {
     state.legacyPoints,
     lord ? calculateIntelligence(lord, owned, civilExtra) : 0,
     findFarmLevel(state.farmLevel).flatIncome,
-    fiefIncomePercent(state.fiefs) + realmIncomePercent(state.realms)
+    incomePercentOf(state)
   );
 }
 
@@ -199,7 +200,7 @@ export function stepDay(state: GameState, options: StepOptions = {}, tally?: Ste
     incomeBuff: buffOn ? state.incomeBuff : null,
     pendingChoice,
     treasury: { gold: storedGold + incomeGain + eventGold, days: Math.min(TREASURY_HARD_CAP_DAYS, storedDays + 1) },
-    orders: options.dayOrders && isOrderDay(day, state.homeLevel) ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
+    orders: options.dayOrders && isOrderDay(day, state.homeLevel) ? Math.min(orderCapOf(state), state.orders + 1) : state.orders,
     eventLog: log.length > 0 ? [...log, ...state.eventLog].slice(0, MAX_EVENT_LOG) : state.eventLog
   };
 }
@@ -257,7 +258,7 @@ export function advanceClock(state: GameState, now: number, options: { dayOrders
 /** 军令按 orderClockAt 回复：k = ⌊(now − orderClockAt) / 间隔⌋；已满时不动锚点（由 reducer 在跌出满额时重置为当下） */
 export function advanceOrders(state: GameState, now: number): GameState {
   if (!state.selectedLordId || !Number.isFinite(now) || now < state.orderClockAt) return state;
-  const cap = orderCapFor(state.fiefs, state.realms);
+  const cap = orderCapOf(state);
   if (state.orders >= cap) return state;
   const ms = orderMsFor(state.homeLevel);
   const k = Math.floor((now - state.orderClockAt) / ms);
@@ -267,8 +268,8 @@ export function advanceOrders(state: GameState, now: number): GameState {
 }
 
 /** 下一道军令还要多久；已满返回 null */
-export function nextOrderInMs(state: Pick<GameState, 'orders' | 'orderClockAt' | 'homeLevel' | 'fiefs' | 'realms'>, now: number): number | null {
-  if (state.orders >= orderCapFor(state.fiefs, state.realms)) return null;
+export function nextOrderInMs(state: GameState, now: number): number | null {
+  if (state.orders >= orderCapOf(state)) return null;
   return Math.max(0, state.orderClockAt + orderMsFor(state.homeLevel) - now);
 }
 

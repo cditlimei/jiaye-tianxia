@@ -1,10 +1,9 @@
 import type { GameState } from '../types';
 import { ownedFiefCount } from './fiefs';
-import { LEGACY_MAX_POINTS } from '../lib/battle';
 import { ambitionStatus } from './ambitions';
 
 /**
- * 终局与新朝：六郡尽归 + 王城 + 家业点满，即「天下归心」。
+ * 终局与新朝：六郡尽归 + 王城，即「天下归心」（v3.1 起不看家业点，也不看世代）。
  * 可开创新朝：定一国号，全部重来，但国号带来的加成永久保留并可跨朝叠加；旧家谱归入前朝。
  */
 export type RealmId = 'wei' | 'shu' | 'wu';
@@ -73,28 +72,30 @@ export function realmFarmCost(realms: RealmCounts, cost: number) {
   return Math.round(cost * (1 - Math.min(3, realms.shu) * REALM_FARM_DISCOUNT));
 }
 
-/** 离天下归心还差什么（六郡 + 王城齐了才提示家业点） */
+/** 离天下归心还差什么（只差一样、且最多差 2 郡时提示，免得王城刚立就霸占「下一步」；文案不提家业点） */
 export function endingHint(state: GameState) {
-  if (isEndingReached(state) || ownedFiefCount(state.fiefs) < 6 || state.homeLevel < 6) return null;
-  return `再得 ${LEGACY_MAX_POINTS - state.legacyPoints} 点家业点即天下归心，可开创新朝。`;
-}
-
-/**
- * 家业点已满但还没天下归心：传位不再加点（按钮灰），志向也无从结算，改提示还差几郡/王城。
- * 与 endingHint 互斥（那边要求六郡 + 王城已齐）。
- */
-export function legacyMaxedHint(state: GameState) {
-  if (state.legacyPoints < LEGACY_MAX_POINTS || isEndingReached(state)) return null;
+  if (isEndingReached(state)) return null;
   const missing = Math.max(0, 6 - ownedFiefCount(state.fiefs));
   const needHome = state.homeLevel < 6;
-  if (missing > 0) return `家业点已满，只差 ${missing} 郡${needHome ? '并升至王城' : ''}即天下归心。`;
-  return '家业点已满、六郡已归，宅邸升至王城即天下归心。';
+  if (missing === 0 && needHome) return '六郡已归，宅邸升至王城即天下归心。';
+  if (missing > 0 && missing <= 2 && !needHome) return `王城已立，再得 ${missing} 郡即天下归心。`;
+  return null;
 }
 
-/** 天下归心：六郡 + 王城 + 家业点满 */
-export function isEndingReached(state: GameState) {
-  return ownedFiefCount(state.fiefs) >= 6 && state.homeLevel >= 6 && state.legacyPoints >= LEGACY_MAX_POINTS;
+/** 天下归心：六郡 + 王城 */
+export function isEndingReached(state: Pick<GameState, 'fiefs' | 'homeLevel'>) {
+  return ownedFiefCount(state.fiefs) >= 6 && state.homeLevel >= 6;
 }
+
+/** v3.1 传位后待择新主：没有主公、第二代起、伴侣还在（老存档「传位后待择主」伴侣已清空，走旧流程） */
+export function isHeirPending(state: Pick<GameState, 'selectedLordId' | 'generation' | 'ownedPartnerIds'>) {
+  return !state.selectedLordId && state.generation > 1 && state.ownedPartnerIds.length > 0;
+}
+
+/** 本代日数与胜场（传位不重置，按本代起点算差） */
+export const genDays = (state: Pick<GameState, 'day' | 'genStart'>) => Math.max(1, state.day - (state.genStart?.day ?? 1) + 1);
+export const genWins = (state: Pick<GameState, 'battleWins' | 'genStart'>) => Math.max(0, state.battleWins - (state.genStart?.wins ?? 0));
+export const genDefends = (state: Pick<GameState, 'frontierWins' | 'genStart'>) => Math.max(0, state.frontierWins - (state.genStart?.defends ?? 0));
 
 /** 终局卷轴上的本朝总账（含本代） */
 export function dynastySummary(state: GameState, now = Date.now()) {
@@ -105,8 +106,9 @@ export function dynastySummary(state: GameState, now = Date.now()) {
   return {
     openDays,
     generations: state.generation,
-    days: past.reduce((sum, entry) => sum + entry.days, 0) + state.day,
-    wins: past.reduce((sum, entry) => sum + entry.wins, 0) + state.battleWins,
+    // v3.1 起传位不重置日子与战绩：本代 = 当前 − 本代起点（老存档起点为 1 日 0 胜，与旧算法一致）
+    days: past.reduce((sum, entry) => sum + entry.days, 0) + genDays(state),
+    wins: past.reduce((sum, entry) => sum + entry.wins, 0) + genWins(state),
     // 本代志向此时一并计入
     ambitions: past.filter((entry) => entry.ambitionDone).length + (ambitionStatus(state)?.done ? 1 : 0),
     fiefs: ownedFiefCount(state.fiefs)

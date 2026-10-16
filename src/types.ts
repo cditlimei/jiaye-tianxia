@@ -7,6 +7,9 @@ import type { AiSkill } from './lib/doudizhu';
 /** 牌局类郡战：攻郡、守城（反攻）、收复（失郡 72 小时内半价） */
 export type ConquestKind = 'attack' | 'defend' | 'reclaim';
 
+/** 造价曲线：v2 = v3.1 前的旧价（老存档进行中的本朝），v3 = 郡价 ×2.2、王城 36 万（新档、新朝、重开） */
+export type PaceCurve = 'v2' | 'v3';
+
 export type Screen = 'title' | 'lordSelect' | 'partnerSelect' | 'home' | 'battle';
 
 export interface GameState {
@@ -63,7 +66,7 @@ export interface GameState {
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */
   fiefs: FiefHoldings;
-  /** 本代志向（第二代起开局三选一）；baseFiefs 记开局时已有几郡，开疆按新增算 */
+  /** 本代志向（第二代起开局三选一）；baseFiefs 记定志向时已有几郡，开疆按新增算（定志向时六郡已满则改为「本代守住 2 次反攻」） */
   ambition: { id: AmbitionId; target: number; baseFiefs: number } | null;
   /** 家谱：每代传位时记一笔 */
   chronicle: ChronicleEntry[];
@@ -80,6 +83,16 @@ export interface GameState {
   lastScreen: Screen;
   eventLog: GameEvent[];
   lastSavedAt: number;
+  /** 存档结构版本：缺失或小于 3 时读档跑一次 v3.1 迁移（storage.ts，幂等） */
+  schema: number;
+  /** 造价曲线：缺省（老存档）按 'v2'；新档、开新朝、重开写 'v3' */
+  paceCurve: PaceCurve;
+  /** 本代起点：第几日、当时的胜场与守城胜场（v3.1 起传位不重置日子与战绩，家谱、志向按差值算本代；老存档缺省 1/0/0 与旧口径一致） */
+  genStart: { day: number; wins: number; defends: number };
+  /** 主城挂哪块匾（称号匾或旧誉纪念匾 id）；null = 最高档本朝称号 */
+  plaque: string | null;
+  /** 本朝第一次反攻已结（三朝元老「首次反攻城池必保」用过了） */
+  firstSiegeDone: boolean;
   /** v2.3 真实时间：按日结算的锚点（每满 DAY_MS 推进一日，余数保留；见 lib/clock.ts） */
   clockAt: number;
   /** 军令回复的锚点（府邸前 20 分、府邸起 120 分回 1 道） */

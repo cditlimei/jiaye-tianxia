@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 const baseUrl = process.env.JIAYE_URL ?? 'http://127.0.0.1:5173/';
-const storageKey = 'jiaye-tianxia-save-v1';
+const storageKey = 'jiaye-tianxia-save-v3';
 
 const browser = await launchBrowser();
 const context = await browser.newContext({

@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { AffairKind } from '../data/affairs';
-import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, partners } from '../data/gameData';
+import { farmLevels, findFarmLevel, findHomeLevel, findLord, findWeapon, homeLevels, lords, partners } from '../data/gameData';
 import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, mergePartnerBoost, partnerIdOfKey } from '../data/partnerEvents';
 import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, collectEarnedTitles, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
-import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveDailyIncome, effectiveRecruitCost, legacyIncomeMultiplier, legacyPointsFor, recruitDiscountPercent, totalDailyIncome } from '../lib/battle';
+import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveRecruitCost, legacyIncomeMultiplier, recruitDiscountPercent, successionPlan, totalDailyIncome } from '../lib/battle';
 import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { advanceClock, advanceOrders, CLOCK_TICK_MS, clockManual, CLOCK_VERSION, collectTreasury, dayIncomeOf, foundedDays, stepDay } from '../lib/clock';
-import { AMBITION_REWARD_GOLD, ambitionStatus, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
-import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, isEndingReached, realmConquestDiscount, realmFarmCost, realmIncomePercent, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
+import { AMBITION_REWARD_GOLD, ambitionStatus, ambitionTargetFor, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
+import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, genDays, genWins, isEndingReached, isHeirPending, realmFarmCost, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
 import { minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
-import { fiefCostFor, legacyGoldPerPointFor, policyChangeCostFor, traditionOf } from '../data/traditions';
-import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefStatBonus, findFief, findFiefPolicy, nextFief, orderCapFor, ownedFiefCount, type Fief, type FiefPolicyId } from '../data/fiefs';
+import { legacyPriceRateFor, traditionOf } from '../data/traditions';
+import { attackableFiefs, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefStatBonus, findFief, findFiefPolicy, nextFief, ownedFiefCount, type FiefPolicyId } from '../data/fiefs';
 import { RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
-import { advanceSiege, canLoseFief, FIEF_WALLS, RECLAIM_STAKE_RATE, reclaimRemainingMs, reconcileSiege, releaseStaleSiege, SIEGE_FIRST_DELAY_MS, SIEGE_INTERVAL_MS, siegeBounty, siegeTestFlags, wallRepairCost, wallsOf } from '../lib/siege';
+import { advanceSiege, canLoseFief, FIEF_WALLS, firstSiegeGuarded, reclaimRemainingMs, reconcileSiege, releaseStaleSiege, SIEGE_FIRST_DELAY_MS, SIEGE_INTERVAL_MS, siegeTestFlags, wallsOf } from '../lib/siege';
+import { conquestStakeOf, fiefCostOf, homeUpgradeCostOf, incomePercentOf, orderCapOf, policyChangeCostOf, siegeBountyOf, wallRepairCostOf } from '../lib/prices';
+import { availablePlaques, titleBonuses } from '../data/titleEffects';
 
 const HEARTBEAT_MS = 15000;
 
@@ -39,6 +41,7 @@ type Action =
   | { type: 'chooseAmbition'; ambitionId: AmbitionId }
   | { type: 'foundDynasty'; realm: RealmId }
   | { type: 'restart' }
+  | { type: 'setPlaque'; plaque: string | null }
   | { type: 'setFiefPolicy'; fiefId: string; policyId: FiefPolicyId; cost: number }
   | { type: 'recruitPartner'; partner: Partner; cost: number }
   | { type: 'equipWeapon'; weaponId: string }
@@ -84,8 +87,8 @@ function reducer(state: GameState, action: Action): GameState {
 /** 军令从满额跌下来（出征耗用、上限变化）的那一刻起计时；满额期间锚点不动，免得每个 tick 都改存档 */
 function resetOrderClock(prev: GameState, next: GameState): GameState {
   if (next === prev || !next.selectedLordId) return next;
-  const wasFull = prev.orders >= orderCapFor(prev.fiefs, prev.realms);
-  const isFull = next.orders >= orderCapFor(next.fiefs, next.realms);
+  const wasFull = prev.orders >= orderCapOf(prev);
+  const isFull = next.orders >= orderCapOf(next);
   return wasFull && !isFull ? { ...next, orderClockAt: Math.max(next.orderClockAt, Date.now()) } : next;
 }
 
@@ -104,13 +107,13 @@ function loseFief(state: GameState, fiefId: string, now: number): GameState {
     fiefTakenAt,
     lostFiefs: { ...state.lostFiefs, [fiefId]: now },
     // 撤掉整军郡后军令上限下降，存量超出的部分收回（同改方略）
-    orders: Math.min(orderCapFor(fiefs, state.realms), state.orders)
+    orders: Math.min(orderCapOf({ ...state, fiefs }), state.orders)
   };
 }
 
 /** 军令 +1 类选项：已满时不增加，纪事改写，免得写着 +1 实际没加 */
 function orderGainDetail(state: GameState, detail: string) {
-  return state.orders >= orderCapFor(state.fiefs, state.realms) ? detail.replace('军令 +1', '军令已满，未增加') : detail;
+  return state.orders >= orderCapOf(state) ? detail.replace('军令 +1', '军令已满，未增加') : detail;
 }
 
 function baseReducer(state: GameState, action: Action): GameState {
@@ -122,6 +125,25 @@ function baseReducer(state: GameState, action: Action): GameState {
         lastScreen: action.screen === 'battle' ? state.lastScreen : action.screen
       };
     case 'selectLord':
+      // v3.1 传位：只换主公，宅邸、屯田、封地、伴侣、兵器、任务、战绩都留着，直接回主城
+      if (isHeirPending(state)) {
+        if (!lords.some((lord) => lord.id === action.lordId)) return state;
+        return {
+          ...state,
+          selectedLordId: action.lordId,
+          screen: 'home',
+          lastScreen: 'home',
+          eventLog: [
+            {
+              id: `lord-${Date.now()}`,
+              day: state.day,
+              title: `第 ${state.generation} 代择主`,
+              detail: `${findLord(action.lordId)?.name ?? '新主'}承袭家业：${findHomeLevel(state.homeLevel).name}、${ownedFiefCount(state.fiefs)} 郡、${state.ownedPartnerIds.length} 位伴侣尽在。家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%。请在主城定下本代志向。`
+            },
+            ...state.eventLog
+          ].slice(0, 18)
+        };
+      }
       return {
         ...defaultGameState,
         selectedLordId: action.lordId,
@@ -141,15 +163,21 @@ function baseReducer(state: GameState, action: Action): GameState {
         realms: state.realms,
         pastDynasties: state.pastDynasties,
         earnedTitles: collectEarnedTitles(state).earnedTitles,
+        plaque: state.plaque,
+        // v3.1 前「传位后待择主」的老存档走旧流程，本朝沿用原来的造价曲线；新朝/重开/新档按默认 v3
+        paceCurve: state.generation > 1 ? state.paceCurve : defaultGameState.paceCurve,
+        firstSiegeDone: state.generation > 1 ? state.firstSiegeDone : false,
         ambition: null,
-        // 强兵家风：每代开局军令满额（上限按传下来的封地算，含整军加成）
-        orders: traditionOf(state.chronicle)?.id === 'might' ? orderCapFor(state.generation > 1 ? state.fiefs : {}, state.realms) : defaultGameState.orders,
+        // 强兵家风：每代开局军令满额（上限按传下来的封地算，含整军加成）；天下归心：每朝开局军令满
+        orders: traditionOf(state.chronicle)?.id === 'might' || (state.generation === 1 && titleBonuses(collectEarnedTitles(state)).dynastyFullOrders)
+          ? orderCapOf({ ...defaultGameState, fiefs: state.generation > 1 ? state.fiefs : {}, realms: state.realms, earnedTitles: collectEarnedTitles(state).earnedTitles })
+          : defaultGameState.orders,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
         farmLevel: state.generation > 1 ? state.farmLevel : defaultGameState.farmLevel,
         fiefs: state.generation > 1 ? state.fiefs : defaultGameState.fiefs,
         // 封地的城防、得郡时刻与反攻计时随封地带过来（反攻要侯府才起）
-        ...(state.generation > 1 ? { fiefWalls: state.fiefWalls, fiefTakenAt: state.fiefTakenAt, lostFiefs: state.lostFiefs, nextSiegeAt: state.nextSiegeAt, peakFiefs: ownedFiefCount(state.fiefs) } : {}),
+        ...(state.generation > 1 ? { fiefWalls: state.fiefWalls, fiefTakenAt: state.fiefTakenAt, lostFiefs: state.lostFiefs, nextSiegeAt: state.nextSiegeAt, peakFiefs: Math.max(state.peakFiefs ?? 0, ownedFiefCount(state.fiefs)) } : {}),
         claimedQuestIds: state.generation > 1 ? inheritedQuestIds(state.farmLevel, state.fiefs) : [],
         eventLog: [
           {
@@ -231,7 +259,7 @@ function baseReducer(state: GameState, action: Action): GameState {
           ...state,
           pendingChoice: null,
           gold: state.gold + gold,
-          orders: picked.kind === 'order' ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
+          orders: picked.kind === 'order' ? Math.min(orderCapOf(state), state.orders + 1) : state.orders,
           partnerBoosts: picked.kind === 'boost' ? { ...state.partnerBoosts, [minor.partner.id]: addBoost(state.partnerBoosts[minor.partner.id], boost) } : state.partnerBoosts,
           eventLog: [
             { id: `minor-${state.pendingChoice.day}`, day: state.day, title: `${minor.partner.name} · ${minor.template.title} · ${picked.label}`, detail: picked.kind === 'order' ? orderGainDetail(state, picked.detail(minor.partner.name, gold)) : picked.detail(minor.partner.name, gold), goldDelta: gold || undefined },
@@ -247,7 +275,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         gold: state.gold + gold,
         incomeBuff: option.id === 'incomeBuff' ? { percent: INCOME_BUFF_PERCENT, untilDay: state.day + INCOME_BUFF_DAYS } : state.incomeBuff,
         nextBattleBonus: option.id === 'battleBonus' ? BATTLE_BONUS_MULTIPLIER : state.nextBattleBonus,
-        orders: option.id === 'order' ? Math.min(orderCapFor(state.fiefs, state.realms), state.orders + 1) : state.orders,
+        orders: option.id === 'order' ? Math.min(orderCapOf(state), state.orders + 1) : state.orders,
         eventLog: [
           { id: `choice-${state.pendingChoice.day}-${option.id}`, day: state.day, title: `${event.title} · ${option.label}`, detail: option.id === 'order' ? orderGainDetail(state, option.detail) : option.detail, goldDelta: gold || undefined },
           ...state.eventLog
@@ -277,7 +305,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
       // 只能按顺序开拓下一郡，钱要够
-      if (!fief || !policy || nextFief(state.fiefs)?.id !== fief.id || state.gold < action.cost || action.cost !== fiefCostFor(state, fief)) {
+      if (!fief || !policy || nextFief(state.fiefs)?.id !== fief.id || state.gold < action.cost || action.cost !== fiefCostOf(state, fief)) {
         return state;
       }
       return {
@@ -301,7 +329,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       const policy = findFiefPolicy(action.policyId);
       // 只能攻相邻的郡；侯府开放；要 1 道军令和足额军资
       if (!fief || !policy || state.activeBattle || state.homeLevel < FIEF_UNLOCK_HOME_LEVEL || !attackableFiefs(state.fiefs).some((item) => item.id === fief.id)
-        || state.orders < 1 || action.stake !== conquestStakeFor(state, fief) || state.gold < action.stake) {
+        || state.orders < 1 || action.stake !== conquestStakeOf(state, fief) || state.gold < action.stake) {
         return state;
       }
       return {
@@ -345,12 +373,13 @@ function baseReducer(state: GameState, action: Action): GameState {
     case 'siegeTick': {
       if (!state.selectedLordId) return state;
       const step = advanceSiege(state, action.now, { force: action.force, target: action.target });
-      if (step.siege === state.siege && step.nextSiegeAt === state.nextSiegeAt && step.fiefWalls === state.fiefWalls && !step.event) return state;
+      if (step.siege === state.siege && step.nextSiegeAt === state.nextSiegeAt && step.fiefWalls === state.fiefWalls && step.firstSiegeDone === state.firstSiegeDone && !step.event) return state;
       return {
         ...state,
         siege: step.siege,
         nextSiegeAt: step.nextSiegeAt,
         fiefWalls: step.fiefWalls,
+        firstSiegeDone: step.firstSiegeDone,
         eventLog: step.event ? [step.event, ...state.eventLog].slice(0, 18) : state.eventLog
       };
     }
@@ -367,9 +396,21 @@ function baseReducer(state: GameState, action: Action): GameState {
       const defending = state.activeBattle?.conquest?.kind === 'defend' ? null : state.activeBattle;
       if (!siege || !fief || !state.fiefs[fief.id]) return { ...state, activeBattle: defending, siege: null };
       const now = Date.now();
-      const base = { ...state, activeBattle: defending, siege: null, nextSiegeAt: now + SIEGE_INTERVAL_MS };
+      // 三朝元老：本朝第一次反攻城防不扣（这一次结了就算用过）
+      const guarded = !action.win && firstSiegeGuarded(state);
+      const base = { ...state, activeBattle: defending, siege: null, nextSiegeAt: now + SIEGE_INTERVAL_MS, firstSiegeDone: true };
+      if (guarded) {
+        return {
+          ...base,
+          battleLosses: state.battleLosses + 1,
+          eventLog: [
+            { id: `siege-guard-${fief.id}-${now}`, day: state.day, title: `${fief.name}城池必保`, detail: `${action.abandon ? '主公弃城' : '守城未克'}，三朝元老坐镇，本朝首次反攻城防不扣，${fief.name}仍为城防 ${wallsOf(state, fief.id)}。` },
+            ...state.eventLog
+          ].slice(0, 18)
+        };
+      }
       if (action.win) {
-        const bounty = siegeBounty(fief);
+        const bounty = siegeBountyOf(state, fief);
         return {
           ...base,
           gold: state.gold + bounty,
@@ -387,7 +428,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       const how = action.abandon ? '主公弃城' : '守城未克';
       if (walls <= 0) {
         const lost = loseFief(base, fief.id, now);
-        const cap = orderCapFor(lost.fiefs, state.realms);
+        const cap = orderCapOf(lost);
         return {
           ...lost,
           battleLosses: state.battleLosses + 1,
@@ -410,7 +451,7 @@ function baseReducer(state: GameState, action: Action): GameState {
     case 'repairWall': {
       const fief = findFief(action.fiefId);
       if (!fief || !state.fiefs[fief.id] || wallsOf(state, fief.id) >= FIEF_WALLS) return state;
-      const cost = wallRepairCost(fief);
+      const cost = wallRepairCostOf(state, fief);
       if (state.gold < cost) return state;
       return {
         ...state,
@@ -433,7 +474,7 @@ function baseReducer(state: GameState, action: Action): GameState {
     }
     case 'refundOrder': {
       // 糜夫人「舍身」：失手 ×4 起返还本局军令，不超过上限
-      const cap = orderCapFor(state.fiefs, state.realms);
+      const cap = orderCapOf(state);
       if (state.orders >= cap) return state;
       const name = action.partnerId ? findPartnerName(action.partnerId) : '';
       return {
@@ -448,13 +489,14 @@ function baseReducer(state: GameState, action: Action): GameState {
     case 'chooseAmbition': {
       const ambition = findAmbition(action.ambitionId);
       if (!ambition || state.ambition || state.generation < 2) return state;
-      const target = ambition.target(state.generation);
+      // 开疆按本代最高郡数起算：先丢郡再定志向、收复回来不算新开拓；六郡已满改为守住 2 次反攻
+      const baseFiefs = Math.max(state.peakFiefs, ownedFiefCountOf(state.fiefs));
+      const target = ambitionTargetFor(ambition, state.generation, baseFiefs);
       return {
         ...state,
-        // 开疆按本代最高郡数起算：先丢郡再定志向、收复回来不算新开拓
-        ambition: { id: ambition.id, target, baseFiefs: Math.max(state.peakFiefs, ownedFiefCountOf(state.fiefs)) },
+        ambition: { id: ambition.id, target, baseFiefs },
         eventLog: [
-          { id: `ambition-${Date.now()}`, day: state.day, title: `本代志向 · ${ambition.name}`, detail: `${ambition.motto}。${ambition.describe(target)}，传位时结算。` },
+          { id: `ambition-${Date.now()}`, day: state.day, title: `本代志向 · ${ambition.name}`, detail: `${ambition.motto}。${ambition.describe(target, baseFiefs >= 6)}，传位时结算。` },
           ...state.eventLog
         ].slice(0, 18)
       };
@@ -463,23 +505,24 @@ function baseReducer(state: GameState, action: Action): GameState {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
       const current = fief ? state.fiefs[fief.id] : undefined;
-      if (!fief || !policy || !current || current === policy.id || state.gold < action.cost || action.cost !== policyChangeCostFor(state, fief)) {
+      if (!fief || !policy || !current || current === policy.id || state.gold < action.cost || action.cost !== policyChangeCostOf(state, fief)) {
         return state;
       }
       const fiefs = { ...state.fiefs, [fief.id]: policy.id };
-      const reclaimed = Math.max(0, state.orders - orderCapFor(fiefs, state.realms));
+      const newCap = orderCapOf({ ...state, fiefs });
+      const reclaimed = Math.max(0, state.orders - newCap);
       return {
         ...state,
         gold: state.gold - action.cost,
         fiefs,
         // 撤掉整军方略后军令上限下降，存量超出的部分收回
-        orders: Math.min(orderCapFor(fiefs, state.realms), state.orders),
+        orders: Math.min(newCap, state.orders),
         eventLog: [
           {
             id: `fief-policy-${fief.id}-${Date.now()}`,
             day: state.day,
             title: '改弦更张',
-            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}${reclaimed > 0 ? `，军令上限降为 ${orderCapFor(fiefs, state.realms)}，收回 ${reclaimed} 道` : ''}。`,
+            detail: `${fief.name}改行「${policy.name}」之策，耗 ${action.cost.toLocaleString()} 金：${policy.effect}${reclaimed > 0 ? `，军令上限降为 ${newCap}，收回 ${reclaimed} 道` : ''}。`,
             goldDelta: -action.cost
           },
           ...state.eventLog
@@ -487,6 +530,10 @@ function baseReducer(state: GameState, action: Action): GameState {
       };
     }
     case 'upgradeHome':
+      // 价格按造价曲线校验（王城 v2 18 万 / v3 36 万），与按钮显示同一取价入口
+      if (action.nextLevel !== state.homeLevel + 1 || action.cost !== homeUpgradeCostOf(state, action.nextLevel) || state.gold < action.cost) {
+        return state;
+      }
       return {
         ...state,
         gold: state.gold - action.cost,
@@ -634,6 +681,10 @@ function baseReducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     }
+    case 'setPlaque':
+      // 主城挂哪块匾：只认已得的称号匾与旧誉纪念匾，null = 按最高档自动
+      if (action.plaque !== null && !availablePlaques(state).includes(action.plaque)) return state;
+      return state.plaque === action.plaque ? state : { ...state, plaque: action.plaque };
     case 'toggleSound':
       return {
         ...state,
@@ -667,57 +718,66 @@ function baseReducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     case 'succeed': {
-      // 府库里没收的金子先按钱粮全额并入，再按手上的金子折家业点（v2.3 起府库可积 48 日，不能随传位清零）
+      // v3.1 传位：只换主公，宅邸、屯田、封地、城防、伴侣、兵器、任务、本朝战绩全部留下；进行中的反攻照常计时
+      // 府库里没收的金子先按钱粮全额并入，再按递增价折家业点（第 n 点 5 万×n，富国家风八折），扣多少折多少，余金留给新主
+      // gained < 1 也可传位（只换主公、不加点）；只看王城
       const heir = state.treasury.gold > 0 || state.treasury.days > 0 ? collectTreasury(state, 'treasury') : state;
-      const gained = legacyPointsFor(heir.gold, legacyGoldPerPointFor(heir));
-      if (heir.homeLevel < SUCCESSION_HOME_LEVEL || gained < 1) {
+      if (heir.homeLevel < SUCCESSION_HOME_LEVEL || !heir.selectedLordId || heir.activeBattle) {
         return state;
       }
-      const legacyPoints = Math.min(LEGACY_MAX_POINTS, heir.legacyPoints + gained);
+      const rate = legacyPriceRateFor(heir);
       const status = ambitionStatus(heir);
+      // 志向达成：得 1 点家业点（家学渊源 2 点），不走金价——金子只折到 20 − 志向点，已满 20 点的部分改发 3 万金/点
+      const plan = successionPlan(heir.gold, heir.legacyPoints, rate, status?.done ? titleBonuses(heir).ambitionPoints : 0);
+      const gained = plan.gained;
+      const spent = plan.spent;
+      const reward = { points: plan.rewardPoints, gold: plan.rewardGold };
+      const legacyPoints = plan.after;
+      const now = Date.now();
       const entry = {
         generation: heir.generation,
-        lordId: heir.selectedLordId ?? '',
-        days: heir.day,
+        lordId: heir.selectedLordId,
+        days: genDays(heir),
         gold: heir.gold,
-        wins: heir.battleWins,
+        wins: genWins(heir),
         fiefs: ownedFiefCountOf(heir.fiefs),
         ambition: heir.ambition?.id ?? null,
         ambitionDone: Boolean(status?.done),
-        openDays: foundedDays(heir.foundedAt, Date.now())
+        openDays: foundedDays(heir.foundedAt, now)
       };
-      return {
-        ...defaultGameState,
-        chronicle: trimChronicle([...heir.chronicle, entry]),
-        realm: heir.realm,
-        realms: heir.realms,
-        pastDynasties: heir.pastDynasties,
-        earnedTitles: collectEarnedTitles(heir).earnedTitles,
+      const chronicle = trimChronicle([...heir.chronicle, entry]);
+      const rewardNote = status?.done ? `；志向「${status.ambition.name}」达成，载入家谱，${reward.points > 0 ? `得家业点 ${reward.points}` : ''}${reward.points > 0 && reward.gold > 0 ? '、' : ''}${reward.gold > 0 ? `家业点已满改得 ${reward.gold.toLocaleString()} 金` : ''}` : status ? `；志向「${status.ambition.name}」未竟` : '';
+      const next: GameState = {
+        ...heir,
+        selectedLordId: null,
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
-        soundEnabled: heir.soundEnabled,
-        tutorialDone: true,
-        generation: heir.generation + 1,
+        gold: heir.gold - spent + reward.gold,
         legacyPoints,
-        // 屯田与封地是田产，随家业传给下一代
-        farmLevel: heir.farmLevel,
-        fiefs: heir.fiefs,
-        // 城防与得郡时刻随封地传下；进行中的反攻随传位作罢，下一代升到侯府时反攻计时至少重给 48 小时（见 upgradeHome）
-        fiefWalls: heir.fiefWalls,
-        fiefTakenAt: heir.fiefTakenAt,
-        lostFiefs: heir.lostFiefs,
-        nextSiegeAt: heir.nextSiegeAt,
-        peakFiefs: ownedFiefCount(heir.fiefs),
-        claimedQuestIds: inheritedQuestIds(heir.farmLevel, heir.fiefs),
+        generation: heir.generation + 1,
+        chronicle,
+        ambition: null,
+        // 政务练出的属性是上一位主公自己的，随主公清零
+        affairTraining: { strength: 0, civil: 0 },
+        // 本朝最高郡数随家传下去：上一代丢的郡，新主收复回来不算「新开拓」（开疆志向）
+        peakFiefs: Math.max(heir.peakFiefs ?? 0, ownedFiefCount(heir.fiefs)),
+        genStart: { day: heir.day + 1, wins: heir.battleWins, defends: heir.frontierWins },
+        foundedAt: now,
+        tutorialDone: true,
+        earnedTitles: collectEarnedTitles(heir).earnedTitles,
         eventLog: [
           {
-            id: `succeed-${Date.now()}`,
-            day: 1,
+            id: `succeed-${now}`,
+            day: heir.day,
             title: '传位',
-            detail: `第 ${heir.generation} 代以 ${heir.gold.toLocaleString()} 金传下家业，获家业点 ${legacyPoints - heir.legacyPoints}，累计 ${legacyPoints}${heir.farmLevel > 0 ? '，屯田随之传下' : ''}${Object.keys(heir.fiefs).length > 0 ? '，封地随之传下' : ''}${status ? `；志向「${status.ambition.name}」${status.done ? '达成，载入家谱' : '未竟'}` : ''}。`
-          }
-        ]
+            detail: `第 ${heir.generation} 代传位：${gained > 0 ? `以 ${spent.toLocaleString()} 金折家业点 ${gained} 点，` : ''}家业点累计 ${legacyPoints}；宅邸、封地、伴侣、兵器尽数留给新主${rewardNote}。`,
+            goldDelta: spent > 0 || reward.gold > 0 ? reward.gold - spent : undefined
+          },
+          ...heir.eventLog
+        ].slice(0, 18)
       };
+      // 强兵家风（按新家谱判定）：传位时把军令补满
+      return traditionOf(chronicle)?.id === 'might' ? { ...next, orders: Math.max(next.orders, orderCapOf(next)) } : next;
     }
     case 'foundDynasty': {
       const realm = findRealm(action.realm);
@@ -737,6 +797,7 @@ function baseReducer(state: GameState, action: Action): GameState {
         pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions, ...(summary.openDays ? { openDays: summary.openDays } : {}) }].slice(-20),
         // 家声跨朝保留：天下归心等称号不随世代/封地重置被收回（先按重置前的存档补记一次，读档后未经任何操作就开新朝也不漏）
         earnedTitles: collectEarnedTitles(state).earnedTitles,
+        plaque: state.plaque,
         eventLog: [
           { id: `dynasty-${Date.now()}`, day: 1, title: `开创新朝 · ${realm.name}`, detail: `前朝历 ${summary.generations} 代 ${summary.days} 日，${summary.wins} 胜，六郡归心。新朝国号「${realm.name}」：${realm.effect}，永久保留。` }
         ]
@@ -744,7 +805,7 @@ function baseReducer(state: GameState, action: Action): GameState {
     }
     // 重开基业：放弃本朝重来，国号加成、前朝记录与家声是跨朝资产，保留（只有「重置存档」才全清）
     case 'restart':
-      return { ...defaultGameState, soundEnabled: state.soundEnabled, realm: state.realm, realms: state.realms, pastDynasties: state.pastDynasties, earnedTitles: collectEarnedTitles(state).earnedTitles, tutorialDone: dynastyCount(state.realms) > 0 };
+      return { ...defaultGameState, soundEnabled: state.soundEnabled, realm: state.realm, realms: state.realms, pastDynasties: state.pastDynasties, earnedTitles: collectEarnedTitles(state).earnedTitles, plaque: state.plaque, tutorialDone: dynastyCount(state.realms) > 0 };
     case 'reset':
       clearGameState();
       return {
@@ -825,7 +886,12 @@ export function useGameState() {
   const selectedLord = useMemo(() => findLord(state.selectedLordId), [state.selectedLordId]);
   const equippedWeapon = useMemo(() => findWeapon(state.equippedWeaponId), [state.equippedWeaponId]);
   const currentHome = useMemo(() => findHomeLevel(state.homeLevel), [state.homeLevel]);
-  const nextHome = useMemo(() => homeLevels.find((home) => home.level === state.homeLevel + 1) ?? null, [state.homeLevel]);
+  // 下一级宅邸：价格按造价曲线（王城 v2 18 万 / v3 36 万），页面上所有 nextHome.upgradeCost 都是这一份
+  const nextHome = useMemo(() => {
+    const home = homeLevels.find((item) => item.level === state.homeLevel + 1);
+    return home ? { ...home, upgradeCost: homeUpgradeCostOf(state, home.level) } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.homeLevel, state.paceCurve]);
   const ownedPartners = useMemo(
     () => partners.filter((partner) => state.ownedPartnerIds.includes(partner.id)).map((partner) => mergePartnerBoost(partner, state.partnerBoosts[partner.id])),
     [state.ownedPartnerIds, state.partnerBoosts]
@@ -835,7 +901,7 @@ export function useGameState() {
   // 处理政务练出的属性：军务加武力，治理加智谋与声望
   const strengthExtra = fiefStat + state.affairTraining.strength;
   const civilExtra = fiefStat + state.affairTraining.civil;
-  const orderCap = orderCapFor(state.fiefs, state.realms);
+  const orderCap = orderCapOf(state);
   const totalPower = selectedLord ? calculateTotalPower(selectedLord, ownedPartners, equippedWeapon, currentHome, strengthExtra) : 0;
   const navalPower = selectedLord ? calculateNavalPower(selectedLord, ownedPartners, currentHome, civilExtra) : 0;
   const courtPower = selectedLord ? calculateCourtPower(selectedLord, ownedPartners, currentHome, civilExtra) : 0;
@@ -846,7 +912,8 @@ export function useGameState() {
 
   const currentFarm = useMemo(() => findFarmLevel(state.farmLevel), [state.farmLevel]);
   const nextFarm = useMemo(() => farmLevels.find((farm) => farm.level === state.farmLevel + 1) ?? null, [state.farmLevel]);
-  const fiefPercent = fiefIncomePercent(state.fiefs) + realmIncomePercent(state.realms);
+  // 劝农郡 + 国号蜀 + 乡绅（称号）
+  const fiefPercent = incomePercentOf(state);
   const dailyIncome = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent);
   // 再开一郡行劝农，每次政务多多少金（给封地弹窗算账用）
   const farmingGain = totalDailyIncome(currentHome.dailyIncome, currentFarm.incomePercent, state.legacyPoints, intelligence, currentFarm.flatIncome, fiefPercent + FIEF_INCOME_PERCENT) - dailyIncome;
@@ -898,7 +965,7 @@ export function useGameState() {
   const claimFief = useCallback(
     (policyId: FiefPolicyId) => {
       const fief = nextFief(state.fiefs);
-      const cost = fief ? fiefCostFor(state, fief) : 0;
+      const cost = fief ? fiefCostOf(state, fief) : 0;
       if (!fief || state.gold < cost) {
         return false;
       }
@@ -913,7 +980,7 @@ export function useGameState() {
     (fiefId: string, policyId: FiefPolicyId, refundRate = 0) => {
       const fief = findFief(fiefId);
       if (!fief) return false;
-      const stake = conquestStakeFor(state, fief);
+      const stake = conquestStakeOf(state, fief);
       if (state.gold < stake || state.orders < 1) return false;
       dispatch({ type: 'startConquest', fiefId, policyId, stake, refundRate });
       return true;
@@ -932,7 +999,7 @@ export function useGameState() {
   const abandonSiege = useCallback(() => dispatch({ type: 'resolveDefense', win: false, abandon: true }), []);
   const repairWall = useCallback((fiefId: string) => {
     const fief = findFief(fiefId);
-    if (!fief || !state.fiefs[fiefId] || wallsOf(state, fiefId) >= FIEF_WALLS || state.gold < wallRepairCost(fief)) return false;
+    if (!fief || !state.fiefs[fiefId] || wallsOf(state, fiefId) >= FIEF_WALLS || state.gold < wallRepairCostOf(state, fief)) return false;
     dispatch({ type: 'repairWall', fiefId });
     return true;
   }, [state]);
@@ -940,7 +1007,7 @@ export function useGameState() {
   const setFiefPolicy = useCallback(
     (fiefId: string, policyId: FiefPolicyId) => {
       const fief = findFief(fiefId);
-      const cost = fief ? policyChangeCostFor(state, fief) : 0;
+      const cost = fief ? policyChangeCostOf(state, fief) : 0;
       if (!fief || !state.fiefs[fiefId] || state.fiefs[fiefId] === policyId || state.gold < cost) {
         return false;
       }
@@ -1020,12 +1087,9 @@ export function useGameState() {
     recordSkillUse: (partnerId: string, uses: number) => dispatch({ type: 'recordSkillUse', partnerId, uses }),
     refundOrder: (partnerId?: string) => dispatch({ type: 'refundOrder', partnerId }),
     resetGame: () => dispatch({ type: 'reset' }),
-    restartGame: () => dispatch({ type: 'restart' })
+    restartGame: () => dispatch({ type: 'restart' }),
+    setPlaque: (plaque: string | null) => dispatch({ type: 'setPlaque', plaque })
   };
 }
 
-/** 攻郡军资：开拓价（含开疆家风折扣）的一半，国号魏再打折；失郡 72 小时内收复只押四分之一 */
-export function conquestStakeFor(state: Pick<GameState, 'chronicle' | 'realms'> & Partial<Pick<GameState, 'lostFiefs' | 'fiefs'>>, fief: Fief, now = Date.now()) {
-  const reclaim = state.lostFiefs && state.fiefs && reclaimRemainingMs({ lostFiefs: state.lostFiefs, fiefs: state.fiefs }, fief.id, now) > 0;
-  return Math.round(fiefCostFor(state, fief) * (reclaim ? RECLAIM_STAKE_RATE : CONQUEST_STAKE_RATE) * realmConquestDiscount(state.realms));
-}
+// 攻郡军资、开拓价、改方略价等 v3.1 起统一在 lib/prices.ts（conquestStakeOf / fiefCostOf / policyChangeCostOf）

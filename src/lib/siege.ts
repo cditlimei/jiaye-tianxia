@@ -3,6 +3,7 @@ import type { AiSkill } from './doudizhu';
 import { connectedHoldings, FIEF_UNLOCK_HOME_LEVEL, fiefs as fiefCatalog, findFief, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
 import { isEndingReached } from '../data/dynasty';
 import { formatRemaining, RAID_WINDOW_MS } from './frontier';
+import { titleBonuses } from '../data/titleEffects';
 
 /**
  * 邻郡反攻守城（v2.2，替代北疆边患）：
@@ -55,13 +56,20 @@ export interface Siege {
 }
 
 type SiegeFields = Pick<GameState, 'siege' | 'nextSiegeAt' | 'fiefWalls' | 'fiefTakenAt' | 'lostFiefs' | 'peakFiefs'>;
-type SiegeState = SiegeFields & Pick<GameState, 'fiefs' | 'homeLevel' | 'legacyPoints' | 'activeBattle' | 'day'>;
+type SiegeState = SiegeFields & Pick<GameState, 'fiefs' | 'homeLevel' | 'legacyPoints' | 'activeBattle' | 'day' | 'firstSiegeDone' | 'battleWins' | 'frontierWins' | 'pastDynasties' | 'realms' | 'chronicle' | 'earnedTitles'>;
 
 export interface SiegeStep {
   siege: Siege | null;
   nextSiegeAt: number;
   fiefWalls: Record<string, number>;
   event: GameEvent | null;
+  /** 本朝第一次反攻是否已结（三朝元老「首次反攻城池必保」） */
+  firstSiegeDone: boolean;
+}
+
+/** 三朝元老：本朝第一次反攻城防不扣（守住、失手、逾期都算这一次） */
+export function firstSiegeGuarded(state: Pick<SiegeState, 'firstSiegeDone'> & Parameters<typeof titleBonuses>[0]) {
+  return !state.firstSiegeDone && titleBonuses(state).firstSiegeGuard;
 }
 
 const SKILL_DOWN: Record<AiSkill, AiSkill> = { master: 'veteran', veteran: 'novice', novice: 'novice' };
@@ -95,8 +103,9 @@ export function activePerkIds(state: Pick<GameState, 'fiefWalls' | 'fiefs'>) {
   return fiefCatalog.filter((fief) => state.fiefs[fief.id] && wallsOf(state, fief.id) >= FIEF_WALLS).map((fief) => fief.id);
 }
 
-export const siegeBounty = (fief: Fief) => Math.round(fief.cost * SIEGE_BOUNTY_RATE);
-export const wallRepairCost = (fief: Fief) => Math.round(fief.cost * WALL_REPAIR_RATE);
+/** 传入开拓价（按造价曲线，由 lib/prices.ts 的 siegeBountyOf / wallRepairCostOf 取，不直接读 fief.cost） */
+export const siegeBounty = (cost: number) => Math.round(cost * SIEGE_BOUNTY_RATE);
+export const wallRepairCost = (cost: number) => Math.round(cost * WALL_REPAIR_RATE);
 
 /** 失郡后还在半价收复期内（返回剩余毫秒，过期或没丢过为 0） */
 export function reclaimRemainingMs(state: Pick<GameState, 'lostFiefs' | 'fiefs'>, fiefId: string, now = Date.now()) {
@@ -122,16 +131,20 @@ export function pickSiegeTarget(state: Pick<GameState, 'fiefs' | 'fiefWalls' | '
 /** 反攻逾期（没应战）：城防 −1，最低扣到 1，然后排下一次。守城局正在打时不判逾期，等它打完。 */
 export function expireSiege(state: SiegeState, now = Date.now()): SiegeStep {
   const { siege } = state;
-  const keep: SiegeStep = { siege: state.siege, nextSiegeAt: state.nextSiegeAt, fiefWalls: state.fiefWalls, event: null };
+  const keep: SiegeStep = { siege: state.siege, nextSiegeAt: state.nextSiegeAt, fiefWalls: state.fiefWalls, event: null, firstSiegeDone: state.firstSiegeDone };
   if (!siege || now <= siege.dueAt || state.activeBattle?.conquest?.kind === 'defend') return keep;
   const fief = findFief(siege.fiefId);
-  const walls = Math.max(1, wallsOf(state, siege.fiefId) - 1);
+  const guarded = firstSiegeGuarded(state);
+  const walls = guarded ? wallsOf(state, siege.fiefId) : Math.max(1, wallsOf(state, siege.fiefId) - 1);
   return {
     siege: null,
     nextSiegeAt: now + SIEGE_INTERVAL_MS,
     fiefWalls: state.fiefs[siege.fiefId] ? { ...state.fiefWalls, [siege.fiefId]: walls } : state.fiefWalls,
+    firstSiegeDone: true,
     event: fief
-      ? { id: `siege-expire-${fief.id}-${now}`, day: state.day, title: `${fief.name}城防受损`, detail: `${siege.attacker}围城一日无人应战，城防降为 ${walls}（逾期最低留 1，不会因此失郡）。${walls < FIEF_WALLS ? '郡中牌桌特权暂停。' : ''}` }
+      ? guarded
+        ? { id: `siege-expire-${fief.id}-${now}`, day: state.day, title: `${fief.name}城池必保`, detail: `${siege.attacker}围城一日无人应战。三朝元老坐镇，本朝首次反攻城防不扣，仍为 ${walls}。` }
+        : { id: `siege-expire-${fief.id}-${now}`, day: state.day, title: `${fief.name}城防受损`, detail: `${siege.attacker}围城一日无人应战，城防降为 ${walls}（逾期最低留 1，不会因此失郡）。${walls < FIEF_WALLS ? '郡中牌桌特权暂停。' : ''}` }
       : null
   };
 }
@@ -145,7 +158,7 @@ export function siegeAllowed(state: SiegeState) {
 export function advanceSiege(state: SiegeState, now = Date.now(), opts: { force?: boolean; target?: string | null } = {}): SiegeStep {
   const expired = expireSiege(state, now);
   if (expired.event || expired.siege !== state.siege) return expired;
-  const keep: SiegeStep = { siege: state.siege, nextSiegeAt: state.nextSiegeAt, fiefWalls: state.fiefWalls, event: null };
+  const keep: SiegeStep = { siege: state.siege, nextSiegeAt: state.nextSiegeAt, fiefWalls: state.fiefWalls, event: null, firstSiegeDone: state.firstSiegeDone };
   if (!siegeAllowed(state)) return keep;
   // 有郡却没计时（不该出现，normalize 会补）：从现在起算首次
   if (!state.nextSiegeAt && !opts.force) return { ...keep, nextSiegeAt: now + SIEGE_FIRST_DELAY_MS };
@@ -157,6 +170,7 @@ export function advanceSiege(state: SiegeState, now = Date.now(), opts: { force?
     siege,
     nextSiegeAt: state.nextSiegeAt,
     fiefWalls: state.fiefWalls,
+    firstSiegeDone: state.firstSiegeDone,
     event: { id: `siege-start-${fief.id}-${now}`, day: state.day, title: `${shortName(fief)}告急`, detail: `${fief.garrison}卷土重来，兵临${fief.name}城下。${formatRemaining(SIEGE_WINDOW_MS)}内应战守城：城主坐庄、不耗军令、失手不扣金。` }
   };
 }

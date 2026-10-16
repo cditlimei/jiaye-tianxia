@@ -235,21 +235,73 @@ export function enemyForTier(list: Enemy[], index: number, power: number): Enemy
   return { ...tier, power: solveEnemyPower(Math.max(1, Math.round(power)), targetOdds(offset)) };
 }
 
-// 传位：宅邸到王城后可把家业传给下一代。全部金币换成家业点（每 10 万金 1 点，最多累计 20 点），
-// 每点让处理政务与屯田收入永久 +5%；主公、伴侣、兵器、宅邸、屯田、任务全部重来
+// 传位（v3.1）：宅邸到王城后可传位。只换主公，宅邸、屯田、封地、伴侣、兵器、任务全部保留；
+// 手里的金子按递增价折成家业点（第 n 点 5 万×n，富国家风八折），每点让政务与屯田收入 +5%，累计上限 20 点，开新朝清零
 export const SUCCESSION_HOME_LEVEL = 6;
-export const LEGACY_GOLD_PER_POINT = 100000;
+/** 第 n 点家业点的价格 = LEGACY_POINT_STEP × n（5 点 75 万、10 点 275 万、20 点 1050 万） */
+export const LEGACY_POINT_STEP = 50000;
 export const LEGACY_MAX_POINTS = 20;
 export const LEGACY_INCOME_PER_POINT = 0.05;
+/** v3.1 前每代开局按家业点多给的金（只剩老存档「传位后待择主」的旧流程用） */
 export const LEGACY_START_GOLD_PER_POINT = 3000;
 
-/** 这次传位实际能新增的家业点（已扣掉累计上限） */
-export function legacyPointsGainable(gold: number, currentPoints: number, goldPerPoint = LEGACY_GOLD_PER_POINT) {
-  return Math.max(0, Math.min(legacyPointsFor(gold, goldPerPoint), LEGACY_MAX_POINTS - currentPoints));
+/** 第 n 点家业点的价格（rate：富国家风 0.8） */
+export function legacyPointCost(n: number, rate = 1) {
+  return Math.round(LEGACY_POINT_STEP * Math.max(1, n) * rate);
 }
 
-export function legacyPointsFor(gold: number, goldPerPoint = LEGACY_GOLD_PER_POINT) {
-  return Math.floor(Math.max(0, gold) / goldPerPoint);
+/** 已有 currentPoints 点时，再买 count 点一共要多少金 */
+export function legacyPointsSpend(currentPoints: number, count: number, rate = 1) {
+  let total = 0;
+  for (let i = 1; i <= count; i += 1) total += legacyPointCost(currentPoints + i, rate);
+  return total;
+}
+
+/** 这次传位能新增的家业点：从第 currentPoints+1 点起按递增价逐点扣，扣不起或到上限为止 */
+export function legacyPointsGainable(gold: number, currentPoints: number, rate = 1) {
+  let points = 0;
+  let spent = 0;
+  while (currentPoints + points < LEGACY_MAX_POINTS) {
+    const price = legacyPointCost(currentPoints + points + 1, rate);
+    if (spent + price > gold) break;
+    spent += price;
+    points += 1;
+  }
+  return points;
+}
+
+/** 家业点已满时，志向奖励的每 1 点改发多少金 */
+export const AMBITION_FULL_GOLD = 30000;
+
+/**
+ * 传位结算（reducer 实扣与各处预览共用）。志向奖励的点不走金价：金子只折到「20 − 志向点」为止，
+ * 志向点再记在最上面（已满 20 点的部分改发 3 万金/点）。这样买的点按最便宜的档位算，也不会出现
+ * 「金子先把第 20 点买了、志向那 1 点只好折成 3 万金」——玩家不为志向本来就送的点付钱。
+ * ambitionPoints：本代志向达成时得几点，未达成传 0。
+ */
+export function successionPlan(gold: number, currentPoints: number, rate: number, ambitionPoints: number) {
+  const rewardPoints = Math.max(0, Math.min(ambitionPoints, LEGACY_MAX_POINTS - currentPoints));
+  const rewardGold = Math.max(0, ambitionPoints - rewardPoints) * AMBITION_FULL_GOLD;
+  const buyCap = LEGACY_MAX_POINTS - rewardPoints;
+  let gained = 0;
+  let spent = 0;
+  while (currentPoints + gained < buyCap) {
+    const price = legacyPointCost(currentPoints + gained + 1, rate);
+    if (spent + price > gold) break;
+    spent += price;
+    gained += 1;
+  }
+  const after = currentPoints + gained + rewardPoints;
+  return {
+    rewardPoints,
+    rewardGold,
+    gained,
+    spent,
+    after,
+    left: gold - spent + rewardGold,
+    /** 再多折 1 点要多少金（已满为 null）：买的点排在志向点下面，所以按第 current+gained+1 点的价 */
+    nextPrice: after < LEGACY_MAX_POINTS ? legacyPointCost(currentPoints + gained + 1, rate) : null
+  };
 }
 
 export function legacyIncomeMultiplier(points: number) {

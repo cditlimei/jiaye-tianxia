@@ -62,6 +62,16 @@ interface BattleScreenProps {
   fiefs: FiefHoldings;
   conquestStakeFor: (fief: Fief) => number;
   policyChangeCostFor: (fief: Fief) => number;
+  /** 修城费、守城犒赏（按造价曲线与称号，lib/prices.ts）与收复押金比例 */
+  repairCostFor: (fief: Fief) => number;
+  bountyFor: (fief: Fief) => number;
+  reclaimRate: number;
+  /** 押金另打的折（国号魏、侯门显贵），疆域图写出来 */
+  stakeNotes?: string[];
+  /** 称号「百战之将」斗地主缴获乘数（与国号吴同一乘点） */
+  titleDdzScale?: number;
+  /** 疆域图本府：国号小旗（天下归心）、描金边（金汤之将） */
+  homeBadge?: { realm: string | null; golden: boolean };
   onStartConquest: (fiefId: string, policyId: FiefPolicyId, refundRate?: number) => boolean;
   onConquestResolved: (win: boolean, refundRate?: number) => void;
   onChangeFiefPolicy: (fiefId: string, policyId: FiefPolicyId) => boolean;
@@ -208,6 +218,12 @@ export function BattleScreen({
   fiefs: holdings,
   conquestStakeFor,
   policyChangeCostFor,
+  repairCostFor,
+  bountyFor,
+  reclaimRate,
+  stakeNotes = [],
+  titleDdzScale = 1,
+  homeBadge,
   onStartConquest,
   onConquestResolved,
   onChangeFiefPolicy,
@@ -258,7 +274,8 @@ export function BattleScreen({
   const venueScale = useMemo(() => venueRewardScale({ land: totalPower, naval: navalPower, court: courtPower }, homeLevel), [totalPower, navalPower, courtPower, homeLevel]);
   // 南阳「帝乡沃土」胜利缴获 +20%；汝南「门生故吏」失手只付一半
   // 国号吴：斗地主胜利缴获 +20%/次（realmScale('doudizhu')），与南阳同样直接算进本场缴获
-  const nanyangBoost = (perks.includes('nanyang') ? 1.2 : 1) * realmScale('doudizhu');
+  // 称号百战之将 +5% 同一乘点
+  const nanyangBoost = (perks.includes('nanyang') ? 1.2 : 1) * realmScale('doudizhu') * titleDdzScale;
   const venueGold = Math.round(venueReward(selectedVenue, venueScale) * nanyangBoost);
   // 糜夫人「舍身」二重起失手少付，与汝南相乘，最少付三成
   const mifurenCut = escort?.id === 'mifuren' ? partnerSkills.mifuren.values[escort.level - 1] : 0;
@@ -650,6 +667,11 @@ export function BattleScreen({
             orders={orders}
             stakeFor={conquestStakeFor}
             policyChangeCostFor={policyChangeCostFor}
+            repairCostFor={repairCostFor}
+            bountyFor={bountyFor}
+            reclaimRate={reclaimRate}
+            stakeNotes={stakeNotes}
+            homeBadge={homeBadge}
             onChangePolicy={onChangeFiefPolicy}
             onConquer={(fiefId, policyId) => {
               const fief = fiefCatalog.find((item) => item.id === fiefId);
@@ -690,7 +712,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}${mifurenCut > 0 ? `（舍身：失手少付 ${Math.round(mifurenCut * 100)}%）` : ''}。`}
+              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${titleDdzScale > 1 ? `（百战之将 +${Math.round((titleDdzScale - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}${mifurenCut > 0 ? `（舍身：失手少付 ${Math.round(mifurenCut * 100)}%）` : ''}。`}
           </p>
           {escortOptions.length > 0 && escortPicker}
           </section>

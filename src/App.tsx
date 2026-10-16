@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { homeLevels, lords, partners, weapons } from './data/gameData';
 import { useAudioManager } from './hooks/useAudioManager';
 import { useEffectOverlay } from './hooks/useEffectOverlay';
-import { conquestStakeFor, useGameState } from './hooks/useGameState';
-import { policyChangeCostFor } from './data/traditions';
+import { useGameState } from './hooks/useGameState';
+import { conquestStakeOf, legacyPreview, policyChangeCostOf, reclaimStakeRateOf, siegeBountyOf, stakeDiscountNotes, titleDdzScale, wallRepairCostOf } from './lib/prices';
+import { hasTitleId } from './data/titleEffects';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
 import { ambitionSummary } from './data/ambitions';
 import { HOME_UNLOCKS } from './data/progression';
-import { bountyScale, DYNASTY_START_GOLD, dynastyCount, findRealm, realmFarmCost, realmRewardScale } from './data/dynasty';
+import { bountyScale, DYNASTY_START_GOLD, dynastyCount, findRealm, isHeirPending, realmFarmCost, realmRewardScale } from './data/dynasty';
 import { defaultGameState } from './lib/storage';
 import { LEGACY_START_GOLD_PER_POINT } from './lib/battle';
+import { findHomeLevel } from './data/gameData';
+import { ownedFiefCount } from './data/fiefs';
 import type { GameState } from './types';
 import { BattleScreen, type RegionId } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
@@ -204,9 +207,10 @@ export function App() {
   };
 
   const succeed = () => {
-    const note = ambitionSummary(game.state);
+    const preview = legacyPreview(game.state);
+    const note = ambitionSummary(game.state, preview.ambitionPoints);
     const stored = game.state.treasury.gold;
-    if (!confirmReset(`${note && !note.includes('已达成') ? `${note}\n\n` : ''}${stored > 0 ? `府库尚有 ${stored.toLocaleString()} 金未收取，传位时先并入再折家业点。\n\n` : ''}传位后金币、主公、伴侣、兵器与宅邸全部重来，屯田与封地传给下一代，换取永久收入加成。`)) {
+    if (!window.confirm(`${note && !note.includes('已达成') ? `${note}\n\n` : ''}${stored > 0 ? `府库尚有 ${stored.toLocaleString()} 金未收取，传位时先并入再折家业点。\n\n` : ''}传位只换主公：宅邸、屯田、封地、伴侣、兵器与任务都留给新主。${preview.gained > 0 ? `可折 ${preview.gained} 点家业点（花 ${preview.spent.toLocaleString()} 金，余 ${preview.left.toLocaleString()} 金）。` : '金子不够折家业点，这次只换主公。'}\n\n确定传位吗？`)) {
       return;
     }
     audio.unlock();
@@ -284,6 +288,12 @@ export function App() {
           orderCap={game.orderCap}
           orderClockAt={game.state.orderClockAt}
           realmScale={(mode) => realmRewardScale(game.state.realms, mode) * bountyScale(game.state.day, mode)}
+          titleDdzScale={titleDdzScale(game.state)}
+          repairCostFor={(fief) => wallRepairCostOf(game.state, fief)}
+          bountyFor={(fief) => siegeBountyOf(game.state, fief)}
+          reclaimRate={reclaimStakeRateOf(game.state)}
+          stakeNotes={stakeDiscountNotes(game.state)}
+          homeBadge={{ realm: hasTitleId(game.state, 'unifier') ? realmChar(game.state) : null, golden: hasTitleId(game.state, 'north-general') }}
           farmCost={game.nextFarm ? realmFarmCost(game.state.realms, game.nextFarm.cost) : 0}
           battleBonus={game.state.nextBattleBonus}
           day={game.state.day}
@@ -317,8 +327,8 @@ export function App() {
           onBattleStakeChange={game.updateActiveBattle}
           onReturnHome={() => game.setScreen('home')}
           fiefs={game.state.fiefs}
-          conquestStakeFor={(fief) => conquestStakeFor(game.state, fief)}
-          policyChangeCostFor={(fief) => policyChangeCostFor(game.state, fief)}
+          conquestStakeFor={(fief) => conquestStakeOf(game.state, fief)}
+          policyChangeCostFor={(fief) => policyChangeCostOf(game.state, fief)}
           onStartConquest={game.startConquest}
           onConquestResolved={(win, refundRate) => {
             game.resolveConquest(win, refundRate);
@@ -335,7 +345,7 @@ export function App() {
     }
 
     if (!game.selectedLord) {
-      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} />;
+      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} banner={dynastyBanner(game.state)} />;
     }
 
     return (
@@ -394,7 +404,7 @@ export function App() {
           <PartnerTalkModal lord={game.selectedLord} ownedPartners={game.ownedPartners} onClose={() => setModal(null)} />
         )}
         {modal === 'lord' && (
-          <LordModal lord={game.selectedLord} state={game.state} totalPower={game.totalPower} intelligence={game.intelligence} charisma={game.charisma} onClose={() => setModal(null)} />
+          <LordModal lord={game.selectedLord} state={game.state} totalPower={game.totalPower} intelligence={game.intelligence} charisma={game.charisma} onClose={() => setModal(null)} onSetPlaque={game.setPlaque} />
         )}
         {modal === 'ending' && (
           <EndingModal
@@ -459,7 +469,16 @@ export function App() {
   );
 }
 
+/** 国号字：本朝国号，开国第一朝写「群」 */
+export function realmChar(state: GameState) {
+  return state.realm ? findRealm(state.realm)?.name ?? '群' : '群';
+}
+
 function dynastyBanner(state: GameState) {
+  // v3.1 传位：只换主公，家业原样留给新主
+  if (isHeirPending(state)) {
+    return `第 ${state.generation} 代择主 · 新主承袭${findHomeLevel(state.homeLevel).name}、${ownedFiefCount(state.fiefs)} 郡、${state.ownedPartnerIds.length} 位伴侣 · 家业点 ${state.legacyPoints} · 存金 ${state.gold.toLocaleString()}`;
+  }
   const count = dynastyCount(state.realms);
   if (count === 0) return undefined;
   return `第 ${count + 1} 朝 · 国号加成 ${(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')} · 开局 ${(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + count * DYNASTY_START_GOLD).toLocaleString()} 金`;

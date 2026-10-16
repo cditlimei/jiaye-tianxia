@@ -8158,3 +8158,382 @@ body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-car
 .home-v2 .treasury-meter.is-hard .treasury-meter__text {
   color: #ffb07a;
 }
+
+/* ===== v3.1 称号匾旗（HomeHonors）：纯 CSS + 内联 SVG，压在宅邸横幅上半部 ===== */
+.home-v2 .home-banner .home-honors {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.home-v2 .home-banner .home-honors button {
+  pointer-events: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 匾：宅邸上方居中 */
+.home-v2 .home-banner .home-honors__plaque {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 3px;
+  font-family: var(--font-title);
+  font-weight: 700;
+  letter-spacing: 4px;
+  white-space: nowrap;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.home-v2 .home-banner .home-honors__plaque span {
+  margin-right: -4px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* 挂绳 */
+.home-v2 .home-banner .home-honors__plaque::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  width: 26px;
+  height: 9px;
+  transform: translateX(-50%);
+  border: 1.5px solid rgba(240, 214, 138, 0.75);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+}
+
+/* 乡绅：木匾「耕读传家」 */
+.home-v2 .home-banner .home-honors__plaque.is-gentry {
+  border: 2px solid #6b4423;
+  background: linear-gradient(180deg, #8a5a32 0%, #6e4526 55%, #5c3a20 100%);
+  color: #f3dfb0;
+}
+
+/* 侯门显贵：朱漆金字匾「侯门」 */
+.home-v2 .home-banner .home-honors__plaque.is-marquis-house {
+  border: 2px solid #e2b54b;
+  background: linear-gradient(180deg, #c0392b 0%, #9b241b 100%);
+  color: #ffd76a;
+}
+
+/* 一代枭雄：黑底金字匾「王」 */
+.home-v2 .home-banner .home-honors__plaque.is-hegemon {
+  min-width: 40px;
+  height: 32px;
+  border: 2px solid #e2b54b;
+  background: radial-gradient(circle at 50% 40%, #2a2218 0%, #0d0a06 80%);
+  color: #f7cf5c;
+}
+
+.home-v2 .home-banner .home-honors__plaque.is-hegemon span {
+  font-size: 20px;
+}
+
+/* 旧誉纪念匾：素木 + 墨字 */
+.home-v2 .home-banner .home-honors__plaque.is-memorial {
+  border: 2px solid #8a6a2f;
+  background: linear-gradient(180deg, #d9c08a 0%, #b89659 100%);
+  color: #3a2410;
+  letter-spacing: 2px;
+}
+
+.home-v2 .home-banner .home-honors__plaque.is-memorial span {
+  margin-right: -2px;
+  font-size: 13px;
+}
+
+/* 旗：左侧战旗/帅旗/角楼最多 3 面 */
+.home-v2 .home-banner .home-honors__left {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  display: flex;
+  gap: 2px;
+}
+
+.home-v2 .home-banner .home-honors__flag {
+  display: block;
+  width: 26px;
+  height: 36px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+}
+
+.home-v2 .home-banner .home-honors__flag svg,
+.home-v2 .home-banner .home-honors__banner svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.home-v2 .home-banner .home-honors__flag.is-small {
+  width: 20px;
+  height: 27px;
+}
+
+/* 右上：国号大纛 + 其余家声旗 */
+.home-v2 .home-banner .home-honors__right {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.home-v2 .home-banner .home-honors__banner {
+  display: block;
+  width: 38px;
+  height: 52px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.65));
+}
+
+.home-v2 .home-banner .home-honors__lineage {
+  order: -1;
+  display: grid;
+  grid-template-columns: repeat(2, 20px);
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.home-v2 .home-banner .home-honors .hh-pole {
+  stroke: #d8b56a;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.home-v2 .home-banner .home-honors .hh-flag-text {
+  fill: #fff4d2;
+  font-size: 8px;
+  font-weight: 700;
+  text-anchor: middle;
+  font-family: var(--font-title);
+}
+
+.home-v2 .home-banner .home-honors .hh-flag-text.is-gold {
+  fill: #f7cf5c;
+}
+
+.home-v2 .home-banner .home-honors .hh-flag-text.is-small {
+  font-size: 5.6px;
+}
+
+.home-v2 .home-banner .home-honors .hh-realm-text {
+  fill: #ffd76a;
+  font-size: 13px;
+  font-weight: 800;
+  text-anchor: middle;
+  font-family: var(--font-title);
+}
+
+.home-v2 .home-banner .home-honors .hh-realm-sub {
+  fill: #f3dfb0;
+  font-size: 5px;
+  text-anchor: middle;
+}
+
+/* 点匾或旗弹出的说明 */
+.home-v2 .home-banner .home-honors__pop {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  width: min(86%, 300px);
+  padding: 8px 28px 8px 12px;
+  border: 1px solid rgba(240, 214, 138, 0.6);
+  border-radius: 10px;
+  background: rgba(14, 10, 6, 0.92);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+.home-v2 .home-banner .home-honors__pop strong {
+  color: var(--gold-light);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.home-v2 .home-banner .home-honors__pop small {
+  color: rgba(255, 245, 220, 0.75);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.home-v2 .home-banner .home-honors__pop button {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  color: rgba(255, 245, 220, 0.8);
+  font-size: 16px;
+  line-height: 22px;
+}
+
+/* 横幅很矮时（横屏/小屏）匾旗缩一号 */
+@media (max-height: 460px) {
+  .home-v2 .home-banner .home-honors__plaque {
+    height: 22px;
+    top: 6px;
+  }
+
+  .home-v2 .home-banner .home-honors__flag {
+    width: 22px;
+    height: 30px;
+  }
+
+  .home-v2 .home-banner .home-honors__banner {
+    width: 32px;
+    height: 44px;
+  }
+}
+
+/* 主公页：称号效果、旧誉、匾额选择 */
+.lord-sheet ~ .title-list .title-row__effect,
+.modal-shell .title-list .title-row__effect {
+  color: #e7c56d;
+}
+
+.modal-shell .title-list .title-row:not(.is-earned) .title-row__effect {
+  color: rgba(231, 197, 109, 0.55);
+}
+
+.modal-shell .title-list--retired .title-row.is-retired {
+  border-style: dashed;
+  color: rgba(245, 230, 200, 0.42);
+}
+
+.modal-shell .title-list--retired .title-row.is-retired strong {
+  color: rgba(245, 230, 200, 0.5);
+}
+
+.modal-shell .plaque-picker .plaque-picker__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal-shell .plaque-picker .plaque-picker__options button {
+  display: grid;
+  gap: 1px;
+  min-height: 40px;
+  padding: 5px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.35);
+  border-radius: 8px;
+  background: rgba(31, 28, 42, 0.72);
+  color: #f5e6c8;
+  font-size: 13px;
+  text-align: center;
+}
+
+.modal-shell .plaque-picker .plaque-picker__options button small {
+  color: rgba(245, 230, 200, 0.6);
+  font-size: 10px;
+}
+
+.modal-shell .plaque-picker .plaque-picker__options button.is-selected {
+  border-color: #f0d68a;
+  background: rgba(139, 26, 26, 0.55);
+  color: var(--gold-light);
+}
+
+/* 疆域图本府：金汤之将描金边、天下归心挂国号小旗 */
+.conquest-map .conquest-node.is-home rect.conquest-node__golden,
+.conquest-map .conquest-node.is-home.is-selected rect.conquest-node__golden {
+  fill: none;
+  stroke: #ffd766;
+  stroke-width: 0.9;
+  filter: drop-shadow(0 0 1.2px rgba(255, 215, 102, 0.9));
+}
+
+.conquest-map .conquest-node.is-home .conquest-node__realm-pole {
+  stroke: #5a1a12;
+  stroke-width: 0.5;
+}
+
+.conquest-map .conquest-node.is-home .conquest-node__realm-flag,
+.conquest-map .conquest-node.is-home.is-selected .conquest-node__realm-flag {
+  fill: #8f1d16;
+  stroke: #f2c45a;
+  stroke-width: 0.35;
+}
+
+.conquest-map .conquest-node.is-home .conquest-node__realm text,
+.conquest-map .conquest-node.is-home text.conquest-node__realm-text {
+  fill: #ffd76a;
+  font-size: 3px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+/* 称号行：名字不折行，说明另起一列自然换行 */
+.modal-shell .title-list .title-row strong {
+  flex: none;
+  white-space: nowrap;
+}
+
+.modal-shell .title-list .title-row > span {
+  text-align: right;
+}
+
+/* ===== v3.1 匾旗点击热区：视觉尺寸不变，透明 padding 把每面旗的可点区扩到约 34~48px，旗与旗之间不再只隔 1~2px ===== */
+.home-v2 .home-banner .home-honors .home-honors__left {
+  top: 0;
+  left: 2px;
+  gap: 0;
+}
+
+.home-v2 .home-banner .home-honors .home-honors__left > .home-honors__flag {
+  box-sizing: content-box;
+  padding: 6px 4px;
+}
+
+.home-v2 .home-banner .home-honors .home-honors__right {
+  top: 0;
+  right: 2px;
+  gap: 0;
+}
+
+.home-v2 .home-banner .home-honors .home-honors__right > .home-honors__banner {
+  box-sizing: content-box;
+  padding: 4px;
+}
+
+/* 家声小旗整组一个按钮（2×2），四周补透明边 */
+.home-v2 .home-banner .home-honors .home-honors__right > button.home-honors__lineage {
+  box-sizing: content-box;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px;
+  margin-top: 0;
+  align-content: start;
+}
+
+.home-v2 .home-banner .home-honors button.home-honors__lineage > .home-honors__flag {
+  pointer-events: none;
+}
+
+/* 匾上下各扩 8px 可点区（::before 是挂绳，热区用 ::after） */
+.home-v2 .home-banner .home-honors button.home-honors__plaque::after {
+  content: '';
+  position: absolute;
+  inset: -8px -6px;
+}

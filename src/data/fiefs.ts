@@ -4,7 +4,7 @@ import type { AiSkill } from '../lib/doudizhu';
 
 /**
  * 封地经略：宅邸升至侯府后，在疆域图上攻取与本府或已有封地相邻的郡。
- * 攻郡先押上军资（开拓价的一半），和该郡守将打一局斗地主，胜则郡归府下、输则军资没入敌手。
+ * 攻郡先押上军资（开拓价的一半），和该郡守将打一局斗地主，胜则郡归府下、失手则军资没入敌手。
  * 每郡出兵前定一条方略（收入、军令上限或三项属性），拿下后还给所有牌局一项特权。封地是家业田产，传位随之传下。
  */
 export type FiefPolicyId = 'farming' | 'military' | 'schooling';
@@ -55,7 +55,7 @@ export const fiefs: Fief[] = [
 /** 本府（荆州）在疆域图上的位置，与南阳、长沙相邻 */
 export const HOME_NODE = { id: 'home', name: '荆州', x: 40, y: 46, neighbors: ['nanyang', 'changsha'] };
 
-/** 攻郡押上的军资占开拓价的比例：胜则得郡，输则军资没入敌手 */
+/** 攻郡押上的军资占开拓价的比例：胜则得郡，失手则军资没入敌手 */
 export const CONQUEST_STAKE_RATE = 0.5;
 
 export const fiefPolicies: FiefPolicy[] = [
@@ -83,9 +83,9 @@ export function attackableFiefs(holdings: FiefHoldings) {
   return fiefs.filter((fief) => !holdings[fief.id] && fief.neighbors.some((id) => id === 'home' || Boolean(holdings[id])));
 }
 
-/** 「下一郡」：可攻的郡里最便宜的那个（给首页提示、志向提示用） */
+/** 「下一郡」：可攻的郡里最便宜的那个（给首页提示、志向提示用）。目录按开拓价从低到高排，两条造价曲线顺序相同，按目录顺序取即可 */
 export function nextFief(holdings: FiefHoldings) {
-  return [...attackableFiefs(holdings)].sort((a, b) => a.cost - b.cost)[0] ?? null;
+  return [...attackableFiefs(holdings)].sort((a, b) => fiefs.indexOf(a) - fiefs.indexOf(b))[0] ?? null;
 }
 
 /** 只保留与本府连成一片的封地（旧存档按顺序持有，天然连通） */
@@ -128,8 +128,4 @@ export function fiefStatBonus(holdings: FiefHoldings) {
 
 export function orderCapFor(holdings: FiefHoldings, realms: RealmCounts = emptyRealms) {
   return ORDER_CAP + countPolicy(holdings, 'military') * FIEF_ORDER_BONUS + realmOrderBonus(realms);
-}
-
-export function policyChangeCost(fief: Fief) {
-  return Math.round(fief.cost * FIEF_POLICY_CHANGE_RATE);
 }

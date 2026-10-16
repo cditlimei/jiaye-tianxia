@@ -5,6 +5,7 @@ import { ambitionStatus, findAmbition } from '../data/ambitions';
 import { findLord } from '../data/gameData';
 import { dynastyCount, findRealm } from '../data/dynasty';
 import { traditionOf } from '../data/traditions';
+import { availablePlaques, PLAQUE_TEXT, plaqueOf, RETIRED_LINEAGE_NAMES, retiredHonors, TITLE_INFO } from '../data/titleEffects';
 import { imageUrl } from '../lib/assets';
 import { legacyIncomeMultiplier } from '../lib/battle';
 import type { GameState } from '../types';
@@ -18,9 +19,13 @@ interface LordModalProps {
   intelligence: number;
   charisma: number;
   onClose: () => void;
+  /** 固定主城挂哪块匾（null = 按最高档自动） */
+  onSetPlaque?: (plaque: string | null) => void;
 }
 
-export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose }: LordModalProps) {
+const plaqueName = (id: string) => (id in TITLE_INFO ? TITLE_INFO[id as keyof typeof TITLE_INFO].name : RETIRED_LINEAGE_NAMES[id as keyof typeof RETIRED_LINEAGE_NAMES] ?? id);
+
+export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose, onSetPlaque }: LordModalProps) {
   const ambition = ambitionStatus(state);
   const [chronicleOpen, setChronicleOpen] = useState(false);
   const [rankedOpen, setRankedOpen] = useState(false);
@@ -48,9 +53,9 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
         <section className="chronicle" aria-label="本代志向">
           <div className="section-title">
             <span>本代志向</span>
-            <strong>{ambition.ambition.name} · {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()} / ${ambition.target.toLocaleString()} ${ambition.ambition.unit}`}</strong>
+            <strong>{ambition.ambition.name} · {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()} / ${ambition.target.toLocaleString()} ${ambition.unit}`}</strong>
           </div>
-          <p>{ambition.ambition.describe(ambition.target)}。{ambition.ambition.motto}。</p>
+          <p>{ambition.text}。{ambition.ambition.motto}。</p>
         </section>
       )}
       {state.chronicle.length > 0 && (
@@ -75,28 +80,58 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
         </section>
       )}
       {[
-        { label: '家声（跨代保留）', list: titles.filter((title) => title.lineage) },
-        { label: '本代称号', list: titles.filter((title) => !title.lineage) }
+        { label: '家声（跨朝保留）', list: titles.filter((title) => title.lineage) },
+        { label: '本朝称号', list: titles.filter((title) => !title.lineage) }
       ].map((group) => (
       <section key={group.label} className="title-list" aria-label={group.label}>
         <div className="section-title">
           <span>{group.label}</span>
           <strong>{group.list.filter((title) => hasTitle(state, title)).length}/{group.list.length}</strong>
         </div>
-        {(group.label === '本代称号' && !rankedOpen && group.list.every((title) => title.isEarned(state)) ? [] : group.list).map((title) => {
+        {(group.label === '本朝称号' && !rankedOpen && group.list.every((title) => title.isEarned(state)) ? [] : group.list).map((title) => {
           const earned = hasTitle(state, title);
           return (
             <div key={title.id} className={`title-row ${earned ? 'is-earned' : ''}`}>
               <strong>「{title.name}」</strong>
-              <span>{earned ? '已获得' : title.id === 'scholarly' && state.generation < 2 ? '传位后方可解锁' : title.requirement || '开局即有'}</span>
+              <span>{earned ? '已获得' : title.requirement || '开局即有'}{title.id !== 'commoner' ? <> · <span className="title-row__effect">{title.effect}</span></> : null}</span>
             </div>
           );
         })}
-        {group.label === '本代称号' && group.list.every((title) => title.isEarned(state)) && (
-          <button type="button" className="chronicle-toggle" onClick={() => setRankedOpen((open) => !open)}>{rankedOpen ? '收起' : `本代称号已集齐 ${group.list.length}/${group.list.length} · 展开`}</button>
+        {group.label === '本朝称号' && group.list.every((title) => title.isEarned(state)) && (
+          <button type="button" className="chronicle-toggle" onClick={() => setRankedOpen((open) => !open)}>{rankedOpen ? '收起' : `本朝称号已集齐 ${group.list.length}/${group.list.length} · 展开`}</button>
         )}
       </section>
       ))}
+      {retiredHonors(state).length > 0 && (
+        <section className="title-list title-list--retired" aria-label="旧誉">
+          <div className="section-title">
+            <span>旧誉</span>
+            <strong>{retiredHonors(state).length} 项 · 只作纪念</strong>
+          </div>
+          {retiredHonors(state).map((id) => (
+            <div key={id} className="title-row is-retired">
+              <strong>「{RETIRED_LINEAGE_NAMES[id]}」</strong>
+              <span>旧版家声，已退役，没有效果 · 可挂纪念匾「{PLAQUE_TEXT[id]}」</span>
+            </div>
+          ))}
+        </section>
+      )}
+      {availablePlaques(state).length > 0 && onSetPlaque && (
+        <section className="title-list plaque-picker" aria-label="主城匾额">
+          <div className="section-title">
+            <span>主城匾额</span>
+            <strong>现挂「{PLAQUE_TEXT[plaqueOf(state) ?? ''] ?? '无'}」</strong>
+          </div>
+          <div className="plaque-picker__options" role="radiogroup" aria-label="挂哪块匾">
+            <button type="button" role="radio" aria-checked={state.plaque === null} className={state.plaque === null ? 'is-selected' : ''} onClick={() => onSetPlaque(null)}>自动（最高称号）</button>
+            {availablePlaques(state).map((id) => (
+              <button key={id} type="button" role="radio" aria-checked={state.plaque === id} className={state.plaque === id ? 'is-selected' : ''} onClick={() => onSetPlaque(id)}>
+                「{PLAQUE_TEXT[id]}」<small>{plaqueName(id)}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {state.pastDynasties.length > 0 && (
         <section className="chronicle" aria-label="前朝">
           <div className="section-title">

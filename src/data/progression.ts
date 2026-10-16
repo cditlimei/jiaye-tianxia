@@ -2,9 +2,7 @@ import type { HomeLevel, Partner, Weapon } from './gameData';
 import type { GameState } from '../types';
 import { findPartnerEvent, partnersWithResolvedEvent } from './partnerEvents';
 import { ownedFiefCount } from './fiefs';
-import { AMBITION_TITLE_COUNT, ambitionsAchieved } from './ambitions';
-import { isEndingReached } from './dynasty';
-import { traditionOf } from './traditions';
+import { CURRENT_TITLE_IDS, CURRENT_TITLE_RULES, LINEAGE_TITLE_IDS, LINEAGE_TITLE_RULES, RETIRED_LINEAGE_IDS, TITLE_INFO } from './titleEffects';
 import { minorGoldValue, parseMinorKey } from './minorEvents';
 
 /** 宅邸升到某级时新开放的内容（升阶画面与纪事用） */
@@ -142,54 +140,44 @@ export interface Title {
   /** 达成条件的人话，用于「下一称号」提示 */
   requirement: string;
   isEarned: (state: GameState) => boolean;
-  /** 跨代的家声称号，不和本代称号抢显示位 */
+  /** 跨代的家声称号，不和本朝称号抢显示位 */
   lineage?: boolean;
+  /** 效果（v3.1 起每个称号都有效果，见 titleEffects.ts） */
+  effect: string;
 }
 
-// 本代称号按档位从低到高排列，显示已达成里档位最高的；家声称号单列。本代称号由存档实时算出；家声另记入 earnedTitles，开新朝后不收回
+// v3.1：本朝称号 6 个（按档位从低到高，显示已达成里档位最高的；现算、不落存档）+ 家声 5 个（记入 earnedTitles，开新朝不收回）
+// 条件与效果的唯一来源是 titleEffects.ts；退役的 11 个见 RETIRED_LINEAGE_IDS（家声，白名单保留为旧誉）与下方注释（本朝称号，直接删）
+// 已删的本朝称号：warlord 一方豪强、magnate 府邸之主、court-star 坐拥两郡、granary 坐拥沃野、harmony 内府和睦、confidant 知心人
 export const titles: Title[] = [
-  { id: 'commoner', name: '白身', requirement: '', isEarned: () => true },
-  { id: 'gentry', name: '乡绅', requirement: '宅邸升至砖瓦宅', isEarned: (s) => s.homeLevel >= 3 },
-  { id: 'warlord', name: '一方豪强', requirement: '累计 10 场胜利', isEarned: (s) => s.battleWins >= 10 },
-  { id: 'magnate', name: '府邸之主', requirement: '宅邸升至府邸', isEarned: (s) => s.homeLevel >= 4 },
-  { id: 'marquis-house', name: '侯门显贵', requirement: '宅邸升至侯府', isEarned: (s) => s.homeLevel >= 5 },
-  { id: 'river-tiger', name: '百战之将', requirement: '累计 20 场胜利', isEarned: (s) => s.battleWins >= 20 },
-  { id: 'court-star', name: '坐拥两郡', requirement: '封地两郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 2 },
-  { id: 'north-general', name: '金汤之将', requirement: '守住 3 次邻郡反攻', isEarned: (s) => s.frontierWins >= 3 },
-  { id: 'granary', name: '坐拥沃野', requirement: '屯田升至沃野千里', isEarned: (s) => s.farmLevel >= 5 },
-  { id: 'harmony', name: '内府和睦', requirement: '了却 5 位伴侣的心事', isEarned: (s) => partnersWithResolvedEvent(s.resolvedPartnerEvents) >= 5 },
-  { id: 'confidant', name: '知心人', requirement: '了却 5 位伴侣的第二段心事', isEarned: (s) => Object.keys(s.resolvedPartnerEvents).filter((k) => k.endsWith('#2')).length >= 5 },
-  { id: 'hegemon', name: '一代枭雄', requirement: '宅邸王城且累计 30 场胜利', isEarned: (s) => s.homeLevel >= 6 && s.battleWins >= 30 },
-  { id: 'founder', name: '开国元勋', requirement: '完成一次传位', isEarned: (s) => s.generation >= 2, lineage: true },
-  { id: 'eternal', name: '千秋家业', requirement: '家业点累计 10 点', isEarned: (s) => s.legacyPoints >= 10, lineage: true },
-  { id: 'marquis', name: '裂土封侯', requirement: '封地三郡', isEarned: (s) => ownedFiefCount(s.fiefs) >= 3, lineage: true },
-  { id: 'six-commanderies', name: '六郡之主', requirement: '六郡尽归府下', isEarned: (s) => ownedFiefCount(s.fiefs) >= 6, lineage: true },
-  { id: 'restorer', name: '再造山河', requirement: '开创第二朝', isEarned: (s) => s.pastDynasties.length >= 1, lineage: true },
-  { id: 'three-dynasties', name: '三朝元老', requirement: '历经三朝（开创第三朝）', isEarned: (s) => s.pastDynasties.length >= 2, lineage: true },
-  { id: 'three-realms', name: '三分归一', requirement: '魏、蜀、吴三个国号都立过', isEarned: (s) => s.realms.wei > 0 && s.realms.shu > 0 && s.realms.wu > 0, lineage: true },
-  { id: 'unifier', name: '天下归心', requirement: '六郡尽归、王城、家业点满', isEarned: (s) => isEndingReached(s), lineage: true },
-  { id: 'tradition', name: '家风传世', requirement: '连续两代达成同一志向', isEarned: (s) => traditionOf(s.chronicle) !== null, lineage: true },
-  { id: 'scholarly', name: '家学渊源', requirement: `三代志向达成`, isEarned: (s) => ambitionsAchieved(s) >= AMBITION_TITLE_COUNT, lineage: true }
+  ...CURRENT_TITLE_IDS.map((id) => ({ id, name: TITLE_INFO[id].name, requirement: TITLE_INFO[id].requirement, effect: TITLE_INFO[id].effect, isEarned: (s: GameState) => CURRENT_TITLE_RULES[id](s) })),
+  ...LINEAGE_TITLE_IDS.map((id) => ({ id, name: TITLE_INFO[id].name, requirement: TITLE_INFO[id].requirement, effect: TITLE_INFO[id].effect, isEarned: (s: GameState) => LINEAGE_TITLE_RULES[id](s), lineage: true }))
 ];
 
 /**
- * 天下归心时必然满足的家声：六郡（含三郡）、家业点满（≥10）、传过位（家业点只能靠传位得）。
- * 老存档没有 earnedTitles，有前朝即说明到过终局，按此补记。
+ * 有前朝的老存档（没有 earnedTitles）按此补记：旧版天下归心时必然满足的家声（开国元勋、千秋家业、裂土封侯、六郡之主、天下归心）。
+ * 前四个已退役，补记后靠 RETIRED_LINEAGE_IDS 白名单保住，显示为旧誉。
  */
 export const ENDING_LINEAGE_TITLE_IDS = ['founder', 'eternal', 'marquis', 'six-commanderies', 'unifier'];
 
-/** 称号是否已得：家声看记录或当前满足，本代称号只看当前 */
+/** 称号是否已得：家声看记录或当前满足，本朝称号只看当前 */
 export function hasTitle(state: GameState, title: Title) {
   return (title.lineage && state.earnedTitles.includes(title.id)) || title.isEarned(state);
 }
 
-/** 把当前满足的家声并入记录（只增不减）；没有新增时返回原 state，免得多余重渲染 */
+/** 把当前满足的家声并入记录（只增不减，只授现役家声）；没有新增时返回原 state，免得多余重渲染 */
 export function collectEarnedTitles(state: GameState): GameState {
   const fresh = titles.filter((title) => title.lineage && !state.earnedTitles.includes(title.id) && title.isEarned(state)).map((title) => title.id);
   return fresh.length > 0 ? { ...state, earnedTitles: [...state.earnedTitles, ...fresh] } : state;
 }
 
+/** 读档白名单：现役家声 ∪ 退役家声（旧誉） */
+export function isKeptLineageId(id: string) {
+  return titles.some((title) => title.lineage && title.id === id) || (RETIRED_LINEAGE_IDS as string[]).includes(id);
+}
+
 export function getTitleStatus(state: GameState) {
+  // 只在 6 个本朝称号里找下一块匾
   const ranked = titles.filter((title) => !title.lineage);
   let currentIndex = 0;
   ranked.forEach((title, index) => {
