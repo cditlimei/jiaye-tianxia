@@ -152,28 +152,46 @@ assertTrue(chooseAiPlay(leadHand, null, 'cautious', { landlordCards: 17, teammat
   const sg = await import(pathToFileURL(path.join(dir, 'lib/siege.mjs')).href);
   const ff = await import(pathToFileURL(path.join(dir, 'data/fiefs.mjs')).href);
   const ids = (list) => list.map((f) => f.id).sort().join(',');
+  const fa = await import(pathToFileURL(path.join(dir, 'data/factions.mjs')).href);
+  // v3.2：本府随势力，荆州（群的本府）不进郡池；以下老断言按群 · 荆州
+  const HOME = 'jingzhou';
   const all = { nanyang: 'farming', runan: 'farming', yingchuan: 'farming', changsha: 'farming', bajun: 'farming', liaodong: 'farming' };
-  assertEqual(ids(sg.exposedFiefs(all)), 'bajun,liaodong,runan', 'six fiefs: only runan/bajun/liaodong are exposed');
-  assertEqual(ids(sg.exposedFiefs({ nanyang: 'farming' })), 'nanyang', 'single fief is exposed');
-  assertEqual(ids(sg.exposedFiefs({ nanyang: 'farming', yingchuan: 'farming', runan: 'farming' })), 'runan,yingchuan', 'nanyang hub not exposed while it links others');
-  assertEqual(ids(sg.exposedFiefs({ nanyang: 'farming', changsha: 'farming' })), 'changsha,nanyang', 'two home neighbours both exposed');
-  assertEqual(ids(sg.exposedFiefs({})), '', 'no fiefs, nothing exposed');
-  // 任意一种连通持有：拿掉任一末端郡后剩下的仍全部连通
-  const catalog = ff.fiefs.map((f) => f.id);
-  for (let mask = 1; mask < 1 << catalog.length; mask += 1) {
-    const holding = Object.fromEntries(catalog.filter((_id, i) => mask & (1 << i)).map((id) => [id, 'farming']));
-    if (Object.keys(ff.connectedHoldings(holding)).length !== Object.keys(holding).length) continue;
-    for (const fief of sg.exposedFiefs(holding)) {
-      const rest = { ...holding };
-      delete rest[fief.id];
-      assertEqual(Object.keys(ff.connectedHoldings(rest)).length, Object.keys(rest).length, `losing ${fief.id} from ${Object.keys(holding).join('+')} keeps the rest connected`);
-    }
-    assertTrue(sg.exposedFiefs(holding).length > 0, `connected holding ${Object.keys(holding).join('+')} always has an exposed fief`);
+  assertEqual(ids(sg.exposedFiefs(all, HOME)), 'bajun,liaodong,runan', 'six fiefs: only runan/bajun/liaodong are exposed');
+  assertEqual(ids(sg.exposedFiefs({ nanyang: 'farming' }, HOME)), 'nanyang', 'single fief is exposed');
+  assertEqual(ids(sg.exposedFiefs({ nanyang: 'farming', yingchuan: 'farming', runan: 'farming' }, HOME)), 'runan,yingchuan', 'nanyang hub not exposed while it links others');
+  assertEqual(ids(sg.exposedFiefs({ nanyang: 'farming', changsha: 'farming' }, HOME)), 'changsha,nanyang', 'two home neighbours both exposed');
+  assertEqual(ids(sg.exposedFiefs({}, HOME)), '', 'no fiefs, nothing exposed');
+  // v3.2 各势力：郡池六郡、首批可攻、六郡全取时的末端郡（反攻战线随本府）
+  const firstOf = { qun: 'changsha,nanyang', wei: 'liaodong,nanyang', shu: 'changsha', wu: 'nanyang' };
+  const edgeOf = { qun: 'bajun,liaodong,runan', wei: 'bajun,liaodong,runan', shu: 'liaodong,runan', wu: 'bajun,liaodong' };
+  for (const [fid, faction] of Object.entries(fa.FACTIONS)) {
+    const pool = ff.fiefPool(faction.seat);
+    assertEqual(pool.length, 6, `${fid}: pool is six fiefs`);
+    assertEqual(faction.ladder.slice().sort().join(','), pool.map((f) => f.id).sort().join(','), `${fid}: ladder covers the pool`);
+    assertEqual(ids(ff.attackableFiefs({}, faction.seat)), firstOf[fid], `${fid}: first attackable`);
+    const six = Object.fromEntries(pool.map((f) => [f.id, 'farming']));
+    assertEqual(ids(sg.exposedFiefs(six, faction.seat)), edgeOf[fid], `${fid}: exposed when six held`);
+    assertEqual(Object.keys(ff.connectedHoldings({ ...six, [faction.seat]: 'farming' }, faction.seat)).length, 6, `${fid}: seat never counts as a fief`);
   }
+  // 任意势力、任意一种连通持有：拿掉任一末端郡后剩下的仍全部连通
+  for (const faction of Object.values(fa.FACTIONS)) {
+    const catalog = ff.fiefPool(faction.seat).map((f) => f.id);
+    for (let mask = 1; mask < 1 << catalog.length; mask += 1) {
+      const holding = Object.fromEntries(catalog.filter((_id, i) => mask & (1 << i)).map((id) => [id, 'farming']));
+      if (Object.keys(ff.connectedHoldings(holding, faction.seat)).length !== Object.keys(holding).length) continue;
+      for (const fief of sg.exposedFiefs(holding, faction.seat)) {
+        const rest = { ...holding };
+        delete rest[fief.id];
+        assertEqual(Object.keys(ff.connectedHoldings(rest, faction.seat)).length, Object.keys(rest).length, `${faction.id}: losing ${fief.id} from ${Object.keys(holding).join('+')} keeps the rest connected`);
+      }
+      assertTrue(sg.exposedFiefs(holding, faction.seat).length > 0, `${faction.id}: connected holding ${Object.keys(holding).join('+')} always has an exposed fief`);
+    }
+  }
+  const catalog = ff.fiefPool(HOME).map((f) => f.id);
   // 选郡：保护期内不选；城防低优先；同城防选得郡晚的
   const now = 1_000_000_000_000;
   const old = now - sg.FIEF_PROTECT_MS - 1;
-  const base = { fiefs: all, fiefWalls: {}, fiefTakenAt: Object.fromEntries(catalog.map((id) => [id, old - 100])) };
+  const base = { seat: HOME, fiefs: all, fiefWalls: {}, fiefTakenAt: Object.fromEntries(catalog.map((id) => [id, old - 100])) };
   assertEqual(sg.pickSiegeTarget({ ...base, fiefTakenAt: { ...base.fiefTakenAt, liaodong: old } }, now)?.id, 'liaodong', 'later-taken exposed fief first');
   assertEqual(sg.pickSiegeTarget({ ...base, fiefWalls: { bajun: 1 } }, now)?.id, 'bajun', 'lower walls first');
   assertEqual(sg.pickSiegeTarget({ ...base, fiefTakenAt: { ...base.fiefTakenAt, runan: now - 1000, bajun: now - 1000, liaodong: now - 1000 } }, now), null, 'all exposed fiefs protected → none');
@@ -186,7 +204,7 @@ assertTrue(chooseAiPlay(leadHand, null, 'cautious', { landlordCards: 17, teammat
   assertEqual(sg.siegeSkill(find('nanyang'), 'military'), 'novice', 'novice stays novice');
   // 逾期最低扣到 1；守城局进行中不判逾期
   const siege = { fiefId: 'runan', attacker: '袁术', skill: 'novice', startedAt: now - 2, dueAt: now - 1 };
-  const st = { siege, nextSiegeAt: 0, fiefWalls: { runan: 1 }, fiefTakenAt: {}, lostFiefs: {}, peakFiefs: 2, fiefs: { nanyang: 'farming', runan: 'farming' }, homeLevel: 5, legacyPoints: 0, activeBattle: null, day: 9 };
+  const st = { seat: HOME, siege, nextSiegeAt: 0, fiefWalls: { runan: 1 }, fiefTakenAt: {}, lostFiefs: {}, peakFiefs: 2, fiefs: { nanyang: 'farming', runan: 'farming' }, homeLevel: 5, legacyPoints: 0, activeBattle: null, day: 9 };
   const exp = sg.expireSiege(st, now);
   assertEqual(`${exp.siege}|${exp.fiefWalls.runan}|${exp.nextSiegeAt - now}`, `null|1|${sg.SIEGE_INTERVAL_MS}`, 'expiry keeps at least 1 wall');
   assertEqual(sg.expireSiege({ ...st, activeBattle: { mode: 'land', lossGold: 0, conquest: { fiefId: 'runan', policyId: 'farming', stake: 0, kind: 'defend' } } }, now).siege, siege, 'no expiry while defending');

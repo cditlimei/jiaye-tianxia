@@ -4,6 +4,9 @@
  * 信息类技能（貂蝉、大乔、蔡文姬、步练师）笨玩家用不上，不在这里算，靠实玩判断。
  * 用法: node scripts/doudizhu-partner-sim.mjs            全部数值类技能 × 三级 × 三档场次
  *       SKILL=zhurong LV=3 SKILLS_AI=veteran GAMES=20000 node scripts/doudizhu-partner-sim.mjs
+ * v3.2 郡的牌桌特权校准（给 econ 的势力节奏用）：PERKS=all node scripts/doudizhu-partner-sim.mjs
+ *       逐个特权（不带伴侣）算单局净期望倍率：帝乡沃土/荆襄九郡（缴获 +20%/+10%，输付按缴获同比）、门生故吏（失手减半）、
+ *       兵源充沛（农民赢拿全份）、盐铁之利（赢牌倍数至少 ×2）；谋士献策、良马斥候是信息类，笨玩家用不上，记 1.0
  */
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -54,7 +57,7 @@ function deal(rand) {
 }
 
 /** 一局：返回以场次缴获为 1 的净收益，以及技能触发信息 */
-function playGame(seed, aiSkill, escort) {
+function playGame(seed, aiSkill, escort, perks = []) {
   const rand = ddz.seededRandom(seed);
   const id = escort?.id ?? null;
   const lv = escort?.level ?? 0;
@@ -93,12 +96,15 @@ function playGame(seed, aiSkill, escort) {
       const w = firstCaller === 0 ? wants(t.hands[0], 'veteran', true) : wants(t.hands[firstCaller], aiSkill, true);
       if (w) { mult = Math.min(MAX, mult * 2); candidate = firstCaller; }
     }
-    return play(t, candidate, mult, rand, aiSkill, id, lv, sk, redeals);
+    return play(t, candidate, mult, rand, aiSkill, id, lv, sk, redeals, perks);
   }
   throw new Error('bid_loop');
 }
 
-function play(t, landlord, mult0, rand, aiSkill, id, lv, sk, redeals) {
+function play(t, landlord, mult0, rand, aiSkill, id, lv, sk, redeals, perks = []) {
+  // 郡特权（与 BattleScreen / DouDizhuGame 同一公式）：缴获乘数连同失手付款一起按缴获同比放大（venueLoss = venueGold × 两成）
+  const has = (perk) => perks.includes(perk);
+  const rewardScale = (has('nanyang') ? 1.2 : 1) * (has('jingzhou') ? 1.1 : 1);
   const hands = { ...t.hands, [landlord]: ddz.sortCards([...t.hands[landlord], ...t.kitty]) };
   // 赤壁：能加倍就加倍（笨玩家不看牌）
   // 与 finishBidding 一致：叫抢已到封顶 8 不弹加倍
@@ -149,23 +155,38 @@ function play(t, landlord, mult0, rand, aiSkill, id, lv, sk, redeals) {
   const base = Math.min(MAX, mult * (spring ? 2 : 1));
   if (win) {
     const fire = id === 'zhurong' ? 1 + Math.min(sk.values[lv - 1], longs * ps.ZHURONG_STEP) : 1;
-    return { net: Math.min(MAX, base * doubled) * share * fire, win, refund: false, longs, bigBombs, redeals };
+    const winMult = Math.min(MAX, base * doubled);
+    const winShare = has('changsha') ? 1 : share;
+    return { net: (has('bajun') ? Math.max(2, winMult) : winMult) * winShare * fire * rewardScale, win, refund: false, longs, bigBombs, redeals };
   }
   // 与 DouDizhuGame 同一公式：失手加付按「加倍实际多赢了多少」（xiaoqiaoLossFactor），封顶吃掉的部分不加付
   const lossMult = base;
   const lossRate = doubled > 1 ? (process.env.XQ_D ? 1 + (XQ_D * (lv >= 3 ? 0.75 : 1) - 1) * (Math.min(MAX, base * 2) / base - 1) : ps.xiaoqiaoLossFactor(lv, Math.min(MAX, base * 2) / base)) : 1;
   const cut = id === 'mifuren' ? Math.max(ps.MIFUREN_MIN_PAY, 1 - sk.values[lv - 1]) : 1;
   const refund = id === 'mifuren' && lossMult >= ps.MIFUREN_REFUND_MULTIPLIER;
-  return { net: -LOSS_RATE * lossMult * lossRate * share * cut, win, refund, longs, bigBombs, redeals };
+  return { net: -LOSS_RATE * lossMult * lossRate * share * cut * rewardScale * (has('runan') ? 0.5 : 1), win, refund, longs, bigBombs, redeals };
 }
 
-function run(aiSkill, escort) {
+function run(aiSkill, escort, perks = []) {
   let sum = 0, wins = 0, refunds = 0, longs = 0, bigBombs = 0, redeals = 0;
   for (let i = 0; i < GAMES; i += 1) {
-    const r = playGame(1000003 * (i + 1), aiSkill, escort);
+    const r = playGame(1000003 * (i + 1), aiSkill, escort, perks);
     sum += r.net; wins += r.win ? 1 : 0; refunds += r.refund ? 1 : 0; longs += r.longs; bigBombs += r.bigBombs; redeals += r.redeals;
   }
   return { ev: sum / GAMES, win: wins / GAMES, refundRate: refunds / GAMES, longs: longs / GAMES, bigBombs: bigBombs / GAMES, redeals: redeals / GAMES };
+}
+
+if (process.env.PERKS) {
+  const PERK_LIST = process.env.PERKS === 'all' ? ['nanyang', 'jingzhou', 'runan', 'changsha', 'bajun'] : process.env.PERKS.split(',');
+  for (const aiSkill of AI_SKILLS) {
+    const base = run(aiSkill, null);
+    console.log(`[${aiSkill}] 无特权 净期望 ${base.ev.toFixed(4)} 胜率 ${(base.win * 100).toFixed(1)}%（${GAMES} 局）`);
+    for (const perk of PERK_LIST) {
+      const r = run(aiSkill, null, perk.split('+'));
+      console.log(`  特权 ${perk.padEnd(16)} 净期望 ${r.ev.toFixed(4)} 倍率 ${(r.ev / base.ev).toFixed(3)}`);
+    }
+  }
+  process.exit(0);
 }
 
 const rows = [];

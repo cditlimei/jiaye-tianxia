@@ -6,6 +6,7 @@ import { VENUES, venueReward, venueRewardScale, type VenueId } from '../data/ven
 import { FIEF_UNLOCK_HOME_LEVEL, fiefs as fiefCatalog, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
 import { activePerkIds, DEFENSE_FORCE_LANDLORD, type Siege } from '../lib/siege';
 import { ConquestMap } from './ConquestMap';
+import type { FactionId } from '../data/factions';
 import { BOUNTY_BONUS, bountyMode, bountyScale } from '../data/dynasty';
 import { safeTierIndex, effectiveLoss, battleLossGold, bestValueTierIndex, oddsPercentLabel, COURT_UNLOCK_HOME_LEVEL, ENEMY_CRIT_RATE, enemyForTier, enemyMaxHp, tierOddsFor, NAVAL_UNLOCK_HOME_LEVEL, PLAYER_CRIT_RATE, playerMaxHp, recommendedTierIndex, rollDamage, ROSTERS } from '../lib/battle';
 import { formatRemaining, FRONTIER_UNLOCK_HOME_LEVEL, RAID_PENALTY_CAP, RAID_PENALTY_RATE, raidPenalty, raidRemainingMs } from '../lib/frontier';
@@ -60,6 +61,8 @@ interface BattleScreenProps {
   onReturnHome: () => void;
   /** 疆域：已有封地、攻郡与改方略 */
   fiefs: FiefHoldings;
+  /** v3.2 本朝势力：本府位置、旗色、造价顺序、自带牌桌特权 */
+  faction?: FactionId;
   conquestStakeFor: (fief: Fief) => number;
   policyChangeCostFor: (fief: Fief) => number;
   /** 修城费、守城犒赏（按造价曲线与称号，lib/prices.ts）与收复押金比例 */
@@ -216,6 +219,7 @@ export function BattleScreen({
   onResolved,
   onReturnHome,
   fiefs: holdings,
+  faction = 'qun',
   conquestStakeFor,
   policyChangeCostFor,
   repairCostFor,
@@ -262,7 +266,8 @@ export function BattleScreen({
   const [conquestTarget, setConquestTarget] = useState<{ fief: Fief; policyId: FiefPolicyId; defend?: Siege } | null>(null);
   const [ddzKey, setDdzKey] = useState(0);
   // 城防不满（告急）的郡牌桌特权暂停
-  const perks = activePerkIds({ fiefs: holdings, fiefWalls });
+  // v3.2：势力自带特权（本府节点的特权）常驻，排在最前
+  const perks = activePerkIds({ fiefs: holdings, fiefWalls, faction });
   // 默认选能进的最高场
   const [venueId, setVenueId] = useState<VenueId>(() => [...VENUES].reverse().find((venue) => totalPower >= venue.requiredPower)?.id ?? 'beginner');
   // 每个战场自选的对手档位；null = 推荐档。边患不可选
@@ -275,7 +280,8 @@ export function BattleScreen({
   // 南阳「帝乡沃土」胜利缴获 +20%；汝南「门生故吏」失手只付一半
   // 国号吴：斗地主胜利缴获 +20%/次（realmScale('doudizhu')），与南阳同样直接算进本场缴获
   // 称号百战之将 +5% 同一乘点
-  const nanyangBoost = (perks.includes('nanyang') ? 1.2 : 1) * realmScale('doudizhu') * titleDdzScale;
+  // 荆州「荆襄九郡」胜利缴获 +10%（复用帝乡沃土的乘点）
+  const nanyangBoost = (perks.includes('nanyang') ? 1.2 : 1) * (perks.includes('jingzhou') ? 1.1 : 1) * realmScale('doudizhu') * titleDdzScale;
   const venueGold = Math.round(venueReward(selectedVenue, venueScale) * nanyangBoost);
   // 糜夫人「舍身」二重起失手少付，与汝南相乘，最少付三成
   const mifurenCut = escort?.id === 'mifuren' ? partnerSkills.mifuren.values[escort.level - 1] : 0;
@@ -646,6 +652,7 @@ export function BattleScreen({
 
         {!showRegions && (
           <ConquestMap
+            faction={faction}
             escortPicker={escortOptions.length > 0 && homeLevel >= FIEF_UNLOCK_HOME_LEVEL ? escortSummary : undefined}
             holdings={holdings}
             fiefWalls={fiefWalls}
@@ -712,7 +719,7 @@ export function BattleScreen({
           <p className="venue-summary">
             {selectedVenueLocked
               ? `当前场次战力不足，还差 ${selectedVenue.requiredPower - totalPower}。`
-              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${titleDdzScale > 1 ? `（百战之将 +${Math.round((titleDdzScale - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}${mifurenCut > 0 ? `（舍身：失手少付 ${Math.round(mifurenCut * 100)}%）` : ''}。`}
+              : `本场胜缴获 ${(venueGold * drillBonus).toLocaleString()} 金${bonusNote(true)}，败折损 ${venueLoss.toLocaleString()} 金${venueScale > 1 ? '（缴获随战力上涨）' : ''}${perks.includes('nanyang') ? '（南阳 +20%）' : ''}${perks.includes('jingzhou') ? '（荆州 +10%）' : ''}${realmScale('doudizhu') > 1 ? `（国号吴 +${Math.round((realmScale('doudizhu') - 1) * 100)}%）` : ''}${titleDdzScale > 1 ? `（百战之将 +${Math.round((titleDdzScale - 1) * 100)}%）` : ''}${perks.includes('runan') ? '（汝南：失手减半）' : ''}${mifurenCut > 0 ? `（舍身：失手少付 ${Math.round(mifurenCut * 100)}%）` : ''}。`}
           </p>
           {escortOptions.length > 0 && escortPicker}
           </section>

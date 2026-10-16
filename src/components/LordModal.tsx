@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { Lord } from '../data/gameData';
 import { hasTitle, titles } from '../data/progression';
-import { ambitionStatus, findAmbition } from '../data/ambitions';
+import { findAmbition, vowStatus } from '../data/ambitions';
 import { findLord } from '../data/gameData';
-import { dynastyCount, findRealm } from '../data/dynasty';
-import { traditionOf } from '../data/traditions';
+import { dynastyCount, effectiveRealms, findRealm } from '../data/dynasty';
+import { activeTradition } from '../data/traditions';
+import { BEQUESTS, FACTIONS } from '../data/factions';
 import { availablePlaques, PLAQUE_TEXT, plaqueOf, RETIRED_LINEAGE_NAMES, retiredHonors, TITLE_INFO } from '../data/titleEffects';
 import { imageUrl } from '../lib/assets';
 import { legacyIncomeMultiplier } from '../lib/battle';
@@ -26,10 +27,12 @@ interface LordModalProps {
 const plaqueName = (id: string) => (id in TITLE_INFO ? TITLE_INFO[id as keyof typeof TITLE_INFO].name : RETIRED_LINEAGE_NAMES[id as keyof typeof RETIRED_LINEAGE_NAMES] ?? id);
 
 export function LordModal({ lord, state, totalPower, intelligence, charisma, onClose, onSetPlaque }: LordModalProps) {
-  const ambition = ambitionStatus(state);
+  const vow = vowStatus(state);
+  const faction = FACTIONS[state.faction];
+  const eff = effectiveRealms(state);
   const [chronicleOpen, setChronicleOpen] = useState(false);
   const [rankedOpen, setRankedOpen] = useState(false);
-  const tradition = traditionOf(state.chronicle);
+  const tradition = activeTradition(state);
   const chronicleRows = chronicleOpen || state.chronicle.length <= 5 ? state.chronicle : state.chronicle.slice(-3);
   return (
     <ModalShell title="主公" onClose={onClose}>
@@ -44,18 +47,19 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
             <div><dt>智谋</dt><dd>{intelligence}</dd></div>
             <div><dt>声望</dt><dd>{charisma}</dd></div>
           </dl>
-          {dynastyCount(state.realms) > 0 && <small className="lord-sheet__realms">第 {dynastyCount(state.realms) + 1} 朝 · 国号加成：{(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')}</small>}
-          {tradition && <small className="lord-sheet__realms">家风「{tradition.name}」：{tradition.effect}（连续两代达成同一志向，换志向即断）</small>}
+          {(dynastyCount(state.realms) > 0 || state.faction !== 'qun') && <small className="lord-sheet__realms">第 {dynastyCount(state.realms) + 1} 朝 · {faction.name}起于{faction.capital}{(['wei', 'shu', 'wu'] as const).some((id) => eff[id] > 0) ? ` · 国号加成：${(['wei', 'shu', 'wu'] as const).filter((id) => eff[id] > 0).map((id) => `${findRealm(id)!.name}×${eff[id]}`).join('、')}（前朝遗泽冻结 + 本朝一份）` : ''}</small>}
+          {state.bequests.length > 0 && <small className="lord-sheet__realms">本朝遗泽：{state.bequests.map((id) => BEQUESTS.find((item) => item.id === id)?.name).join('、')}（只管这一朝）</small>}
+          {tradition && <small className="lord-sheet__realms">家风「{tradition.name}」：{tradition.effect}（旧家风本朝照旧，下次统一遗泽多选一项）</small>}
           <small>伴侣技能为主、属性为辅 · 武力→斗地主场次 · 智谋→政务收入 · 声望→招募折扣 · 三项都抬高斗地主缴获{state.legacyPoints > 0 ? ` · 家业点 ${state.legacyPoints}（收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%）` : ''}</small>
         </div>
       </div>
-      {ambition && (
-        <section className="chronicle" aria-label="本代志向">
+      {vow && (
+        <section className="chronicle" aria-label="本朝宏愿">
           <div className="section-title">
-            <span>本代志向</span>
-            <strong>{ambition.ambition.name} · {ambition.done ? '已达成' : `${ambition.progress.toLocaleString()} / ${ambition.target.toLocaleString()} ${ambition.unit}`}</strong>
+            <span>本朝宏愿 · {faction.name}</span>
+            <strong>{vow.vow.name} · {vow.done ? '已达成' : vow.missed ? '已错过' : '未竟'}</strong>
           </div>
-          <p>{ambition.text}。{ambition.ambition.motto}。</p>
+          <p>{vow.vow.text}。{vow.progress}。宏愿开朝即定，达成后下一朝遗泽多选一项（家学渊源两项）。</p>
         </section>
       )}
       {state.chronicle.length > 0 && (
@@ -70,7 +74,7 @@ export function LordModal({ lord, state, totalPower, intelligence, charisma, onC
             return (
               <div key={`${entry.generation}-${index}`} className={`chronicle-row ${entry.ambitionDone ? 'is-done' : ''}`}>
                 <strong>第 {entry.generation} 代 · {name}</strong>
-                <span>{entry.openDays ? `开府 ${entry.openDays} 天（第 ${entry.days} 日）` : `${entry.days} 日`} · {entry.wins} 胜 · 存金 {entry.gold.toLocaleString()}{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ' · 未定志向'}</span>
+                <span>{entry.openDays ? `开府 ${entry.openDays} 天（第 ${entry.days} 日）` : `${entry.days} 日`} · {entry.wins} 胜 · 存金 {entry.gold.toLocaleString()}{entry.fiefs > 0 ? ` · ${entry.fiefs} 郡` : ''}{ambitionName ? <> · <span className="nowrap">志向「{ambitionName}」{entry.ambitionDone ? '达成' : '未竟'}</span></> : ''}</span>
               </div>
             );
           })}

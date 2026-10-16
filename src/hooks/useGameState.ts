@@ -5,17 +5,18 @@ import type { Partner, Weapon } from '../data/gameData';
 import { findPartnerEvent, mergePartnerBoost, partnerIdOfKey } from '../data/partnerEvents';
 import { HOME_UNLOCKS, BATTLE_BONUS_MULTIPLIER, choiceGoldValue, collectEarnedTitles, getQuestStatuses, getTitleStatus, resolvePendingEvent, INCOME_BUFF_DAYS, INCOME_BUFF_PERCENT, quests } from '../data/progression';
 import { weaponBonusForLord, LEGACY_MAX_POINTS, LEGACY_START_GOLD_PER_POINT, SUCCESSION_HOME_LEVEL, calculateCharisma, calculateCourtPower, calculateIntelligence, calculateNavalPower, calculateTotalPower, effectiveRecruitCost, legacyIncomeMultiplier, recruitDiscountPercent, successionPlan, totalDailyIncome } from '../lib/battle';
-import { clearGameState, defaultGameState, GAME_STORAGE_KEY, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
+import { clearGameState, defaultGameState, GAME_STORAGE_KEY, isOldTabRaw, loadGameState, parseSyncedGameState, readRawGameState, saveGameState } from '../lib/storage';
 import type { BattleMode, GameState, Screen } from '../types';
 import { advanceClock, advanceOrders, CLOCK_TICK_MS, clockManual, CLOCK_VERSION, collectTreasury, dayIncomeOf, foundedDays, stepDay } from '../lib/clock';
-import { AMBITION_REWARD_GOLD, ambitionStatus, ambitionTargetFor, findAmbition, ownedFiefCountOf, trimChronicle, type AmbitionId } from '../data/ambitions';
-import { bountyScale, DYNASTY_START_GOLD, dynastyCount, dynastySummary, findRealm, genDays, genWins, isEndingReached, isHeirPending, realmFarmCost, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
+import { AMBITION_REWARD_GOLD, ownedFiefCountOf, reconcileVow, trimChronicle, VOWS, vowFor } from '../data/ambitions';
+import { bequestSlots, bountyScale, dynastyCount, dynastySummary, effectiveRealms, foundingGoldFor, genDays, genWins, isEndingReached, isHeirPending, realmFarmCost, realmRewardScale } from '../data/dynasty';
 import { minorGoldValue, MINOR_BOOST_AMOUNT, parseMinorKey } from '../data/minorEvents';
-import { legacyPriceRateFor, traditionOf } from '../data/traditions';
-import { attackableFiefs, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, fiefStatBonus, findFief, findFiefPolicy, nextFief, ownedFiefCount, type FiefPolicyId } from '../data/fiefs';
+import { activeTradition, legacyPriceRateFor } from '../data/traditions';
+import { attackableFiefs, FIEF_INCOME_PERCENT, FIEF_UNLOCK_HOME_LEVEL, findFief, findFiefPolicy, nextFief, ownedFiefCount, type FiefPolicyId } from '../data/fiefs';
+import { FACTIONS, findBequest, FOUNDABLE_FACTIONS, isBequestId, type BequestId, type FactionId } from '../data/factions';
 import { RAID_INTERVAL_DAYS, raidPenalty } from '../lib/frontier';
 import { advanceSiege, canLoseFief, FIEF_WALLS, firstSiegeGuarded, reclaimRemainingMs, reconcileSiege, releaseStaleSiege, SIEGE_FIRST_DELAY_MS, SIEGE_INTERVAL_MS, siegeTestFlags, wallsOf } from '../lib/siege';
-import { conquestStakeOf, fiefCostOf, homeUpgradeCostOf, incomePercentOf, orderCapOf, policyChangeCostOf, siegeBountyOf, wallRepairCostOf } from '../lib/prices';
+import { conquestStakeOf, fiefCostOf, homeUpgradeCostOf, incomePercentOf, orderCapOf, policyChangeCostOf, siegeBountyOf, statBonusOf, wallRepairCostOf } from '../lib/prices';
 import { availablePlaques, titleBonuses } from '../data/titleEffects';
 
 const HEARTBEAT_MS = 15000;
@@ -38,8 +39,7 @@ type Action =
   | { type: 'setEscort'; partnerId: string }
   | { type: 'recordSkillUse'; partnerId: string; uses: number }
   | { type: 'refundOrder'; partnerId?: string }
-  | { type: 'chooseAmbition'; ambitionId: AmbitionId }
-  | { type: 'foundDynasty'; realm: RealmId }
+  | { type: 'foundDynasty'; faction: FactionId; bequests: BequestId[]; keepPartnerId?: string | null }
   | { type: 'restart' }
   | { type: 'setPlaque'; plaque: string | null }
   | { type: 'setFiefPolicy'; fiefId: string; policyId: FiefPolicyId; cost: number }
@@ -57,6 +57,49 @@ type Action =
   | { type: 'resolveChoice'; optionId: string }
   | { type: 'sync'; state: GameState }
   | { type: 'reset' };
+
+/** 跨朝（与重开、重选主公）带着走的字段：国号、前朝、家声、匾，v3.2 的势力、冻结遗泽、本朝遗泽与宏愿、开国金、迁移补偿 */
+function dynastyCarry(state: GameState) {
+  return {
+    realm: state.realm,
+    realms: state.realms,
+    pastDynasties: state.pastDynasties,
+    earnedTitles: state.earnedTitles,
+    plaque: state.plaque,
+    faction: state.faction,
+    seat: state.seat,
+    ancestralRealms: state.ancestralRealms,
+    bequests: state.bequests,
+    vow: state.vow ?? vowFor(state.faction),
+    vowsDone: state.vowsDone,
+    foundingGold: state.foundingGold,
+    legacyTradition: state.legacyTradition,
+    migrationComp: state.migrationComp
+  };
+}
+
+/** 留贤留下、还在等开局伴侣的那位（开新朝后只有她一位，选完开局伴侣就清掉） */
+function pendingKept(state: GameState) {
+  if (state.generation !== 1 || !state.keptPartnerId) return null;
+  if (!state.ownedPartnerIds.includes(state.keptPartnerId)) return null;
+  // 第一次择主前：开新朝时从上一朝的伴侣里挑出来（伴侣表里还有前朝的人）；择主后：只剩她一位
+  return !state.selectedLordId || (state.ownedPartnerIds.length === 1) ? state.keptPartnerId : null;
+}
+
+/** 留贤伴侣跟着走的字段（择主、回头重选主公、重开基业都用） */
+function keptFieldsOf(state: GameState) {
+  const kept = pendingKept(state);
+  return kept
+    ? {
+        ownedPartnerIds: [kept],
+        escortPartnerId: kept,
+        partnerBoosts: state.partnerBoosts[kept] ? { [kept]: state.partnerBoosts[kept] } : {},
+        resolvedPartnerEvents: Object.fromEntries(Object.entries(state.resolvedPartnerEvents).filter(([key]) => partnerIdOfKey(key) === kept)),
+        skillStats: state.skillStats[kept] ? { [kept]: state.skillStats[kept] } : {},
+        keptPartnerId: kept
+      }
+    : {};
+}
 
 /** 屯田与封地随家业传下，对应的「第一次」任务下一代不再重领 */
 function inheritedQuestIds(farmLevel: number, fiefs: GameState['fiefs']) {
@@ -81,7 +124,8 @@ function findPartnerName(partnerId: string) {
 function reducer(state: GameState, action: Action): GameState {
   // 反攻字段跟着封地走：得郡补城防与得郡时刻、失郡清掉，有郡没计时补 48 小时（见 reconcileSiege）
   // 天下归心或被围郡成了腹地：进行中的反攻作罢（见 releaseStaleSiege）
-  return collectEarnedTitles(releaseStaleSiege(reconcileSiege(resetOrderClock(state, baseReducer(state, action)))));
+  // 宏愿跟着封地、城防、守城胜场推进（见 reconcileVow），排在 reconcileSiege 之后（最高郡数先更新）
+  return collectEarnedTitles(reconcileVow(releaseStaleSiege(reconcileSiege(resetOrderClock(state, baseReducer(state, action))))));
 }
 
 /** 军令从满额跌下来（出征耗用、上限变化）的那一刻起计时；满额期间锚点不动，免得每个 tick 都改存档 */
@@ -138,14 +182,24 @@ function baseReducer(state: GameState, action: Action): GameState {
               id: `lord-${Date.now()}`,
               day: state.day,
               title: `第 ${state.generation} 代择主`,
-              detail: `${findLord(action.lordId)?.name ?? '新主'}承袭家业：${findHomeLevel(state.homeLevel).name}、${ownedFiefCount(state.fiefs)} 郡、${state.ownedPartnerIds.length} 位伴侣尽在。家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%。请在主城定下本代志向。`
+              detail: `${findLord(action.lordId)?.name ?? '新主'}承袭家业：${findHomeLevel(state.homeLevel).name}、${ownedFiefCount(state.fiefs)} 郡、${state.ownedPartnerIds.length} 位伴侣尽在。家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%。`
             },
             ...state.eventLog
           ].slice(0, 18)
         };
       }
+      {
+      // 跨朝带过来的（势力、冻结国号遗泽、本朝遗泽与宏愿、开国金）；重选主公、重开也带着，进度照清
+      const carry = dynastyCarry(state);
+      // 留贤：新朝择主时把留下的伴侣（好感、了却的心事、随行统计）带进来；还没选开局伴侣时回头重选主公也照带
+      const kept = pendingKept(state);
+      const keptFields = keptFieldsOf(state);
+      const fullOrders = state.generation === 1 && (titleBonuses(collectEarnedTitles(state)).dynastyFullOrders || carry.bequests.includes('veterans'));
       return {
         ...defaultGameState,
+        ...carry,
+        ...keptFields,
+        keptPartnerId: kept,
         selectedLordId: action.lordId,
         // 开府：计时锚点、府库、开府时刻都从这一刻起
         clockAt: Date.now(),
@@ -157,20 +211,18 @@ function baseReducer(state: GameState, action: Action): GameState {
         lastScreen: 'partnerSelect',
         soundEnabled: state.soundEnabled,
         tutorialDone: state.generation > 1 || state.tutorialDone,
-        gold: defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation > 1 && state.chronicle[state.chronicle.length - 1]?.ambitionDone ? AMBITION_REWARD_GOLD : 0) + (state.generation === 1 ? dynastyCount(state.realms) * DYNASTY_START_GOLD : 0),
+        // 第一代按本朝开国金（新档 1,000；开新朝定好的数）；v3.1 前「传位后待择主」的老存档走旧公式
+        gold: state.generation > 1
+          ? defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.chronicle[state.chronicle.length - 1]?.ambitionDone ? AMBITION_REWARD_GOLD : 0)
+          : state.foundingGold,
         chronicle: state.chronicle,
-        realm: state.realm,
-        realms: state.realms,
-        pastDynasties: state.pastDynasties,
         earnedTitles: collectEarnedTitles(state).earnedTitles,
-        plaque: state.plaque,
         // v3.1 前「传位后待择主」的老存档走旧流程，本朝沿用原来的造价曲线；新朝/重开/新档按默认 v3
         paceCurve: state.generation > 1 ? state.paceCurve : defaultGameState.paceCurve,
         firstSiegeDone: state.generation > 1 ? state.firstSiegeDone : false,
-        ambition: null,
-        // 强兵家风：每代开局军令满额（上限按传下来的封地算，含整军加成）；天下归心：每朝开局军令满
-        orders: traditionOf(state.chronicle)?.id === 'might' || (state.generation === 1 && titleBonuses(collectEarnedTitles(state)).dynastyFullOrders)
-          ? orderCapOf({ ...defaultGameState, fiefs: state.generation > 1 ? state.fiefs : {}, realms: state.realms, earnedTitles: collectEarnedTitles(state).earnedTitles })
+        // 强兵家风（老档冻结）：每代开局军令满额；天下归心、遗泽旧部：每朝开局军令满（上限按带过来的封地与遗泽算）
+        orders: activeTradition(state)?.id === 'might' || fullOrders
+          ? orderCapOf({ ...defaultGameState, ...carry, fiefs: state.generation > 1 ? state.fiefs : {}, earnedTitles: collectEarnedTitles(state).earnedTitles })
           : defaultGameState.orders,
         generation: state.generation,
         legacyPoints: state.legacyPoints,
@@ -185,17 +237,21 @@ function baseReducer(state: GameState, action: Action): GameState {
             day: 1,
             title: state.generation > 1 ? `第 ${state.generation} 代择主` : dynastyCount(state.realms) > 0 ? `第 ${dynastyCount(state.realms) + 1} 朝开国` : '择主立业',
             detail: state.generation > 1
-              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%${state.chronicle[state.chronicle.length - 1]?.ambitionDone ? `；上一代志向达成，开局多得 ${AMBITION_REWARD_GOLD.toLocaleString()} 金` : ''}。${state.legacyPoints >= LEGACY_MAX_POINTS ? '家业点已满，本代专心封郡、升王城，即可天下归心。' : '请在主城定下本代志向。'}`
+              ? `先祖家业点 ${state.legacyPoints}，收入 +${Math.round((legacyIncomeMultiplier(state.legacyPoints) - 1) * 100)}%${state.chronicle[state.chronicle.length - 1]?.ambitionDone ? `；上一代志向达成，开局多得 ${AMBITION_REWARD_GOLD.toLocaleString()} 金` : ''}。`
               : dynastyCount(state.realms) > 0
-                ? `新朝开国。历朝国号加成：${(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')}；开局多得 ${(dynastyCount(state.realms) * DYNASTY_START_GOLD).toLocaleString()} 金。`
+                ? `${FACTIONS[carry.faction].name}起于${FACTIONS[carry.faction].capital}，开国金 ${state.foundingGold.toLocaleString()}；宏愿「${carry.vow ? VOWS[carry.vow.id].name : ''}」${carry.bequests.length > 0 ? `；遗泽 ${carry.bequests.map((id) => findBequest(id)?.name).join('、')}` : ''}${kept ? `；${findPartnerName(kept)}随行入府` : ''}。`.slice(0, 80)
                 : '乱世基业已定，待择良缘共理家业。'
           }
         ]
       };
+      }
     case 'selectStarterPartner':
-      // 已有伴侣（如另一标签页已选过）时不再免费追加
-      if (state.ownedPartnerIds.length > 0) {
+      // 已有伴侣（如另一标签页已选过）时不再免费追加；留贤留下的那位不占开局伴侣的名额
+      if (state.ownedPartnerIds.length > 0 && !(state.keptPartnerId && state.ownedPartnerIds.length === 1 && state.ownedPartnerIds[0] === state.keptPartnerId)) {
         return { ...state, screen: 'home', lastScreen: 'home' };
+      }
+      if (state.ownedPartnerIds.includes(action.partner.id)) {
+        return { ...state, keptPartnerId: null, screen: 'home', lastScreen: 'home' };
       }
       return {
         ...state,
@@ -204,7 +260,9 @@ function baseReducer(state: GameState, action: Action): GameState {
         ownedPartnerIds: state.ownedPartnerIds.includes(action.partner.id)
           ? state.ownedPartnerIds
           : [...state.ownedPartnerIds, action.partner.id],
-        escortPartnerId: action.partner.id,
+        // 留贤留下的伴侣仍随行（她带着心事与技能等级）；开局新选的入府
+        escortPartnerId: state.keptPartnerId && state.ownedPartnerIds.includes(state.keptPartnerId) ? state.keptPartnerId : action.partner.id,
+        keptPartnerId: null,
         eventLog: [
           {
             id: `starter-partner-${action.partner.id}-${Date.now()}`,
@@ -283,7 +341,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       };
     }
     case 'upgradeFarm':
-      if (state.gold < action.cost || action.nextLevel !== state.farmLevel + 1 || action.cost !== realmFarmCost(state.realms, findFarmLevel(action.nextLevel).cost)) {
+      if (state.gold < action.cost || action.nextLevel !== state.farmLevel + 1 || action.cost !== realmFarmCost(effectiveRealms(state), findFarmLevel(action.nextLevel).cost)) {
         return state;
       }
       return {
@@ -305,7 +363,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
       // 只能按顺序开拓下一郡，钱要够
-      if (!fief || !policy || nextFief(state.fiefs)?.id !== fief.id || state.gold < action.cost || action.cost !== fiefCostOf(state, fief)) {
+      if (!fief || !policy || nextFief(state.fiefs, state.faction)?.id !== fief.id || state.gold < action.cost || action.cost !== fiefCostOf(state, fief)) {
         return state;
       }
       return {
@@ -328,7 +386,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
       // 只能攻相邻的郡；侯府开放；要 1 道军令和足额军资
-      if (!fief || !policy || state.activeBattle || state.homeLevel < FIEF_UNLOCK_HOME_LEVEL || !attackableFiefs(state.fiefs).some((item) => item.id === fief.id)
+      if (!fief || !policy || state.activeBattle || state.homeLevel < FIEF_UNLOCK_HOME_LEVEL || !attackableFiefs(state.fiefs, state.seat).some((item) => item.id === fief.id)
         || state.orders < 1 || action.stake !== conquestStakeOf(state, fief) || state.gold < action.stake) {
         return state;
       }
@@ -486,21 +544,6 @@ function baseReducer(state: GameState, action: Action): GameState {
         ].slice(0, 18)
       };
     }
-    case 'chooseAmbition': {
-      const ambition = findAmbition(action.ambitionId);
-      if (!ambition || state.ambition || state.generation < 2) return state;
-      // 开疆按本代最高郡数起算：先丢郡再定志向、收复回来不算新开拓；六郡已满改为守住 2 次反攻
-      const baseFiefs = Math.max(state.peakFiefs, ownedFiefCountOf(state.fiefs));
-      const target = ambitionTargetFor(ambition, state.generation, baseFiefs);
-      return {
-        ...state,
-        ambition: { id: ambition.id, target, baseFiefs },
-        eventLog: [
-          { id: `ambition-${Date.now()}`, day: state.day, title: `本代志向 · ${ambition.name}`, detail: `${ambition.motto}。${ambition.describe(target, baseFiefs >= 6)}，传位时结算。` },
-          ...state.eventLog
-        ].slice(0, 18)
-      };
-    }
     case 'setFiefPolicy': {
       const fief = findFief(action.fiefId);
       const policy = findFiefPolicy(action.policyId);
@@ -625,7 +668,7 @@ function baseReducer(state: GameState, action: Action): GameState {
       // 北疆：胜则靖边 +1、边患解除并排下一次；败则失守立刻扣金；退守关内不扣金、边患保留，24 小时内可再战
       const bonus = action.win && state.nextBattleBonus ? state.nextBattleBonus : 1;
       // 国号专属：魏加朝议、吴加水战
-      const rewardGold = Math.round(action.rewardGold * bonus * (action.doudizhu ? 1 : realmRewardScale(state.realms, action.mode) * bountyScale(state.day, action.mode)));
+      const rewardGold = Math.round(action.rewardGold * bonus * (action.doudizhu ? 1 : realmRewardScale(effectiveRealms(state), action.mode) * bountyScale(state.day, action.mode)));
       const frontierSettled = action.mode === 'frontier' && !action.retreat;
       // 非北疆战场：战败/认输损失约定的军资（北疆走失守扣金）
       const lossGold = !action.win && action.mode !== 'frontier' ? Math.min(state.gold, Math.max(0, Math.round(action.lossGold ?? 0))) : 0;
@@ -726,12 +769,10 @@ function baseReducer(state: GameState, action: Action): GameState {
         return state;
       }
       const rate = legacyPriceRateFor(heir);
-      const status = ambitionStatus(heir);
-      // 志向达成：得 1 点家业点（家学渊源 2 点），不走金价——金子只折到 20 − 志向点，已满 20 点的部分改发 3 万金/点
-      const plan = successionPlan(heir.gold, heir.legacyPoints, rate, status?.done ? titleBonuses(heir).ambitionPoints : 0);
+      // v3.2 志向下线（改为势力宏愿，奖励是下一朝的遗泽），传位只按递增价折点
+      const plan = successionPlan(heir.gold, heir.legacyPoints, rate, 0);
       const gained = plan.gained;
       const spent = plan.spent;
-      const reward = { points: plan.rewardPoints, gold: plan.rewardGold };
       const legacyPoints = plan.after;
       const now = Date.now();
       const entry = {
@@ -741,22 +782,20 @@ function baseReducer(state: GameState, action: Action): GameState {
         gold: heir.gold,
         wins: genWins(heir),
         fiefs: ownedFiefCountOf(heir.fiefs),
-        ambition: heir.ambition?.id ?? null,
-        ambitionDone: Boolean(status?.done),
+        ambition: null,
+        ambitionDone: false,
         openDays: foundedDays(heir.foundedAt, now)
       };
       const chronicle = trimChronicle([...heir.chronicle, entry]);
-      const rewardNote = status?.done ? `；志向「${status.ambition.name}」达成，载入家谱，${reward.points > 0 ? `得家业点 ${reward.points}` : ''}${reward.points > 0 && reward.gold > 0 ? '、' : ''}${reward.gold > 0 ? `家业点已满改得 ${reward.gold.toLocaleString()} 金` : ''}` : status ? `；志向「${status.ambition.name}」未竟` : '';
       const next: GameState = {
         ...heir,
         selectedLordId: null,
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
-        gold: heir.gold - spent + reward.gold,
+        gold: heir.gold - spent,
         legacyPoints,
         generation: heir.generation + 1,
         chronicle,
-        ambition: null,
         // 政务练出的属性是上一位主公自己的，随主公清零
         affairTraining: { strength: 0, civil: 0 },
         // 本朝最高郡数随家传下去：上一代丢的郡，新主收复回来不算「新开拓」（开疆志向）
@@ -770,42 +809,78 @@ function baseReducer(state: GameState, action: Action): GameState {
             id: `succeed-${now}`,
             day: heir.day,
             title: '传位',
-            detail: `第 ${heir.generation} 代传位：${gained > 0 ? `以 ${spent.toLocaleString()} 金折家业点 ${gained} 点，` : ''}家业点累计 ${legacyPoints}；宅邸、封地、伴侣、兵器尽数留给新主${rewardNote}。`,
-            goldDelta: spent > 0 || reward.gold > 0 ? reward.gold - spent : undefined
+            detail: `第 ${heir.generation} 代传位：${gained > 0 ? `以 ${spent.toLocaleString()} 金折家业点 ${gained} 点，` : ''}家业点累计 ${legacyPoints}；宅邸、封地、伴侣、兵器尽数留给新主。`,
+            goldDelta: spent > 0 ? -spent : undefined
           },
           ...heir.eventLog
         ].slice(0, 18)
       };
-      // 强兵家风（按新家谱判定）：传位时把军令补满
-      return traditionOf(chronicle)?.id === 'might' ? { ...next, orders: Math.max(next.orders, orderCapOf(next)) } : next;
+      // 强兵家风（老档冻结，本朝照旧）：传位时把军令补满
+      return activeTradition(heir)?.id === 'might' ? { ...next, orders: Math.max(next.orders, orderCapOf(next)) } : next;
     }
     case 'foundDynasty': {
-      const realm = findRealm(action.realm);
-      if (!realm || !isEndingReached(state)) return state;
+      // v3.2 开新朝：选国号 = 选下一朝的开局势力，再选遗泽（只管下一朝）；国号效果按「冻结遗泽 + 本朝一份」，不再按朝叠加
+      const faction = FACTIONS[action.faction];
+      if (!faction || !FOUNDABLE_FACTIONS.includes(faction.id) || !faction.unlocked(state) || !isEndingReached(state)) return state;
+      const bequests = [...new Set(action.bequests)].filter(isBequestId);
+      if (bequests.length !== action.bequests.length || bequests.length > bequestSlots(state)) return state;
+      const keepId = bequests.includes('keeper') ? action.keepPartnerId ?? null : null;
+      if (bequests.includes('keeper') && (!keepId || !state.ownedPartnerIds.includes(keepId))) return state;
       const summary = dynastySummary(state);
-      // 国号记在新朝：前朝条目带的是它自己的国号（开国第一朝为空）
-      const realms = { ...state.realms, [realm.id]: state.realms[realm.id] + 1 };
+      // 国号计数照旧 +1（家声、前朝录、HUD 用）；汉（v3.3）不记国号
+      const realms = faction.realm ? { ...state.realms, [faction.realm]: state.realms[faction.realm] + 1 } : state.realms;
       const dynasty = state.pastDynasties.length + 1;
+      const lordIds = [...state.chronicle.map((entry) => entry.lordId), state.selectedLordId ?? ''].filter(Boolean);
+      const lordsKept = lordIds.length <= 8 ? lordIds : [lordIds[0], ...lordIds.slice(-7)];
+      const gold = foundingGoldFor(state, bequests.includes('treasury'));
+      const now = Date.now();
+      const keptFields = keepId
+        ? {
+            ownedPartnerIds: [keepId],
+            partnerBoosts: state.partnerBoosts[keepId] ? { [keepId]: state.partnerBoosts[keepId] } : {},
+            resolvedPartnerEvents: Object.fromEntries(Object.entries(state.resolvedPartnerEvents).filter(([key]) => partnerIdOfKey(key) === keepId)),
+            skillStats: state.skillStats[keepId] ? { [keepId]: state.skillStats[keepId] } : {},
+            escortPartnerId: keepId
+          }
+        : {};
+      const notes = [
+        `开国金 ${gold.total.toLocaleString()}${gold.treasury > 0 ? `（府库 +${gold.treasury.toLocaleString()}）` : ''}`,
+        gold.comp > 0 ? `前朝旧例补发 ${gold.comp.toLocaleString()} 金` : '',
+        bequests.length > 0 ? `遗泽 ${bequests.map((id) => findBequest(id)?.name).join('、')}` : ''
+      ].filter(Boolean);
       return {
         ...defaultGameState,
+        ...keptFields,
         screen: 'lordSelect',
         lastScreen: 'lordSelect',
         soundEnabled: state.soundEnabled,
         tutorialDone: true,
-        realm: realm.id,
+        faction: faction.id,
+        seat: faction.seat,
+        realm: faction.realm ?? state.realm,
         realms,
-        pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions, ...(summary.openDays ? { openDays: summary.openDays } : {}) }].slice(-20),
+        // 冻结遗泽只读：不随新朝增长
+        ancestralRealms: state.ancestralRealms,
+        bequests,
+        vow: vowFor(faction.id),
+        vowsDone: state.vowsDone,
+        keptPartnerId: keepId,
+        foundingGold: gold.total,
+        legacyTradition: null,
+        migrationComp: { founding: false, bequest: false },
+        paceCurve: 'v3',
+        pastDynasties: [...state.pastDynasties, { dynasty, realm: state.realm, faction: state.faction, lords: lordsKept, vow: Boolean(state.vow?.done), generations: summary.generations, days: summary.days, wins: summary.wins, ambitions: summary.ambitions, ...(summary.openDays ? { openDays: summary.openDays } : {}) }].slice(-20),
         // 家声跨朝保留：天下归心等称号不随世代/封地重置被收回（先按重置前的存档补记一次，读档后未经任何操作就开新朝也不漏）
         earnedTitles: collectEarnedTitles(state).earnedTitles,
         plaque: state.plaque,
         eventLog: [
-          { id: `dynasty-${Date.now()}`, day: 1, title: `开创新朝 · ${realm.name}`, detail: `前朝历 ${summary.generations} 代 ${summary.days} 日，${summary.wins} 胜，六郡归心。新朝国号「${realm.name}」：${realm.effect}，永久保留。` }
+          { id: `dynasty-${now}`, day: 1, title: `开创新朝 · ${faction.name}`, detail: `${faction.name}起于${faction.capital}，宏愿「${VOWS[faction.id].name}」。${notes.join('；')}。`.slice(0, 80) }
         ]
       };
     }
-    // 重开基业：放弃本朝重来，国号加成、前朝记录与家声是跨朝资产，保留（只有「重置存档」才全清）
+    // 重开基业：放弃本朝重来，国号、前朝记录、家声是跨朝资产，本朝的势力、遗泽、宏愿、开国金也留着（只有「重置存档」才全清）
     case 'restart':
-      return { ...defaultGameState, soundEnabled: state.soundEnabled, realm: state.realm, realms: state.realms, pastDynasties: state.pastDynasties, earnedTitles: collectEarnedTitles(state).earnedTitles, plaque: state.plaque, tutorialDone: dynastyCount(state.realms) > 0 };
+      return { ...defaultGameState, ...dynastyCarry(state), ...keptFieldsOf(state), soundEnabled: state.soundEnabled, earnedTitles: collectEarnedTitles(state).earnedTitles, legacyTradition: null, tutorialDone: dynastyCount(state.realms) > 0 };
     case 'reset':
       clearGameState();
       return {
@@ -826,6 +901,8 @@ export function useGameState() {
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  // 刚收下旧版（v3.1）标签页写的存档：这一次不写回（v3.2 字段在旁存里留着），否则两边按各自口径来回覆盖停不下来
+  const skipSaveRef = useRef(false);
 
   useEffect(() => {
     // 首次落盘前若其他标签页已写入更新的存档，先同步过来，避免用加载时的旧值覆盖
@@ -835,9 +912,14 @@ export function useGameState() {
       rawAtLoadRef.current = null;
       const synced = changedElsewhere ? parseSyncedGameState(currentRaw) : null;
       if (synced) {
+        skipSaveRef.current = isOldTabRaw(currentRaw);
         dispatch({ type: 'sync', state: synced });
         return;
       }
+    }
+    if (skipSaveRef.current) {
+      skipSaveRef.current = false;
+      return;
     }
     saveGameState(state);
   }, [state]);
@@ -858,6 +940,7 @@ export function useGameState() {
       if (event.key !== GAME_STORAGE_KEY) return;
       const synced = parseSyncedGameState(event.newValue);
       if (!synced) return;
+      skipSaveRef.current = isOldTabRaw(event.newValue);
       dispatch({ type: 'sync', state: synced });
     };
     window.addEventListener('storage', handleStorage);
@@ -891,13 +974,14 @@ export function useGameState() {
     const home = homeLevels.find((item) => item.level === state.homeLevel + 1);
     return home ? { ...home, upgradeCost: homeUpgradeCostOf(state, home.level) } : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.homeLevel, state.paceCurve]);
+  }, [state.homeLevel, state.paceCurve, state.faction]);
   const ownedPartners = useMemo(
     () => partners.filter((partner) => state.ownedPartnerIds.includes(partner.id)).map((partner) => mergePartnerBoost(partner, state.partnerBoosts[partner.id])),
     [state.ownedPartnerIds, state.partnerBoosts]
   );
 
-  const fiefStat = fiefStatBonus(state.fiefs) + realmStatBonus(state.realms);
+  // 教化郡 + 国号吴（冻结遗泽 + 本朝）+ 主公旧部
+  const fiefStat = statBonusOf(state);
   // 处理政务练出的属性：军务加武力，治理加智谋与声望
   const strengthExtra = fiefStat + state.affairTraining.strength;
   const civilExtra = fiefStat + state.affairTraining.civil;
@@ -954,17 +1038,17 @@ export function useGameState() {
   );
 
   const upgradeFarm = useCallback(() => {
-    const cost = nextFarm ? realmFarmCost(state.realms, nextFarm.cost) : 0;
+    const cost = nextFarm ? realmFarmCost(effectiveRealms(state), nextFarm.cost) : 0;
     if (!nextFarm || state.gold < cost) {
       return false;
     }
     dispatch({ type: 'upgradeFarm', nextLevel: nextFarm.level, cost });
     return true;
-  }, [nextFarm, state.gold, state.realms]);
+  }, [nextFarm, state]);
 
   const claimFief = useCallback(
     (policyId: FiefPolicyId) => {
-      const fief = nextFief(state.fiefs);
+      const fief = nextFief(state.fiefs, state.faction);
       const cost = fief ? fiefCostOf(state, fief) : 0;
       if (!fief || state.gold < cost) {
         return false;
@@ -1070,8 +1154,7 @@ export function useGameState() {
     abandonSiege,
     repairWall,
     setFiefPolicy,
-    chooseAmbition: (ambitionId: AmbitionId) => dispatch({ type: 'chooseAmbition', ambitionId }),
-    foundDynasty: (realm: RealmId) => dispatch({ type: 'foundDynasty', realm }),
+    foundDynasty: (faction: FactionId, bequests: BequestId[], keepPartnerId?: string | null) => dispatch({ type: 'foundDynasty', faction, bequests, keepPartnerId }),
     endingReached: isEndingReached(state),
     equipWeapon: (weaponId: string) => dispatch({ type: 'equipWeapon', weaponId }),
     recordBattle: (win: boolean, rewardGold: number, mode: BattleMode = 'land', retreat = false, lossGold = 0, doudizhu = false) => dispatch({ type: 'recordBattle', win, rewardGold, mode, retreat, lossGold, doudizhu }),

@@ -17,7 +17,7 @@ export type CurrentTitleId = 'commoner' | 'gentry' | 'marquis-house' | 'river-ti
 export type LineageTitleId = 'unifier' | 'restorer' | 'three-dynasties' | 'three-realms' | 'scholarly';
 export type RetiredLineageId = 'founder' | 'eternal' | 'marquis' | 'six-commanderies' | 'tradition';
 
-type TitleState = Pick<GameState, 'homeLevel' | 'battleWins' | 'frontierWins' | 'fiefs' | 'pastDynasties' | 'realms' | 'chronicle' | 'earnedTitles'>;
+type TitleState = Pick<GameState, 'homeLevel' | 'battleWins' | 'frontierWins' | 'fiefs' | 'pastDynasties' | 'realms' | 'chronicle' | 'earnedTitles'> & Partial<Pick<GameState, 'vowsDone'>>;
 
 /** 本朝称号条件（档位从低到高） */
 export const CURRENT_TITLE_RULES: Record<CurrentTitleId, (s: TitleState) => boolean> = {
@@ -35,7 +35,8 @@ export const LINEAGE_TITLE_RULES: Record<LineageTitleId, (s: TitleState) => bool
   restorer: (s) => (s.pastDynasties?.length ?? 0) >= 1,
   'three-dynasties': (s) => (s.pastDynasties?.length ?? 0) >= 2,
   'three-realms': (s) => Boolean(s.realms && s.realms.wei > 0 && s.realms.shu > 0 && s.realms.wu > 0),
-  scholarly: (s) => Boolean(s.chronicle) && ambitionsAchieved(s) >= SCHOLARLY_AMBITION_COUNT
+  // v3.2：宏愿累计次数（老档迁移时已并入家谱里志向达成的次数）；缺字段的局部 state 按家谱算
+  scholarly: (s) => (typeof s.vowsDone === 'number' ? s.vowsDone : Boolean(s.chronicle) ? ambitionsAchieved(s) : 0) >= SCHOLARLY_AMBITION_COUNT
 };
 
 export const CURRENT_TITLE_IDS = Object.keys(CURRENT_TITLE_RULES) as CurrentTitleId[];
@@ -65,7 +66,7 @@ export const HEGEMON_ORDER_BONUS = 1;
 export const RESTORER_RECLAIM_PERCENT = 50;
 /** 三分归一：改方略费减半 */
 export const THREE_REALMS_POLICY_PERCENT = 50;
-/** 志向达成的家业点：1 点，家学渊源 2 点 */
+/** v3.2 宏愿达成，下一朝多选几项遗泽：1 项，家学渊源 2 项（v3.1 时是家业点数，字段名沿用） */
 export const AMBITION_LEGACY_POINTS = 1;
 export const SCHOLARLY_AMBITION_POINTS = 2;
 
@@ -90,7 +91,7 @@ export const TITLE_INFO: Record<CurrentTitleId | LineageTitleId, TitleInfo> = {
   restorer: { id: 'restorer', name: '再造山河', requirement: '开创第二朝', effect: '收复失地押金减半', look: '赤旗「再造」' },
   'three-dynasties': { id: 'three-dynasties', name: '三朝元老', requirement: '开创第三朝', effect: '每朝首次反攻城池必保', look: '三面小旗' },
   'three-realms': { id: 'three-realms', name: '三分归一', requirement: '魏、蜀、吴三个国号都立过', effect: '改方略费减半', look: '三色合一旗' },
-  scholarly: { id: 'scholarly', name: '家学渊源', requirement: `志向累计达成 ${SCHOLARLY_AMBITION_COUNT} 次`, effect: `志向达成得 ${SCHOLARLY_AMBITION_POINTS} 点家业点`, look: '书卷旗' }
+  scholarly: { id: 'scholarly', name: '家学渊源', requirement: `志向或宏愿累计达成 ${SCHOLARLY_AMBITION_COUNT} 次`, effect: `宏愿达成，下一朝遗泽多选 ${SCHOLARLY_AMBITION_POINTS} 项`, look: '书卷旗' }
 };
 
 export function isCurrentTitleId(id: string): id is CurrentTitleId {
@@ -128,7 +129,7 @@ export interface TitleBonuses {
   reclaimPct: number;
   /** 改方略费 −% */
   policyPct: number;
-  /** 志向达成得几点家业点 */
+  /** 宏愿达成，下一朝多选几项遗泽（家学渊源 2） */
   ambitionPoints: number;
   /** 本朝第一次反攻城防不扣 */
   firstSiegeGuard: boolean;

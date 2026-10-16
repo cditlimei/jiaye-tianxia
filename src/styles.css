@@ -8537,3 +8537,206 @@ body .ddz-screen .ddz-table .ddz-skillbar .ddz-skillbar__cards.is-many .mini-car
   position: absolute;
   inset: -8px -6px;
 }
+
+/* ===== v3.2 新朝换势力：本府旗色随势力、HUD 势力章、择主旧部、开新朝三步卷轴 ===== */
+.conquest-map .conquest-map__svg .conquest-node.is-home rect.conquest-node__seat {
+  fill: color-mix(in srgb, var(--faction-color, #7a1f1a) 55%, #3a0f0c);
+  stroke: #f2c45a;
+  stroke-width: 0.7;
+}
+
+.conquest-map .conquest-map__svg .conquest-node.is-home .conquest-node__realm.is-faction .conquest-node__faction-flag,
+.conquest-map .conquest-map__svg .conquest-node.is-home.is-selected .conquest-node__realm.is-faction .conquest-node__faction-flag {
+  fill: var(--faction-color, #8f1d16);
+  stroke: #f2c45a;
+  stroke-width: 0.35;
+}
+
+.conquest-map .conquest-map__svg .conquest-node.is-home .conquest-node__realm.is-faction text.conquest-node__realm-text {
+  fill: #fffbe8;
+}
+
+/* 已归府下的郡插本朝势力旗色 */
+.conquest-map .conquest-map__svg:not(.is-faction-qun) .conquest-node.is-owned .conquest-node__flag {
+  fill: var(--faction-color, #c0392b);
+}
+
+.conquest-map .conquest-panel.is-seat strong {
+  color: var(--gold-light);
+}
+
+.home-v2 .home-hud .home-hud__lord span .home-hud__faction {
+  display: inline-block;
+  margin: 0 3px 0 5px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--faction-color, #c9783d) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--faction-color, #c9783d) 22%, transparent);
+  color: #fff4d6;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.lord-screen .lord-grid .lord-card .lord-card__loyal {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 9px;
+  padding: 1px 7px;
+  border: 1px solid rgba(255, 215, 106, 0.7);
+  border-radius: 999px;
+  background: rgba(122, 31, 26, 0.82);
+  color: #ffe9a8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-steps li {
+  padding: 5px 4px;
+  border: 1px solid rgba(212, 168, 67, 0.22);
+  border-radius: 8px;
+  color: rgba(245, 230, 200, 0.55);
+  font-size: 12px;
+  text-align: center;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-steps li.is-current {
+  border-color: var(--gold-light);
+  background: rgba(80, 58, 14, 0.6);
+  color: #f5e6c8;
+  font-weight: 700;
+}
+
+.modal-shell .ending-sheet.ending-v32 .fief-policies.ending-factions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.modal-shell .ending-sheet.ending-v32 .fief-policies.ending-factions button.ending-faction {
+  gap: 3px;
+  padding: 9px 10px;
+  border-left: 4px solid rgba(212, 168, 67, 0.35);
+}
+
+.modal-shell .ending-sheet.ending-v32 .fief-policies.ending-factions button.ending-faction.is-wei { border-left-color: #6ea7d8; }
+.modal-shell .ending-sheet.ending-v32 .fief-policies.ending-factions button.ending-faction.is-shu { border-left-color: #4dbb7d; }
+.modal-shell .ending-sheet.ending-v32 .fief-policies.ending-factions button.ending-faction.is-wu { border-left-color: #cc5549; }
+
+.modal-shell .ending-sheet.ending-v32 .fief-policies.ending-factions button.ending-faction strong em {
+  margin-left: 6px;
+  color: rgba(245, 230, 200, 0.7);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid rgba(212, 168, 67, 0.25);
+  border-radius: 10px;
+  background: rgba(13, 13, 26, 0.6);
+  color: rgba(245, 230, 200, 0.82);
+  text-align: left;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest strong {
+  color: var(--gold-light);
+  font-size: 14px;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest span,
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest small {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest small {
+  color: rgba(245, 230, 200, 0.55);
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest.is-selected {
+  border-color: var(--gold-light);
+  background: rgba(80, 58, 14, 0.72);
+  color: #f5e6c8;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest:disabled {
+  opacity: 0.45;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-keeper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-keeper button {
+  padding: 5px 10px;
+  border: 1px solid rgba(212, 168, 67, 0.3);
+  border-radius: 999px;
+  background: rgba(13, 13, 26, 0.6);
+  color: rgba(245, 230, 200, 0.85);
+  font-size: 13px;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-keeper button.is-selected {
+  border-color: var(--gold-light);
+  background: rgba(80, 58, 14, 0.72);
+  color: #fff4d6;
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-confirm__list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(245, 230, 200, 0.86);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 360px) {
+  .modal-shell .ending-sheet.ending-v32 .ending-bequest-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.modal-shell .ending-sheet.ending-v32 .ending-bequest-list button.ending-bequest {
+  align-content: start;
+}
+
+/* 本府势力旗的字：浅色旗（魏）上也看得清 */
+.conquest-map .conquest-map__svg .conquest-node.is-home .conquest-node__realm.is-faction text.conquest-node__realm-text {
+  stroke: rgba(40, 18, 8, 0.85);
+  stroke-width: 0.45px;
+  paint-order: stroke;
+}
+
+/* v3.2：择主页带旧部横幅（开新朝、传位）时多一个子元素，竖屏和平板按 5 行排，横幅只占自身高度，主公列表吃满弹性行 */
+@media (orientation: portrait), (min-height: 501px) {
+  .phone-shell .lord-screen:has(> .dynasty-banner) {
+    grid-template-rows: auto auto minmax(250px, 1fr) auto auto;
+  }
+
+  .phone-shell .lord-screen:has(> .dynasty-banner) > .dynasty-banner {
+    align-self: start;
+  }
+}

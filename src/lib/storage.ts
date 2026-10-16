@@ -2,14 +2,16 @@ import type { ConquestKind, GameState, Screen } from '../types';
 import { AFFAIR_TRAINING_CAP } from '../data/affairs';
 import { farmLevels, findFarmLevel, findHomeLevel, homeLevels, lords, partners, weapons } from '../data/gameData';
 import { choiceGoldValue, collectEarnedTitles, ENDING_LINEAGE_TITLE_IDS, getChoiceEvent, getDailyEvent, isKeptLineageId, quests } from '../data/progression';
-import { calculateIntelligence, LEGACY_MAX_POINTS, totalDailyIncome } from '../lib/battle';
+import { calculateIntelligence, LEGACY_MAX_POINTS, successionPlan, totalDailyIncome } from '../lib/battle';
 import { isOrderDay, ORDER_START } from '../types';
-import { FIEF_UNLOCK_HOME_LEVEL, fiefStatBonus, isFiefPolicyId, type FiefHoldings } from '../data/fiefs';
+import { FIEF_UNLOCK_HOME_LEVEL, isFiefPolicyId, type FiefHoldings } from '../data/fiefs';
 import { connectedHoldings, fiefs as fiefCatalog } from '../data/fiefs';
-import { ambitionTargetFor, findAmbition, isAmbitionId, trimChronicle } from '../data/ambitions';
-import { bountyScale, isRealmId, realmRewardScale, realmStatBonus, type RealmId } from '../data/dynasty';
-import { incomePercentOf, orderCapOf } from './prices';
-import { PLAQUE_TEXT } from '../data/titleEffects';
+import { isAmbitionId, legacyAmbitionResult, reconcileVow, trimChronicle, vowFor } from '../data/ambitions';
+import { bountyScale, DYNASTY_START_GOLD, dynastyCount, effectiveRealms, isRealmId, realmRewardScale, type RealmId } from '../data/dynasty';
+import { incomePercentOf, orderCapOf, statBonusOf } from './prices';
+import { FACTIONS, isBequestId, isFactionId, type BequestId, type FactionId } from '../data/factions';
+import { traditionOf } from '../data/traditions';
+import { PLAQUE_TEXT, titleBonuses } from '../data/titleEffects';
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
 import { RAID_INTERVAL_DAYS, RAID_WINDOW_MS } from '../lib/frontier';
 import { expireSiege, reconcileSiege, releaseStaleSiege, sanitizeSiege, sanitizeTimeMap } from '../lib/siege';
@@ -26,8 +28,14 @@ const ANCHOR_FUTURE_LIMIT_MS = MAX_CATCHUP_DAYS * DAY_MS;
  */
 const STORAGE_KEY = 'jiaye-tianxia-save-v3';
 const LEGACY_STORAGE_KEY = 'jiaye-tianxia-save-v1';
-/** 存档结构版本：3 = v3.1（传位只换主公、家业点递增价、统一 = 六郡 + 王城、造价曲线、称号 11 个） */
-export const SAVE_SCHEMA = 3;
+/** 存档结构版本：3 = v3.1（传位只换主公、家业点递增价、统一 = 六郡 + 王城、造价曲线、称号 11 个）；4 = v3.2（势力、冻结国号遗泽、遗泽、宏愿） */
+export const SAVE_SCHEMA = 4;
+const SCHEMA_V31 = 3;
+/**
+ * v3.2 字段的旁存：发版时还开着的 v3.1 标签页会按字段重建存档（丢掉 faction/seat 等），写回同一个 key。
+ * 新版每次落盘顺手把 v3.2 字段另存一份；读到 schema 3 的存档且前朝数对得上时，从旁存补回，不再当老档迁移（否则魏蜀吴的封地会按荆州判成飞地清掉）。
+ */
+const V32_SIDECAR_KEY = 'jiaye-tianxia-v32-fields';
 /** v3.1 起「稍后再定」志向只在本次打开页面内有效，旧版写在 sessionStorage 的记录读到就清掉 */
 const AMBITION_DEFERRED_KEY = 'jiaye-ambition-deferred';
 const SAFE_SCREENS: Screen[] = ['title', 'lordSelect', 'partnerSelect', 'home'];
@@ -74,7 +82,16 @@ export const defaultGameState: GameState = {
   activeBattle: null,
   orders: ORDER_START,
   fiefs: {},
-  ambition: null,
+  faction: 'qun',
+  seat: FACTIONS.qun.seat,
+  ancestralRealms: { wei: 0, shu: 0, wu: 0 },
+  bequests: [],
+  vow: vowFor('qun'),
+  vowsDone: 0,
+  keptPartnerId: null,
+  foundingGold: 1000,
+  legacyTradition: null,
+  migrationComp: { founding: false, bequest: false },
   chronicle: [],
   realm: null,
   realms: { wei: 0, shu: 0, wu: 0 },
@@ -116,7 +133,8 @@ export function loadGameState(): GameState {
     // 老存档（没有 clockVersion）第一次读入：先按旧规则把离线补足（钱直接入账），再切真实时间口径；
     // 之后只有 advanceClock 一条推进路径（旧的每次读档补算已删掉，免得同一段时间算两次）
     const caughtUp = restored.clockVersion === CLOCK_VERSION ? catchUpOnLoad(restored, now) : migrateLegacyClock(restored, now);
-    return settleExpiredSiege(caughtUp);
+    // 逾期反攻先结算城防，再推一次宏愿（吴的 48 小时按结算后的城防重算）
+    return reconcileVow(settleExpiredSiege(caughtUp), now);
   } catch {
     return defaultGameState;
   }
@@ -199,8 +217,99 @@ export function saveGameState(state: GameState, { force = false } = {}) {
   };
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    window.localStorage.setItem(V32_SIDECAR_KEY, JSON.stringify(sidecarOf(payload, readSidecar())));
   } catch {
     // 存储被禁用或空间已满时继续游戏，只是本次进度不落盘
+  }
+}
+
+const SIDECAR_FIELDS = ['faction', 'seat', 'ancestralRealms', 'bequests', 'vow', 'vowsDone', 'keptPartnerId', 'foundingGold', 'legacyTradition', 'migrationComp'] as const;
+/** 旁存另带的封地字段：旧版标签页按荆州判连通，会把荆州和不连荆州的郡当飞地清掉，靠这份补回 */
+const SIDECAR_FIEF_FIELDS = ['fiefs', 'fiefWalls', 'fiefTakenAt'] as const;
+
+function readSidecar(): Record<string, unknown> | null {
+  try {
+    const raw = window.localStorage.getItem(V32_SIDECAR_KEY);
+    const side = raw ? (JSON.parse(raw) as unknown) : null;
+    return side && typeof side === 'object' ? (side as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function sidecarOf(state: GameState, prev: Record<string, unknown> | null) {
+  const pastCount = state.pastDynasties.length;
+  // v32Founded：本朝是 v3.2 开的。只有这种存档会被旧标签页判成飞地，旁存只给它用。
+  // 旧标签页会抹掉前朝条目上的势力，所以同一朝里一旦记成 true 就不再改回（魏蜀吴也直接算）
+  const v32Founded = Boolean(state.pastDynasties.at(-1)?.faction) || (pastCount > 0 && state.faction !== 'qun') || (prev?.v32Founded === true && prev.pastCount === pastCount);
+  return {
+    pastCount,
+    realms: state.realms,
+    realm: state.realm,
+    v32Founded,
+    savedAt: state.lastSavedAt,
+    pastDynasties: state.pastDynasties,
+    ...Object.fromEntries(SIDECAR_FIELDS.map((key) => [key, state[key]])),
+    ...Object.fromEntries(SIDECAR_FIEF_FIELDS.map((key) => [key, state[key]]))
+  };
+}
+
+/** 读到的原始存档是不是旧版（v3.1）标签页写的：同步过来后不立刻写回，免得两个标签页来回覆盖 */
+export function isOldTabRaw(raw: string | null) {
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as Partial<GameState>;
+    return typeof parsed.schema === 'number' && parsed.schema < SAVE_SCHEMA;
+  } catch {
+    return false;
+  }
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/** schema 3 的存档（多半是旧版标签页写回的）：旁存的 v3.2 字段与它同一朝就补回，按 schema 4 读 */
+function withSidecar(parsed: Partial<GameState>): Partial<GameState> {
+  if (typeof window === 'undefined' || typeof parsed.schema !== 'number' || parsed.schema !== SCHEMA_V31) return parsed;
+  try {
+    const side = readSidecar();
+    if (!side) return parsed;
+    const pastCount = Array.isArray(parsed.pastDynasties) ? parsed.pastDynasties.length : 0;
+    // 同一朝才补：前朝数、国号计数、本朝国号都对得上，且本朝是 v3.2 开的（第一朝、老档、导入的别家存档都不补）
+    if (side.v32Founded !== true || pastCount < 1 || side.pastCount !== pastCount || !isFactionId(side.faction)) return parsed;
+    if (JSON.stringify(side.realms) !== JSON.stringify(sanitizeRealms(parsed.realms)) || (side.realm ?? null) !== (isRealmId(parsed.realm) ? parsed.realm : null)) return parsed;
+    const restored: Record<string, unknown> = { ...parsed, schema: SAVE_SCHEMA };
+    for (const key of SIDECAR_FIELDS) if (key in side) restored[key] = side[key];
+    // 前朝条目上的势力、宏愿、主公名单（旧标签页会抹掉）按旁存补回，旧标签页写的字段为准
+    const sidePast: unknown[] = Array.isArray(side.pastDynasties) ? side.pastDynasties : [];
+    if (Array.isArray(parsed.pastDynasties) && sidePast.length === parsed.pastDynasties.length) {
+      restored.pastDynasties = parsed.pastDynasties.map((entry, index) => {
+        const extra = sidePast[index];
+        return { ...(isPlainObject(extra) ? extra : {}), ...(entry as object) };
+      });
+    }
+    // 封地：旧标签页清掉的郡（荆州、按荆州判成飞地的）补回；旧标签页里真被反攻打下的（失郡时刻晚于旁存）不补
+    if (isPlainObject(side.fiefs)) {
+      const fiefs: Record<string, unknown> = isPlainObject(parsed.fiefs) ? { ...parsed.fiefs } : {};
+      const walls: Record<string, unknown> = isPlainObject(parsed.fiefWalls) ? { ...parsed.fiefWalls } : {};
+      const taken: Record<string, unknown> = isPlainObject(parsed.fiefTakenAt) ? { ...parsed.fiefTakenAt } : {};
+      const lost = isPlainObject(parsed.lostFiefs) ? parsed.lostFiefs : {};
+      const sideWalls = isPlainObject(side.fiefWalls) ? side.fiefWalls : {};
+      const sideTaken = isPlainObject(side.fiefTakenAt) ? side.fiefTakenAt : {};
+      const savedAt = typeof side.savedAt === 'number' ? side.savedAt : 0;
+      for (const [id, policy] of Object.entries(side.fiefs)) {
+        if (id in fiefs) continue;
+        if (typeof lost[id] === 'number' && (lost[id] as number) > savedAt) continue;
+        fiefs[id] = policy;
+        if (id in sideWalls) walls[id] = sideWalls[id];
+        if (id in sideTaken) taken[id] = sideTaken[id];
+      }
+      restored.fiefs = fiefs;
+      restored.fiefWalls = walls;
+      restored.fiefTakenAt = taken;
+    }
+    return restored as Partial<GameState>;
+  } catch {
+    return parsed;
   }
 }
 
@@ -209,6 +318,7 @@ export function clearGameState() {
     try {
       window.localStorage.removeItem(STORAGE_KEY);
       window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      window.localStorage.removeItem(V32_SIDECAR_KEY);
     } catch {
       // 同上
     }
@@ -271,7 +381,9 @@ function pickSavedRaw(): string | null {
       genStart: cur.genStart,
       plaque: cur.plaque,
       firstSiegeDone: cur.firstSiegeDone,
-      earnedTitles: titles
+      earnedTitles: titles,
+      // v3.2 字段一并盖回（缺的由 normalize 按老档补）
+      ...Object.fromEntries(SIDECAR_FIELDS.filter((key) => key in cur).map((key) => [key, cur[key]]))
     });
   } catch {
     return current;
@@ -285,7 +397,18 @@ function sanitizeScreen(screen: Screen | undefined): Screen {
   return 'home';
 }
 
-function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameState {
+function normalizeGameState(rawParsed: Partial<GameState>, now = Date.now()): GameState {
+  const parsed = withSidecar(rawParsed);
+  // v3.2：势力与本府先定（封地连通按本府判）；schema 4 之前的存档一律是群 · 荆州（地图、价格不变）
+  const v32 = isSchemaAtLeast(parsed, SAVE_SCHEMA);
+  const faction: FactionId = v32 && isFactionId(parsed.faction) ? parsed.faction : 'qun';
+  const seat = FACTIONS[faction].seat;
+  const pastDynasties = sanitizePastDynasties(parsed.pastDynasties);
+  // 魏蜀吴开的朝，国号就是势力（不信存档里另写的）；群（新档首朝、老档）照存档里的国号
+  const realm = FACTIONS[faction].realm ?? (isRealmId(parsed.realm) ? parsed.realm : null);
+  const realms = reconcileRealms(sanitizeRealms(parsed.realms), pastDynasties, realm);
+  const chronicle = sanitizeChronicle(parsed.chronicle);
+  const generation = sanitizeNumber(parsed.generation, 1, 1);
   const selectedLordId = isKnownId(parsed.selectedLordId, lords) ? parsed.selectedLordId : null;
   const safeScreen = selectedLordId ? sanitizeScreen(parsed.lastScreen ?? parsed.screen) : 'title';
   const homeLevel = homeLevels.some((home) => home.level === parsed.homeLevel) ? Number(parsed.homeLevel) : defaultGameState.homeLevel;
@@ -337,19 +460,29 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
     activeBattle: sanitizeActiveBattle(parsed.activeBattle),
     // 上限按整份存档（含一代枭雄 +1）在下面截，这里先读原值
     orders: sanitizeNumber(parsed.orders, ORDER_START, 0),
-    realm: isRealmId(parsed.realm) ? parsed.realm : null,
-    realms: reconcileRealms(sanitizeRealms(parsed.realms), sanitizePastDynasties(parsed.pastDynasties), isRealmId(parsed.realm) ? parsed.realm : null),
-    pastDynasties: sanitizePastDynasties(parsed.pastDynasties),
-    earnedTitles: sanitizeEarnedTitles(parsed.earnedTitles, sanitizePastDynasties(parsed.pastDynasties).length, !isCurrentSchema(parsed)),
-    fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1)),
-    ambition: sanitizeAmbition(parsed.ambition, sanitizeNumber(parsed.generation, 1, 1), sanitizeFiefs(parsed.fiefs, homeLevel, sanitizeNumber(parsed.generation, 1, 1))),
+    realm,
+    realms,
+    pastDynasties,
+    earnedTitles: sanitizeEarnedTitles(parsed.earnedTitles, pastDynasties.length, !isSchemaAtLeast(parsed, SCHEMA_V31)),
+    fiefs: sanitizeFiefs(parsed.fiefs, homeLevel, generation, seat),
+    // v3.2 字段：schema 4 照读（逐项校验），老档按「群 · 荆州」与迁移规则补（见 migrateV3_2）
+    faction,
+    seat,
+    ancestralRealms: v32 ? sanitizeRealms(parsed.ancestralRealms) : frozenAncestral(realms, realm),
+    bequests: v32 ? sanitizeBequests(parsed.bequests) : [],
+    vow: v32 ? sanitizeVow(parsed.vow, faction) : vowFor('qun'),
+    vowsDone: v32 ? Math.min(99, sanitizeNumber(parsed.vowsDone, 0, 0)) : chronicle.filter((entry) => entry.ambitionDone).length,
+    keptPartnerId: v32 && typeof parsed.keptPartnerId === 'string' && ownedPartnerIds.includes(parsed.keptPartnerId) ? parsed.keptPartnerId : null,
+    foundingGold: v32 ? Math.min(2000000, sanitizeNumber(parsed.foundingGold, 1000, 1000)) : 1000 + dynastyCount(realms) * DYNASTY_START_GOLD,
+    legacyTradition: v32 ? (isAmbitionId(parsed.legacyTradition) ? parsed.legacyTradition : null) : traditionOf(chronicle)?.id ?? null,
+    migrationComp: v32 ? sanitizeComp(parsed.migrationComp) : { founding: pastDynasties.length > 0, bequest: Boolean(traditionOf(chronicle)) },
     // v3.1 新字段：老存档缺省 —— 造价按 v2（进行中的本朝沿用旧价，下一次开新朝才切 v3）、本代起点 1 日 0 胜、匾自动
     schema: SAVE_SCHEMA,
     paceCurve: parsed.paceCurve === 'v3' ? 'v3' : 'v2',
     genStart: sanitizeGenStart(parsed.genStart, sanitizeNumber(parsed.day, 1, 1), sanitizeNumber(parsed.battleWins, 0, 0), sanitizeNumber(parsed.frontierWins, 0, 0)),
     plaque: typeof parsed.plaque === 'string' && parsed.plaque in PLAQUE_TEXT ? parsed.plaque : null,
     firstSiegeDone: parsed.firstSiegeDone === true,
-    chronicle: sanitizeChronicle(parsed.chronicle),
+    chronicle,
     // 旧存档没有边患记录：从下一个 10 日起算，不追溯
     nextRaidDay: typeof parsed.nextRaidDay === 'number' && Number.isFinite(parsed.nextRaidDay)
       ? Math.max(1, Math.floor(parsed.nextRaidDay))
@@ -368,10 +501,11 @@ function normalizeGameState(parsed: Partial<GameState>, now = Date.now()): GameS
       ? parsed.foundedAt
       : now - sanitizeNumber(parsed.day, 1, 1) * 3600 * 1000
   };
-  // schema 3 迁移先写（纪事排在读档时产生的解围、北疆等纪事之后）
-  const migrated = isCurrentSchema(parsed) ? restored : migrateV3_1(restored, now);
-  // 城防、得郡时刻、反攻计时按现有封地补齐（老存档的郡先有 72 小时保护，48 小时后才起第一次反攻）
-  const withSiege = releaseStaleSiege(reconcileSiege(migrated, now), now);
+  // schema 3、4 迁移先写（纪事排在读档时产生的解围、北疆等纪事之后）；各自幂等，跑完写 schema 4
+  const migrated31 = isSchemaAtLeast(parsed, SCHEMA_V31) ? restored : migrateV3_1(restored, now);
+  const migrated = v32 ? migrated31 : migrateV3_2(migrated31, (parsed as Record<string, unknown>).ambition, now);
+  // 城防、得郡时刻、反攻计时按现有封地补齐（老存档的郡先有 72 小时保护，48 小时后才起第一次反攻）；宏愿按当前封地推进
+  const withSiege = reconcileVow(releaseStaleSiege(reconcileSiege(migrated, now), now), now);
   const hadRaid = sanitizeRaid(parsed.frontierRaid) !== null;
   const titled = collectEarnedTitles(hadRaid
     ? { ...withSiege, eventLog: [{ id: `raid-retired-${now}`, day: withSiege.day, title: '北疆已靖', detail: '北疆已靖，边军调往诸郡。往后留意邻郡反攻，守城不耗军令。' }, ...withSiege.eventLog].slice(0, MAX_EVENT_LOG) }
@@ -395,6 +529,69 @@ function migrateV3_1(state: GameState, now: number): GameState {
       ...state.eventLog
     ].slice(0, MAX_EVENT_LOG)
   };
+}
+
+/**
+ * schema 4（v3.2 新朝换势力）迁移，字段缺省已在 normalize 里补齐：
+ * - 当前朝视为群 · 荆州（paceCurve 'v2' 的本朝沿用旧价），地图与价格不变
+ * - 国号：ancestralRealms = 历朝计数 − 本朝一份，本朝国号仍算一份 → 军令上限、收入%、属性、军资折扣、缴获、屯田价逐项与迁移前相等
+ * - 进行中的旧志向：已达成当场 +1 家业点（已满改发 3 万金）并计一次宏愿；未达成清空；家谱里达成的次数已并入 vowsDone
+ * - 家风：冻结进 legacyTradition（本朝照旧生效），下一次统一遗泽多 1 项；有前朝：下一次开朝补发旧版按朝累加的开国金差额
+ * 幂等：跑完 schema = 4，下次读档不再进来。
+ */
+function migrateV3_2(state: GameState, rawAmbition: unknown, now: number): GameState {
+  if (!state.selectedLordId && state.generation <= 1 && state.pastDynasties.length === 0) return state;
+  const result = legacyAmbitionResult(state, rawAmbition);
+  const done = Boolean(result?.done);
+  // 与 v3.1 传位结算同一口径：家学渊源一次 2 点，点满的部分每点折 3 万金
+  const reward = done ? successionPlan(0, state.legacyPoints, 1, titleBonuses(state).ambitionPoints) : { rewardPoints: 0, rewardGold: 0 };
+  const rewardNote = [reward.rewardPoints > 0 ? `${reward.rewardPoints} 点家业点` : '', reward.rewardGold > 0 ? `${reward.rewardGold.toLocaleString()} 金` : ''].filter(Boolean).join('、');
+  // 群宏愿「首郡入府」：老档已有郡的当场记成（写进这条迁移纪事，不另刷一条宏愿纪事）
+  const vowDone = Object.keys(state.fiefs).length > 0;
+  const notes = [
+    '群 · 荆州，地图造价照旧',
+    dynastyCount(state.realms) > 0 ? '国号加成冻结为遗泽' : '',
+    done ? `志向已成，得 ${rewardNote}` : result ? '志向未竟，改为宏愿' : '',
+    state.legacyTradition ? '家风本朝照旧，下次遗泽多一项' : '',
+    vowDone ? '宏愿首郡入府已成' : ''
+  ].filter(Boolean);
+  return {
+    ...state,
+    legacyPoints: state.legacyPoints + reward.rewardPoints,
+    gold: state.gold + reward.rewardGold,
+    vow: vowDone ? { id: 'qun', done: true } : state.vow,
+    vowsDone: state.vowsDone + (done ? 1 : 0) + (vowDone ? 1 : 0),
+    eventLog: [
+      { id: `v32-${now}`, day: state.day, title: '新朝换势力', detail: `${notes.join('；')}。` },
+      ...state.eventLog
+    ].slice(0, MAX_EVENT_LOG)
+  };
+}
+
+/** 老档的冻结遗泽：历朝计数减本朝一份（每项不小于 0） */
+function frozenAncestral(realms: GameState['realms'], current: RealmId | null): GameState['realms'] {
+  const out = { ...realms };
+  if (current) out[current] = Math.max(0, out[current] - 1);
+  return out;
+}
+
+function sanitizeBequests(value: unknown): BequestId[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(isBequestId))].slice(0, 3);
+}
+
+function sanitizeVow(value: unknown, faction: FactionId): GameState['vow'] {
+  if (!value || typeof value !== 'object') return vowFor(faction);
+  const v = value as Record<string, unknown>;
+  // 宏愿跟本朝势力走：对不上就按势力重定（不信存档里的 id）
+  if (v.id !== faction) return vowFor(faction);
+  const since = typeof v.since === 'number' && Number.isFinite(v.since) && v.since > 0 ? v.since : undefined;
+  return v.done === true ? { id: faction, done: true } : since !== undefined ? { id: faction, done: false, since } : { id: faction, done: false };
+}
+
+function sanitizeComp(value: unknown): GameState['migrationComp'] {
+  const c = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  return { founding: c.founding === true, bequest: c.bequest === true };
 }
 
 /** 本代起点：结构不对或超出当前值就按老口径（1 日 0 胜） */
@@ -488,7 +685,7 @@ function settleAbandonedBattle(state: GameState): GameState {
   if (!doudizhu && mode !== 'frontier' && typeof odds === 'number' && typeof rewardGold === 'number') {
     const win = Math.random() < odds;
     const bonus = win && state.nextBattleBonus ? state.nextBattleBonus : 1;
-    const gained = Math.round(rewardGold * bonus * realmRewardScale(state.realms, mode) * bountyScale(state.day, mode));
+    const gained = Math.round(rewardGold * bonus * realmRewardScale(effectiveRealms(state), mode) * bountyScale(state.day, mode));
     const lost = win ? 0 : Math.min(state.gold, lossGold);
     return {
       ...state,
@@ -558,8 +755,8 @@ function sanitizeChoice(value: unknown): GameState['pendingChoice'] {
   return { eventId: c.eventId, day: Math.floor(c.day), dailyIncome: Math.max(0, Math.floor(c.dailyIncome)) };
 }
 
-/** 只认目录里的郡和三条方略；郡必须与本府连成一片，飞地作废 */
-function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): FiefHoldings {
+/** 只认目录里的郡和三条方略；郡必须与本府（seat，按势力）连成一片，飞地作废；本府节点不算封地 */
+function sanitizeFiefs(value: unknown, homeLevel: number, generation: number, seat: string): FiefHoldings {
   if (!value || typeof value !== 'object') return {};
   // 第一代没到侯府不可能有封地（传下来的除外）
   if (generation <= 1 && homeLevel < FIEF_UNLOCK_HOME_LEVEL) return {};
@@ -567,9 +764,9 @@ function sanitizeFiefs(value: unknown, homeLevel: number, generation: number): F
   const out: FiefHoldings = {};
   for (const fief of fiefCatalog) {
     const policy = raw[fief.id];
-    if (isFiefPolicyId(policy)) out[fief.id] = policy;
+    if (fief.id !== seat && isFiefPolicyId(policy)) out[fief.id] = policy;
   }
-  return connectedHoldings(out);
+  return connectedHoldings(out, seat);
 }
 
 function sanitizeRealms(value: unknown): GameState['realms'] {
@@ -593,16 +790,28 @@ function sanitizePastDynasties(value: unknown): GameState['pastDynasties'] {
     .filter((entry) => entry && typeof entry === 'object')
     .map((entry) => {
       const e = entry as Record<string, unknown>;
-      return { dynasty: 0, realm: isRealmId(e.realm) ? e.realm : null, generations: Math.min(99, sanitizeNumber(e.generations, 1, 1)), days: Math.min(999999, sanitizeNumber(e.days, 0, 0)), wins: Math.min(999999, sanitizeNumber(e.wins, 0, 0)), ambitions: Math.min(99, sanitizeNumber(e.ambitions, 0, 0)), ...(typeof e.openDays === 'number' && Number.isFinite(e.openDays) && e.openDays >= 1 ? { openDays: Math.min(99999, Math.floor(e.openDays)) } : {}) };
+      const lordIds = Array.isArray(e.lords) ? e.lords.filter((id): id is string => isKnownId(id, lords)).slice(0, 8) : null;
+      return {
+        dynasty: 0,
+        realm: isRealmId(e.realm) ? e.realm : null,
+        generations: Math.min(99, sanitizeNumber(e.generations, 1, 1)),
+        days: Math.min(999999, sanitizeNumber(e.days, 0, 0)),
+        wins: Math.min(999999, sanitizeNumber(e.wins, 0, 0)),
+        ambitions: Math.min(99, sanitizeNumber(e.ambitions, 0, 0)),
+        ...(typeof e.openDays === 'number' && Number.isFinite(e.openDays) && e.openDays >= 1 ? { openDays: Math.min(99999, Math.floor(e.openDays)) } : {}),
+        ...(isFactionId(e.faction) ? { faction: e.faction } : {}),
+        ...(lordIds ? { lords: lordIds } : {}),
+        ...(typeof e.vow === 'boolean' ? { vow: e.vow } : {})
+      };
     })
     .slice(-20)
     // 朝代号按顺序重编，脏档的重复/乱序号不信
     .map((entry, index) => ({ ...entry, dynasty: index + 1 }));
 }
 
-/** 已是 schema 3（v3.1）写的存档：不再迁移、不再按旧规矩补记家声 */
-function isCurrentSchema(parsed: Partial<GameState>) {
-  return typeof parsed.schema === 'number' && parsed.schema >= SAVE_SCHEMA;
+/** 存档结构版本够不够新：≥ 3 不再跑 v3.1 迁移、不再按旧规矩补记家声；≥ 4 不再跑 v3.2 迁移 */
+function isSchemaAtLeast(parsed: Partial<GameState>, schema: number) {
+  return typeof parsed.schema === 'number' && parsed.schema >= schema;
 }
 
 /**
@@ -613,16 +822,6 @@ function isCurrentSchema(parsed: Partial<GameState>) {
 function sanitizeEarnedTitles(value: unknown, pastCount: number, legacySave: boolean): string[] {
   const kept = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && isKeptLineageId(id)) : [];
   return [...new Set([...kept, ...(legacySave && pastCount > 0 ? ENDING_LINEAGE_TITLE_IDS : [])])];
-}
-
-function sanitizeAmbition(value: unknown, generation: number, fiefs: FiefHoldings): GameState['ambition'] {
-  if (!value || typeof value !== 'object' || generation < 2) return null;
-  const a = value as { id?: unknown; baseFiefs?: unknown };
-  const ambition = isAmbitionId(a.id) ? findAmbition(a.id) : null;
-  if (!ambition) return null;
-  // 目标按世代重算，不信任存档里的数；开疆缺基数时按当前郡数算（六郡已满时开疆改为守城 2 次）
-  const baseFiefs = typeof a.baseFiefs === 'number' && Number.isFinite(a.baseFiefs) ? Math.max(0, Math.min(6, Math.floor(a.baseFiefs))) : Object.keys(fiefs).length;
-  return { id: ambition.id, target: ambitionTargetFor(ambition, generation, baseFiefs), baseFiefs };
 }
 
 function sanitizeChronicle(value: unknown): GameState['chronicle'] {
@@ -778,7 +977,7 @@ function legacyOfflineIncome(state: GameState, now: number): GameState {
     findHomeLevel(state.homeLevel).dailyIncome,
     findFarmLevel(state.farmLevel).incomePercent,
     state.legacyPoints,
-    lord ? calculateIntelligence(lord, ownedPartners, fiefStatBonus(state.fiefs) + realmStatBonus(state.realms) + state.affairTraining.civil) : 0,
+    lord ? calculateIntelligence(lord, ownedPartners, statBonusOf(state) + state.affairTraining.civil) : 0,
     findFarmLevel(state.farmLevel).flatIncome,
     incomePercentOf(state)
   );

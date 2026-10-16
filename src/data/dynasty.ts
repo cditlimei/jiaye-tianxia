@@ -1,10 +1,12 @@
 import type { GameState } from '../types';
 import { ownedFiefCount } from './fiefs';
-import { ambitionStatus } from './ambitions';
+import { titleBonuses } from './titleEffects';
+import { BEQUEST_MAX, treasuryBequestGold } from './factions';
 
 /**
  * 终局与新朝：六郡尽归 + 王城，即「天下归心」（v3.1 起不看家业点，也不看世代）。
- * 可开创新朝：定一国号，全部重来，但国号带来的加成永久保留并可跨朝叠加；旧家谱归入前朝。
+ * 可开创新朝（v3.2）：选国号 = 选下一朝的开局势力（factions.ts），再选遗泽（只管下一朝）；旧家谱归入前朝。
+ * 国号效果 = 冻结的前朝遗泽 ancestralRealms + 本朝一份（effectiveRealms），不再按朝叠加；realms 计数只给家声、前朝录、HUD。
  */
 export type RealmId = 'wei' | 'shu' | 'wu';
 
@@ -48,10 +50,21 @@ export const REALM_BATTLE_BONUS = 0.2;
 export const REALM_FARM_DISCOUNT = 0.1;
 export function realmRewardScale(realms: RealmCounts, mode: string) {
   // 10-15 起官道/江东/许都自动战收起：吴的加成改给斗地主，魏改为攻郡军资折扣（realmConquestDiscount）
+  // v3.2 删掉 court / naval 两个死分支（自动战已收起，只剩老存档中途离开结算会传进来，按 1 倍）
   if (mode === 'doudizhu') return 1 + Math.min(3, realms.wu) * REALM_BATTLE_BONUS;
-  if (mode === 'court') return 1 + Math.min(3, realms.wei) * REALM_BATTLE_BONUS;
-  if (mode === 'naval') return 1 + Math.min(3, realms.wu) * REALM_BATTLE_BONUS;
   return 1;
+}
+
+/**
+ * v3.2 国号效果口径：冻结的前朝遗泽（ancestralRealms，老档迁移时由历朝计数减本朝得来，之后只读）+ 本朝国号一份。
+ * 所有 realm* 效果函数的入参都换成它；realms 计数照旧 +1，只给家声、前朝录与 HUD 用。
+ * 缺 ancestralRealms 的局部 state（规则脚本、econ 旧对照）按旧口径直接用 realms。
+ */
+export function effectiveRealms(state: { realms: RealmCounts; realm?: RealmId | null; ancestralRealms?: RealmCounts | null }): RealmCounts {
+  if (!state.ancestralRealms) return state.realms;
+  const out = { ...state.ancestralRealms };
+  if (state.realm) out[state.realm] += 1;
+  return out;
 }
 
 /** 魏：每立一次攻郡军资再打九折（最多三次） */
@@ -109,8 +122,28 @@ export function dynastySummary(state: GameState, now = Date.now()) {
     // v3.1 起传位不重置日子与战绩：本代 = 当前 − 本代起点（老存档起点为 1 日 0 胜，与旧算法一致）
     days: past.reduce((sum, entry) => sum + entry.days, 0) + genDays(state),
     wins: past.reduce((sum, entry) => sum + entry.wins, 0) + genWins(state),
-    // 本代志向此时一并计入
-    ambitions: past.filter((entry) => entry.ambitionDone).length + (ambitionStatus(state)?.done ? 1 : 0),
+    // 旧家谱里的志向（v3.2 起志向下线，新朝只看宏愿）
+    ambitions: past.filter((entry) => entry.ambitionDone).length,
+    vowDone: Boolean(state.vow?.done),
     fiefs: ownedFiefCount(state.fiefs)
   };
+}
+
+/**
+ * 统一时能选几项遗泽：基础 1；本朝宏愿达成再 +1（家学渊源 +2）；老档有家风补 1（只发一次）；最多 3 项。
+ */
+export function bequestSlots(state: GameState) {
+  const vow = state.vow?.done ? titleBonuses(state).ambitionPoints : 0;
+  const tradition = state.migrationComp?.bequest ? 1 : 0;
+  return Math.min(BEQUEST_MAX, 1 + vow + tradition);
+}
+
+/** 开国金（v3.2）：固定 1,000 + 2 万（不再按朝数累加），遗泽府库另加，老档下一次开朝一次性补发旧版按朝累加的差额 */
+export function foundingGoldFor(state: GameState, withTreasury: boolean) {
+  const base = 1000 + DYNASTY_START_GOLD;
+  const treasury = withTreasury ? treasuryBequestGold(state.legacyPoints) : 0;
+  // 旧规则：第 N 朝开局多得 (N − 1) × 2 万；新朝是第 pastDynasties + 2 朝
+  const oldRule = (state.pastDynasties.length + 1) * DYNASTY_START_GOLD;
+  const comp = state.migrationComp?.founding ? Math.max(0, oldRule - DYNASTY_START_GOLD) : 0;
+  return { base, treasury, comp, total: base + treasury + comp };
 }

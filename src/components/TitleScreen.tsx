@@ -5,7 +5,8 @@ import { getTitleStatus } from '../data/progression';
 import { imageUrl } from '../lib/assets';
 import { LEGACY_START_GOLD_PER_POINT } from '../lib/battle';
 import { defaultGameState } from '../lib/storage';
-import { DYNASTY_START_GOLD, dynastyCount, isHeirPending } from '../data/dynasty';
+import { dynastyCount, isHeirPending } from '../data/dynasty';
+import { FACTIONS } from '../data/factions';
 import { findHomeLevel } from '../data/gameData';
 import { GameButton } from './common/GameButton';
 
@@ -43,7 +44,7 @@ export function TitleScreen({ hasSave, state, lordName, onContinue, onNew, onTog
               <span>{dynastyCount(state.realms) > 0 ? `第 ${dynastyCount(state.realms) + 1} 朝 · ` : ''}第 {state.generation} 代 · 待择新主</span>
               {isHeirPending(state)
                 ? <strong>家业点 {state.legacyPoints} · 承袭{findHomeLevel(state.homeLevel).name} · 存金 {state.gold.toLocaleString()}</strong>
-                : <strong>家业点 {state.legacyPoints} · 新主起手 {(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + (state.generation === 1 ? dynastyCount(state.realms) * DYNASTY_START_GOLD : 0)).toLocaleString()} 金</strong>}
+                : <strong>{state.generation === 1 && state.faction !== 'qun' ? `${FACTIONS[state.faction].name}起于${FACTIONS[state.faction].capital} · ` : `家业点 ${state.legacyPoints} · `}新主起手 {(state.generation === 1 ? state.foundingGold : defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT).toLocaleString()} 金</strong>}
             </>
           )}
         </div>

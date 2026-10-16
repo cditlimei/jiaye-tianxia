@@ -780,54 +780,29 @@ await scenario('封地经略', async () => {
 });
 
 await scenario('本代志向与家谱', async () => {
-  // 第一代不出现志向卡
+  // v3.2 改写：三选一志向下线（改为势力宏愿，开朝即定），第一代、第二代都没有志向卡；家谱照记
   const gen1 = await open(save({ generation: 1 }));
   check('第一代没有志向卡', !(await gen1.locator('main').innerText()).includes('本代志向'));
   await gen1.context().close();
-
-  // 第二代：三选一 → 选强兵（目标 30 胜）→ 任务面板显示进度
   const page = await open(save({ generation: 2, legacyPoints: 2, battleWins: 5 }));
-  check('第二代主城出现志向三选一', (await page.locator('.ambition-card').innerText()).includes('富国') && (await page.locator('.ambition-card').innerText()).includes('开疆'));
-  await page.locator('.ambition-options button').filter({ hasText: '强兵' }).click();
-  await page.waitForTimeout(300);
-  let s = await read(page);
-  check('选强兵后存档记录目标 30 胜', s.ambition?.id === 'might' && s.ambition?.target === 30, JSON.stringify(s.ambition));
-  await openGoals(page);
-  check('志向卡消失且显示进度', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.ambition-progress').innerText()).includes('现 5 胜'));
+  check('第二代也没有志向三选一（v3.2 志向下线）', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && !(await page.locator('main').innerText()).includes('本代志向'));
   await page.context().close();
-
-  // v3.1 改写：六郡已满时开疆不再隐藏，改为「本代守住 2 次邻郡反攻」（侯府，未到王城所以还没天下归心）
-  const full = await open(save({ generation: 2, homeLevel: 5, frontierWins: 4, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'farming', changsha: 'farming', bajun: 'farming', liaodong: 'farming' } }));
-  const fullCard = await full.locator('.ambition-card').innerText();
-  check('六郡已满开疆改为守城 2 次', fullCard.includes('开疆') && fullCard.includes('本代守住 2 次邻郡反攻'), fullCard.replace(/\n/g, ' '));
-  await full.locator('.ambition-options button').filter({ hasText: '开疆' }).click();
-  await full.waitForTimeout(300);
-  const fs = await read(full);
-  await openGoals(full);
-  // 本代守城胜场按本代起点算（老存档起点 0，本代已守住 4 次即达成）
-  check('开疆守城：目标 2、进度按本代守城胜场', fs.ambition?.id === 'expansion' && fs.ambition?.target === 2 && (await full.locator('.ambition-progress').first().innerText()).includes('现 4 次，已达成'), JSON.stringify(fs.ambition));
-  await full.context().close();
-
-  // 达成富国后传位：家谱记一笔达成，传位时得 1 点家业点（v3.1 改写，原为下一代开局多 10,000 金）；家谱在主公页可见
-  const heir = await open(save({ generation: 2, legacyPoints: 2, homeLevel: 6, gold: 600000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
-  await openGoals(heir);
-  check('达成志向后进度行提示', (await heir.locator('.ambition-progress').innerText()).includes('已达成'));
-  await closeGoals(heir);
+  // 传位：家谱记一笔（志向一栏记空），主公页可见
+  const heir = await open(save({ generation: 2, legacyPoints: 2, homeLevel: 6, gold: 600000 }));
   await heir.getByRole('button', { name: '设置与存档' }).click();
   await heir.getByText('当前存档').first().waitFor();
   heir.on('dialog', (d) => d.accept());
   await heir.getByRole('button', { name: '传位给下一代' }).click();
   await heir.getByText('乱世择主').first().waitFor({ timeout: 8000 });
-  s = await read(heir);
-  check('传位后家谱记录志向达成', s.chronicle?.length === 1 && s.chronicle[0].generation === 2 && s.chronicle[0].ambitionDone === true && s.ambition === null, JSON.stringify(s.chronicle));
+  let s = await read(heir);
+  check('传位后家谱记一笔、志向记空', s.chronicle?.length === 1 && s.chronicle[0].generation === 2 && s.chronicle[0].ambition === null && s.chronicle[0].ambitionDone === false, JSON.stringify(s.chronicle));
   await heir.getByRole('button', { name: '确认选择' }).click();
   await heir.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
   s = await read(heir);
-  // 60 万从第 3 点起折：15+20+25 万 = 3 点正好花完；志向再 +1 点 → 共 6 点
-  check('志向达成传位得 1 点家业点', s.generation === 3 && s.legacyPoints === 6 && s.gold === 0, `gold=${s.gold} lp=${s.legacyPoints}`);
-  check('第三代志向目标递增', (await heir.locator('.ambition-card').innerText()).includes('750,000'));
+  // 60 万从第 3 点起折：15+20+25 万 = 3 点正好花完（v3.2 传位不再有志向点）
+  check('传位只按递增价折点（2 → 5 点）', s.generation === 3 && s.legacyPoints === 5 && s.gold === 0, `gold=${s.gold} lp=${s.legacyPoints}`);
   await heir.getByRole('button', { name: '主公' }).click();
-  check('主公页显示家谱', (await heir.locator('.chronicle').last().innerText()).includes('第 2 代') && (await heir.locator('.chronicle').last().innerText()).includes('达成'));
+  check('主公页显示家谱', (await heir.locator('.chronicle').last().innerText()).includes('第 2 代'));
   await heir.context().close();
 });
 
@@ -846,29 +821,16 @@ await scenario('伴侣心事第二段', async () => {
 });
 
 await scenario('志向审查修复', async () => {
-  const page = await open(save({ generation: 2, legacyPoints: 2 }));
-  await page.getByRole('button', { name: '稍后再定' }).click();
-  check('稍后再定后折叠成一行', !(await page.locator('.ambition-card').isVisible().catch(() => false)) && (await page.locator('.chance-bar').textContent()).includes('志向未定'));
-  await chance(page, /本代志向未定/);
-  check('可重新展开选择', await page.locator('.ambition-card').isVisible());
-  await page.context().close();
-
+  // v3.2 改写：志向下线，「稍后再定」、志向目标重算、HUD 志向进度这几项作废；老存档里的志向字段读档清掉、未达成不留痕
   const tampered = await open(save({ generation: 2, ambition: { id: 'wealth', target: 1, baseFiefs: 0 } }));
   await tampered.waitForTimeout(300);
-  check('存档里的志向目标按世代重算', (await read(tampered)).ambition?.target === 500000, JSON.stringify((await read(tampered)).ambition));
-  check('HUD 显示志向进度', (await tampered.locator('.home-hud__ambition').innerText()).includes('富国'));
+  const t = await read(tampered);
+  check('老存档志向字段读档清掉（未达成）', !t.ambition && t.legacyPoints === 0 && !(await tampered.locator('.home-hud').innerText()).includes('富国'), JSON.stringify({ a: t.ambition, lp: t.legacyPoints }));
   await tampered.context().close();
-
-  const gen1 = await open(save({ generation: 1, ambition: { id: 'might', target: 30, baseFiefs: 0 } }));
-  await gen1.waitForTimeout(300);
-  check('第一代的志向字段被清空', (await read(gen1)).ambition === null);
-  await gen1.context().close();
-
   const undone = await open(save({ generation: 2, homeLevel: 6, gold: 150000, battleWins: 9, ambition: { id: 'might', target: 30, baseFiefs: 0 } }));
-  check('机会栏传位项提示志向未竟', (await undone.locator('.chance-bar').textContent()).includes('还差 21 胜'));
   await undone.getByRole('button', { name: '设置与存档' }).click();
   await undone.getByText('当前存档').first().waitFor();
-  check('传位面板写明志向未竟', (await undone.locator('.succession-panel').innerText()).includes('未竟'));
+  check('传位面板不再写志向', !(await undone.locator('.succession-panel').innerText()).includes('志向'));
   await undone.context().close();
 });
 
@@ -889,10 +851,8 @@ await scenario('天下归心与新朝', async () => {
   await page.getByRole('button', { name: '展开卷轴 →' }).click();
   const scroll = await page.locator('.ending-sheet__scroll').innerText();
   check('卷轴汇总三代总账', scroll.includes('共 3 代') && scroll.includes('106 日') && scroll.includes('71 场胜利') && scroll.includes('1 代志向达成'), scroll);
-  await page.getByRole('radio', { name: /蜀/ }).click();
-  page.on('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: /开创新朝 · 国号蜀/ }).click();
-  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  // v3.2：三步开新朝（选国号 → 遗泽 → 确认），卷轴已展开
+  await foundVia(page, '蜀', ['旧部']);
   let s = await read(page);
   check('开创新朝后全部重来只留国号', s.realms?.shu === 1 && s.generation === 1 && s.legacyPoints === 0 && Object.keys(s.fiefs ?? {}).length === 0 && s.chronicle?.length === 0 && s.pastDynasties?.length === 1 && s.pastDynasties[0].generations === 3, JSON.stringify({ realms: s.realms, past: s.pastDynasties }));
   await page.getByRole('button', { name: '确认选择' }).click();
@@ -964,10 +924,9 @@ await scenario('家声跨朝与家业点满', async () => {
   const page = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, fiefs: six, chronicle: [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: null, ambitionDone: false }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: 'wealth', ambitionDone: true }] }));
   const before = await lineage(page);
   await page.getByRole('button', { name: '展开卷轴 →' }).click();
-  check('终局卷轴写明新朝是第 2 朝、魏按新朝口径 8 → 9（v2.3 基础 8）', (await page.locator('.ending-sheet').innerText()).includes('第 2 朝') && (await page.getByRole('radio', { name: /魏/ }).innerText()).includes('8 → 9'));
-  page.on('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: /开创新朝 · 国号魏/ }).click();
-  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  // v3.2 改写：魏的势力包按新朝口径写「新朝军令上限 9」（冻结遗泽 0 + 本朝一份）
+  check('终局卷轴写明新朝是第 2 朝、魏按新朝口径军令上限 9（v2.3 基础 8）', (await page.locator('.ending-sheet').innerText()).includes('第 2 朝') && (await page.getByRole('radio', { name: /^魏/ }).innerText()).includes('新朝军令上限 9'));
+  await foundVia(page, '魏', ['府库']);
   await page.getByRole('button', { name: '确认选择' }).click();
   await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
   await page.getByRole('button', { name: '携美人，共创家业' }).click();
@@ -984,10 +943,9 @@ await scenario('家声跨朝与家业点满', async () => {
   check('老存档有前朝即补记天下归心，旧家声列入旧誉', /「天下归心」\s*已获得/.test(old.text) && old.text.includes('旧誉') && old.text.includes('「六郡之主」') && ['founder', 'eternal', 'marquis', 'six-commanderies', 'unifier'].every((id) => ls.earnedTitles.includes(id)), JSON.stringify(ls.earnedTitles));
   await legacy.context().close();
 
-  // v3.1 改写：家业点满、只有 4 郡——志向卡照常出现（奖励改发 3 万金），首页与传位面板提示再得 2 郡（王城已立）
+  // v3.2 改写：家业点满、只有 4 郡——志向下线（不再有志向卡），首页 HUD 挂本朝宏愿；首页与传位面板提示再得 2 郡（王城已立）
   const maxed = await open(save({ homeLevel: 6, legacyPoints: 20, generation: 3, gold: 50000, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'military', changsha: 'farming' } }));
-  const card = await maxed.locator('.ambition-card').innerText().catch(() => '');
-  check('家业点满志向卡仍在、奖励写 3 万金', card.includes('本代志向') && card.includes('30,000 金'), card.replace(/\n/g, ' ').slice(0, 160));
+  check('家业点满：没有志向卡、HUD 挂宏愿', !(await maxed.locator('.ambition-card').isVisible().catch(() => false)) && (await maxed.locator('.home-hud__vow').innerText()).includes('首郡入府'));
   check('首页提示再得 2 郡', (await maxed.locator('.chance-bar').textContent().catch(() => '')).includes('再得 2 郡即天下归心'));
   await maxed.getByRole('button', { name: '设置与存档' }).click();
   await maxed.getByText('当前存档').first().waitFor();
@@ -1014,8 +972,8 @@ await scenario('家风', async () => {
   check('九折军资扣 64,125', (await read(exp)).gold === 5875);
   await exp.context().close();
   // 强兵家风：传位后新主公开局军令满
-  // 第二代达成强兵后传位：两代连达成立，第三代开局即享家风
-  const might = await open(save({ generation: 2, homeLevel: 6, gold: 250000, battleWins: 31, ambition: { id: 'might', target: 30, baseFiefs: 0 }, chronicle: [two('might')[0]] }));
+  // v3.2 改写：志向下线、家风不再新立；老档里已成的强兵家风冻结、本朝照旧生效（原用例靠本代达成志向现立家风，作废）
+  const might = await open(save({ generation: 3, homeLevel: 6, gold: 250000, battleWins: 31, chronicle: two('might') }));
   await might.getByRole('button', { name: '设置与存档' }).click();
   await might.getByText('当前存档').first().waitFor();
   might.on('dialog', (d) => d.accept());
@@ -1027,7 +985,7 @@ await scenario('家风', async () => {
   check('强兵家风传位军令补满（上限 9 含一代枭雄）', (await read(might)).orders === 9, `orders=${(await read(might)).orders}`);
   await might.context().close();
   // 带整军封地传位：第三代开局军令按含整军加成的上限满额（v2.3 基础 8，9/9）
-  const mightFief = await open(save({ generation: 2, homeLevel: 6, gold: 250000, battleWins: 31, fiefs: { nanyang: 'military' }, ambition: { id: 'might', target: 30, baseFiefs: 0 }, chronicle: [two('might')[0]] }));
+  const mightFief = await open(save({ generation: 3, homeLevel: 6, gold: 250000, battleWins: 31, fiefs: { nanyang: 'military' }, chronicle: two('might') }));
   await mightFief.getByRole('button', { name: '设置与存档' }).click();
   await mightFief.getByText('当前存档').first().waitFor();
   mightFief.on('dialog', (d) => d.accept());
@@ -1038,9 +996,9 @@ await scenario('家风', async () => {
   const mf = await read(mightFief);
   check('强兵家风带整军郡传位军令等于上限 10（基础 8 + 整军 + 一代枭雄）', mf.orders === 10 && (await mightFief.locator('.home-hud__chips').innerText()).includes('10/10'), `orders=${mf.orders}`);
   await mightFief.context().close();
-  // 断档：两代志向不同不成家风；志向卡提示再成一次即家风
+  // 断档：两代志向不同不成家风（v3.2：志向卡与「再成一次即立家风」提示随志向下线作废）
   const broken = await open(save({ generation: 3, chronicle: [two('wealth')[0], { ...two('might')[1] }] }));
-  check('两代志向不同不成家风且提示候选', !(await broken.locator('.home-hud').innerText()).includes('家风') && (await broken.locator('.ambition-card').innerText()).includes('再成一次即立家风'));
+  check('两代志向不同不成家风', !(await broken.locator('.home-hud').innerText()).includes('家风') && (await read(broken)).legacyTradition === null);
   await broken.context().close();
 });
 
@@ -1424,7 +1382,8 @@ await scenario('疆域图攻郡', async () => {
   const s2 = await read(page);
   const won = (await page.locator('.doudizhu-result-banner').innerText().catch(() => '')).includes('南阳郡归附');
   check('攻郡打完：胜则南阳归府下行整军，负则军资不退、郡不变', ended && (won ? s2.fiefs?.nanyang === 'military' && s2.battleWins === s0.battleWins + 1 : !s2.fiefs?.nanyang && s2.battleLosses === s0.battleLosses + 1) && s2.gold === s1.gold && !s2.activeBattle, `won=${won} fiefs=${JSON.stringify(s2.fiefs)}`);
-  check('攻郡结算写进纪事', (s2.eventLog?.[0]?.title ?? '').includes(won ? '攻取南阳郡' : '攻南阳郡未克'), s2.eventLog?.[0]?.title);
+  // v3.2：拿下首郡同时达成群宏愿「首郡入府」，宏愿纪事会排在攻郡纪事前面，所以看最近两条
+  check('攻郡结算写进纪事', (s2.eventLog ?? []).slice(0, 2).some((ev) => (ev.title ?? '').includes(won ? '攻取南阳郡' : '攻南阳郡未克')), s2.eventLog?.slice(0, 2).map((ev) => ev.title).join(' / '));
   await page.context().close();
 
   // 中途刷新：按攻城失利，军资不退
@@ -2229,9 +2188,9 @@ await scenario('守城·保护期与迁移', async () => {
   s = await read(dirty);
   check('坏数据修剪：城防截到 2、不在手的郡与反攻作废', JSON.stringify(s.fiefWalls) === '{"nanyang":2}' && s.siege === null, JSON.stringify({ w: s.fiefWalls, siege: s.siege }));
   await dirty.context().close();
-  // 开疆志向按本代最高郡数：丢过郡不倒退，也不能靠丢了再收复刷进度
+  // 开疆志向按本代最高郡数：丢过郡不倒退（v3.2 志向下线，改为迁移时按同一口径结算：已达成当场 +1 家业点）
   const amb = await open(save({ generation: 2, homeLevel: 5, fiefs: { nanyang: 'farming' }, peakFiefs: 2, ambition: { id: 'expansion', target: 1, baseFiefs: 1 } }));
-  check('开疆志向按本代最高郡数算（失郡不倒退）', (await amb.locator('.home-hud').innerText()).includes('志向 开疆 已达成'), await amb.locator('.home-hud').innerText());
+  check('开疆志向按本代最高郡数算（失郡不倒退，迁移时记达成 +1 点）', (await read(amb)).legacyPoints === 1, JSON.stringify({ lp: (await read(amb)).legacyPoints }));
   await amb.context().close();
 });
 
@@ -2853,26 +2812,28 @@ await scenario('v3.1·统一条件六郡加王城', async () => {
 });
 
 await scenario('v3.1·志向不隐藏与家业点奖励', async () => {
-  // 家业点满 20：志向卡照常；达成后传位改发 3 万金
+  // v3.2 改写：志向下线，传位不再结算志向点；进行中的旧志向在读档迁移时当场结算（家业点满改发 3 万金）
   const full = await open(save({ generation: 2, homeLevel: 6, legacyPoints: 20, gold: 600000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
-  const s = await doSucceed(full);
-  check('家业点满时志向奖励改发 3 万金', s.legacyPoints === 20 && s.gold === 630000 && s.chronicle.at(-1)?.ambitionDone === true, JSON.stringify({ lp: s.legacyPoints, g: s.gold }));
+  await full.waitForTimeout(300);
+  const f = await read(full);
+  check('家业点满时志向奖励改发 3 万金（迁移当场结算）', f.legacyPoints === 20 && f.gold === 630000 && f.vowsDone >= 1, JSON.stringify({ lp: f.legacyPoints, g: f.gold, n: f.vowsDone }));
   await full.context().close();
-  // 家学渊源（三代志向达成）：奖励 2 点；第 4 代富国目标 100 万，从第 3 点起折 4 点花 90 万，再 +2
+  // 家学渊源（三代志向达成）：效果改为「宏愿达成，下一朝遗泽多选 2 项」；本代富国（第 4 代 100 万）已达成 → 迁移按 v3.1 口径 +2 点（2 → 4）
   const chron = [['wealth', 'lvbu'], ['might', 'caocao'], ['wealth', 'liubei']].map(([ambition, lordId], i) => ({ generation: i + 1, lordId, days: 30, gold: 0, wins: 10, fiefs: 0, ambition, ambitionDone: true }));
   const sch = await open(save({ generation: 4, homeLevel: 6, legacyPoints: 2, gold: 1000000, chronicle: chron, ambition: { id: 'wealth', target: 1000000, baseFiefs: 0 } }));
   await sch.getByRole('button', { name: '主公' }).click();
-  check('家学渊源已得并写明效果', /「家学渊源」\s*已获得 · 志向达成得 2 点家业点/.test(await sch.getByRole('dialog', { name: '主公' }).innerText()));
+  check('家学渊源已得并写明效果', /「家学渊源」\s*已获得 · 宏愿达成，下一朝遗泽多选 2 项/.test(await sch.getByRole('dialog', { name: '主公' }).innerText()));
   await sch.getByRole('button', { name: '关闭' }).click();
   const t = await doSucceed(sch);
-  check('家学渊源：志向达成得 2 点', t.legacyPoints === 8 && t.gold === 100000, JSON.stringify({ lp: t.legacyPoints, g: t.gold }));
+  // 4 点起折：第 5~7 点 25+30+35 万 = 90 万，第 8 点 40 万扣不起 → 7 点、余 10 万（传位不再有志向点）
+  check('家学渊源：志向迁移得 2 点，传位只按递增价', t.legacyPoints === 7 && t.gold === 100000, JSON.stringify({ lp: t.legacyPoints, g: t.gold }));
   await sch.context().close();
-  // 旧版「稍后再定」写在 sessionStorage：读档时清掉，志向卡重新出现
+  // 旧版「稍后再定」写在 sessionStorage：读档时清掉
   const later = await open(save({ generation: 2, legacyPoints: 20 }));
   await later.evaluate(() => sessionStorage.setItem('jiaye-ambition-deferred', '2'));
   await later.reload({ waitUntil: 'domcontentloaded' });
   await later.locator('.home-v2').waitFor();
-  check('旧 sessionStorage 推迟记录读到即清、志向卡仍在', (await later.evaluate(() => sessionStorage.getItem('jiaye-ambition-deferred'))) === null && (await later.locator('.ambition-card').isVisible()));
+  check('旧 sessionStorage 推迟记录读到即清（志向卡随志向下线）', (await later.evaluate(() => sessionStorage.getItem('jiaye-ambition-deferred'))) === null && !(await later.locator('.ambition-card').isVisible().catch(() => false)));
   await later.context().close();
 });
 
@@ -2891,7 +2852,8 @@ await scenario('v3.1·造价曲线', async () => {
   await fresh.getByText('良缘入府').first().waitFor({ timeout: 8000 });
   await fresh.getByRole('button', { name: '携美人，共创家业' }).click();
   await fresh.locator('.home-v2').waitFor();
-  check('新开档写 v3 曲线与 schema 3', (await read(fresh)).paceCurve === 'v3' && (await read(fresh)).schema === 3);
+  // v3.2：schema 升到 4；新档是群 · 荆州
+  check('新开档写 v3 曲线与 schema 4（群 · 荆州）', (await read(fresh)).paceCurve === 'v3' && (await read(fresh)).schema === 4 && (await read(fresh)).faction === 'qun' && (await read(fresh)).seat === 'jingzhou');
   await ctx.close();
   // v3 存档：王城 36 万，首郡南阳押 33 万（15 万 × 2.2）× 50% × 侯门显贵 0.95 = 156,750
   const v3 = await open(save({ schema: 3, paceCurve: 'v3', homeLevel: 5, gold: 200000, orders: 3 }));
@@ -3051,22 +3013,23 @@ await scenario('v3.1·schema 3 迁移', async () => {
   await page.waitForTimeout(300);
   let s = await read(page);
   const count = (st) => st.eventLog.filter((ev) => ev.title === '家业新制').length;
-  check('迁移：schema 3、paceCurve v2、家业点截到 20、纪事一条', s.schema === 3 && s.paceCurve === 'v2' && s.legacyPoints === 20 && count(s) === 1 && s.genStart?.day === 1, JSON.stringify({ sc: s.schema, p: s.paceCurve, lp: s.legacyPoints, n: count(s) }));
+  // v3.2：两步迁移一次跑完，schema 写 4
+  check('迁移：schema 4、paceCurve v2、家业点截到 20、纪事一条', s.schema === 4 && s.paceCurve === 'v2' && s.legacyPoints === 20 && count(s) === 1 && s.genStart?.day === 1, JSON.stringify({ sc: s.schema, p: s.paceCurve, lp: s.legacyPoints, n: count(s) }));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('.home-v2').waitFor();
   await page.waitForTimeout(300);
   s = await read(page);
-  check('迁移幂等：再读档不再写纪事、字段不变', s.schema === 3 && s.paceCurve === 'v2' && count(s) === 1 && s.legacyPoints === 20);
+  check('迁移幂等：再读档不再写纪事、字段不变', s.schema === 4 && s.paceCurve === 'v2' && count(s) === 1 && s.legacyPoints === 20);
   await page.context().close();
   // 老档「六郡 + 王城、12 点」：读档即统一并补记天下归心，家业点不动
   const unify = await open(save({ generation: 2, legacyPoints: 12, homeLevel: 6, fiefs: SIX, fiefTakenAt: allTaken(Date.now() - 200 * HR) }));
   const u = await read(unify);
   check('老档六郡 + 王城读档即统一、家业点不动', u.earnedTitles.includes('unifier') && u.legacyPoints === 12 && (await unify.locator('.ending-hint').isVisible()));
   await unify.context().close();
-  // 老档第二代、20 点、缺两郡：点数、旧价都在，志向卡恢复
+  // 老档第二代、20 点、缺两郡：点数、旧价都在（v3.2：志向卡下线，HUD 挂群宏愿）
   const mid = await open(save({ generation: 2, legacyPoints: 20, homeLevel: 5, gold: 1000, fiefs: { nanyang: 'farming', runan: 'farming', yingchuan: 'farming', changsha: 'farming' }, fiefTakenAt: allTaken(Date.now() - 200 * HR), earnedTitles: ['founder', 'eternal'] }));
   const m = await read(mid);
-  check('老档 20 点缺两郡：点数家声旧价都在、志向卡恢复', m.legacyPoints === 20 && m.paceCurve === 'v2' && m.earnedTitles.includes('eternal') && (await mid.getByRole('button', { name: /升级宅邸/ }).innerText()).includes('180,000') && (await mid.locator('.ambition-card').isVisible()));
+  check('老档 20 点缺两郡：点数家声旧价都在、HUD 挂宏愿', m.legacyPoints === 20 && m.paceCurve === 'v2' && m.earnedTitles.includes('eternal') && (await mid.getByRole('button', { name: /升级宅邸/ }).innerText()).includes('180,000') && (await mid.locator('.home-hud__vow').isVisible()));
   await mid.context().close();
   // 新档字段原样保留
   const v3 = await open(save({ schema: 3, paceCurve: 'v3', genStart: { day: 5, wins: 3, defends: 0 }, day: 11, battleWins: 4, plaque: 'gentry', homeLevel: 3 }));
@@ -3076,25 +3039,25 @@ await scenario('v3.1·schema 3 迁移', async () => {
 });
 
 await scenario('复核·志向点不走金价', async () => {
-  // 19 点、100 万、富国达成：志向那 1 点补满 20，金子一文不动（旧实现先拿 100 万买第 20 点、志向改发 3 万金）
+  // v3.2 改写：志向点改在读档迁移时当场结算（不走金价）；传位面板不再写志向之赏
   const a = await open(save({ generation: 2, homeLevel: 6, legacyPoints: 19, gold: 1000000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
-  check('19 点：机会栏写再得 1 点', (await a.locator('.chance-bar').textContent()).includes('志向已达成，再得 1 点'), (await a.locator('.chance-bar').textContent()).replace(/\n/g, ' ').slice(0, 200));
+  await a.waitForTimeout(300);
+  const sa = await read(a);
+  check('19 点：迁移补满 20 点，100 万金原样留下', sa.legacyPoints === 20 && sa.gold === 1000000, JSON.stringify({ lp: sa.legacyPoints, g: sa.gold }));
   const pa = await openSuccession(a);
-  check('19 点：面板写得 1 点家业点、志向之赏补满', pa.includes('得 1 点家业点') && !pa.includes('30,000 金') && pa.includes('志向之赏记上后家业点即满 20 点'), pa.replace(/\n/g, ' '));
-  const sa = await doSucceed(a);
-  check('19 点：传位后 20 点、100 万金原样留下', sa.legacyPoints === 20 && sa.gold === 1000000, JSON.stringify({ lp: sa.legacyPoints, g: sa.gold, log: sa.eventLog[0]?.detail }));
+  check('19 点：传位面板写家业点已满、不再提志向', pa.includes('家业点已满') && !pa.includes('志向'), pa.replace(/\n/g, ' '));
   await a.context().close();
-  // 18 点、195 万：金子只折到第 19 点（95 万），志向补第 20 点 → 20 点、余 100 万
+  // 18 点、195 万：迁移 +1 → 19 点；传位按递增价第 20 点 100 万 → 20 点、余 95 万
   const b = await open(save({ generation: 2, homeLevel: 6, legacyPoints: 18, gold: 1950000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
   const pb = await openSuccession(b);
-  check('18 点：面板写折 1 点花 95 万余 100 万、志向得 1 点', pb.includes('可得 1 点') && pb.includes('花 950,000 金、余 1,000,000 金') && pb.includes('累计 20 点') && pb.includes('得 1 点家业点'), pb.replace(/\n/g, ' '));
+  check('18 点：迁移后 19 点，面板写折 1 点花 100 万余 95 万', pb.includes('可得 1 点') && pb.includes('花 1,000,000 金、余 950,000 金') && pb.includes('累计 20 点'), pb.replace(/\n/g, ' '));
   const sb = await doSucceed(b);
-  check('18 点：实扣与面板一致（20 点、余 100 万）', sb.legacyPoints === 20 && sb.gold === 1000000, JSON.stringify({ lp: sb.legacyPoints, g: sb.gold }));
+  check('18 点：实扣与面板一致（20 点、余 95 万）', sb.legacyPoints === 20 && sb.gold === 950000, JSON.stringify({ lp: sb.legacyPoints, g: sb.gold }));
   await b.context().close();
-  // 20 点已满：照旧改发 3 万金，面板写 3 万金
+  // 20 点已满：迁移照旧改发 3 万金
   const c = await open(save({ generation: 2, homeLevel: 6, legacyPoints: 20, gold: 600000, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
-  const pc = await openSuccession(c);
-  check('20 点已满：面板写 30,000 金（家业点已满）', pc.includes('30,000 金（家业点已满）'), pc.replace(/\n/g, ' '));
+  await c.waitForTimeout(300);
+  check('20 点已满：迁移改发 30,000 金', (await read(c)).gold === 630000 && (await read(c)).legacyPoints === 20);
   await c.context().close();
 });
 
@@ -3105,28 +3068,17 @@ await scenario('复核·传位不重置本朝最高郡数', async () => {
   const s = await doSucceed(page);
   check('传位后本朝最高郡数仍是 2、失郡记录还在', s.peakFiefs === 2 && typeof s.lostFiefs?.runan === 'number', JSON.stringify({ p: s.peakFiefs, l: s.lostFiefs }));
   await page.getByRole('button', { name: '确认选择' }).click();
-  await page.locator('.ambition-options button').filter({ hasText: '开疆' }).click();
-  await page.waitForTimeout(300);
-  const t = await read(page);
-  check('新主定开疆：基数按本朝最高 2 郡', t.ambition?.id === 'expansion' && t.ambition?.baseFiefs === 2, JSON.stringify(t.ambition));
-  // 模拟收复汝南（resolveConquest 胜：汝南回到封地）后读档：开疆仍未达成
-  await page.evaluate(([k]) => { const st = JSON.parse(localStorage.getItem(k)); st.fiefs.runan = 'farming'; delete st.lostFiefs.runan; localStorage.setItem(k, JSON.stringify(st)); }, [KEY]);
-  await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('.home-v2').waitFor();
-  await openGoals(page);
-  const prog = await page.locator('.ambition-progress').innerText();
-  check('收复上一代丢的郡不算开疆', prog.includes('0/1') || prog.includes('现 0'), prog.replace(/\n/g, ' '));
+  // v3.2：新主定开疆这半段随志向下线作废；最高郡数仍随家传下（魏宏愿「前三郡」按它判）
+  const t = await read(page);
+  check('新主择定后本朝最高郡数仍是 2', t.peakFiefs === 2 && !t.ambition, JSON.stringify({ p: t.peakFiefs }));
   await page.context().close();
 });
 
 await scenario('复核·新规矩开新朝不补旧誉', async () => {
   // v3 档、第一代、0 点、六郡 + 王城即统一；开新朝后再读档，不应凭空多出开国元勋/千秋家业等旧誉
   const page = await open(save({ schema: 3, paceCurve: 'v3', homeLevel: 6, legacyPoints: 0, generation: 1, gold: 50000, fiefs: SIX, fiefTakenAt: allTaken(Date.now() - 200 * HR) }));
-  await page.getByRole('button', { name: '展开卷轴 →' }).click();
-  await page.getByRole('radio', { name: /蜀/ }).click();
-  page.on('dialog', (d) => d.accept());
-  await page.getByRole('button', { name: /开创新朝 · 国号蜀/ }).click();
-  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  await foundVia(page, '蜀', ['旧部']);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
   const s = await read(page);
@@ -3154,7 +3106,7 @@ await scenario('复核·旧版标签页与新存档隔离', async () => {
   const count = (st) => st.eventLog.filter((ev) => ev.title === '家业新制').length;
   let s = await read(page);
   const oldRaw = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), OLD_KEY);
-  check('旧 key 老档读入：新 key 写 schema 3、v2 价、迁移纪事一条，旧 key 未动', s?.schema === 3 && s.paceCurve === 'v2' && s.legacyPoints === 4 && count(s) === 1 && oldRaw.schema === undefined && oldRaw.battleWins === 7, JSON.stringify({ sc: s?.schema, p: s?.paceCurve, n: s && count(s) }));
+  check('旧 key 老档读入：新 key 写 schema 4（v3.2 升版）、v2 价、迁移纪事一条，旧 key 未动', s?.schema === 4 && s.paceCurve === 'v2' && s.legacyPoints === 4 && count(s) === 1 && oldRaw.schema === undefined && oldRaw.battleWins === 7, JSON.stringify({ sc: s?.schema, p: s?.paceCurve, n: s && count(s) }));
   await page.context().close();
 
   // 新玩家（v3）开着页面时，旧版标签页往旧 key 写去掉新字段的存档：新标签页不受影响、不来回覆盖、不刷迁移纪事
@@ -3173,7 +3125,7 @@ await scenario('复核·旧版标签页与新存档隔离', async () => {
   await fresh.waitForTimeout(2000);
   const writes = await other.evaluate(() => window.__newKeyWrites);
   const after = await read(fresh);
-  check('旧 key 被写：新存档仍是 v3、无迁移纪事', after.paceCurve === 'v3' && after.schema === 3 && count(after) === 0 && writes <= 2, JSON.stringify({ p: after.paceCurve, n: count(after), w: writes }));
+  check('旧 key 被写：新存档仍是 v3、无迁移纪事', after.paceCurve === 'v3' && after.schema === 4 && count(after) === 0 && writes <= 2, JSON.stringify({ p: after.paceCurve, n: count(after), w: writes }));
   await fresh.context().close();
 
   // 旧版标签页在发版后接着打了几场（同一代、胜场更多、存得更晚）：读档收下旧 key 的进度，v3 字段保留，不再跑迁移
@@ -3189,7 +3141,7 @@ await scenario('复核·旧版标签页与新存档隔离', async () => {
   await p2.locator('.home-v2').waitFor();
   await p2.waitForTimeout(400);
   const m = await read(p2);
-  check('收下旧标签页多打的胜场，v3 曲线保留、不写迁移纪事', m.battleWins === 9 && m.paceCurve === 'v3' && m.schema === 3 && count(m) === 0, JSON.stringify({ w: m.battleWins, p: m.paceCurve, n: count(m) }));
+  check('收下旧标签页多打的胜场，v3 曲线保留、不写迁移纪事', m.battleWins === 9 && m.paceCurve === 'v3' && m.schema === 4 && count(m) === 0, JSON.stringify({ w: m.battleWins, p: m.paceCurve, n: count(m) }));
   await p2.reload({ waitUntil: 'domcontentloaded' });
   await p2.locator('.home-v2').waitFor();
   check('再读档不重复收、不变', (await read(p2)).battleWins === 9 && count(await read(p2)) === 0);
@@ -3229,6 +3181,419 @@ await scenario('复核·押金折扣写明与家声旗热区', async () => {
   const flags = await grand.locator('.home-honors__left > button').evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
   check('左旗热区 ≥ 34×46、家声组 ≥ 44', flags.length > 0 && flags.every(([w, h]) => w >= 34 && h >= 46) && box && box.width >= 44 && box.height >= 44, JSON.stringify({ flags, box }));
   await grand.context().close();
+});
+
+// ===== v3.2 新朝换势力：本府随势力、势力 × 郡固定价、势力包、遗泽、宏愿、反攻随本府、主公旧部、老档迁移 =====
+const v32 = (extra = {}) => save({ schema: 4, paceCurve: 'v3', ...extra });
+// 各势力的六郡（七个节点去掉本府）
+const POOL = {
+  qun: ['nanyang', 'runan', 'yingchuan', 'changsha', 'bajun', 'liaodong'],
+  wei: ['nanyang', 'runan', 'jingzhou', 'liaodong', 'changsha', 'bajun'],
+  shu: ['changsha', 'jingzhou', 'nanyang', 'runan', 'yingchuan', 'liaodong'],
+  wu: ['nanyang', 'jingzhou', 'yingchuan', 'changsha', 'liaodong', 'bajun']
+};
+const holdAll = (faction) => Object.fromEntries(POOL[faction].map((id) => [id, 'farming']));
+const takenAll = (ids, at) => Object.fromEntries(ids.map((id) => [id, at]));
+/** 终局卷轴三步开新朝：选国号 → 选遗泽（keep：留贤留谁）→ 确认 */
+async function foundVia(page, name, bequests = ['旧部'], keep = null) {
+  if (!(await page.getByRole('radio', { name: new RegExp(`^${name}`) }).isVisible().catch(() => false))) await page.getByRole('button', { name: '展开卷轴 →' }).click();
+  await page.getByRole('radio', { name: new RegExp(`^${name}`) }).click();
+  await page.getByRole('button', { name: /下一步 · 选遗泽/ }).click();
+  for (const b of bequests) await page.getByRole('checkbox', { name: new RegExp(`^${b}`) }).click();
+  if (keep) await page.locator('.ending-keeper').getByRole('radio', { name: keep }).click();
+  await page.getByRole('button', { name: /下一步 · 确认/ }).click();
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: new RegExp(`开创新朝 · 国号${name}`) }).click();
+  await page.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+}
+async function enterHome(page) {
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+}
+const attackableNames = async (page) => (await page.locator('.conquest-map g.conquest-node.is-attackable').evaluateAll((els) => els.map((el) => (el.getAttribute('aria-label') ?? '').split(' ')[0]))).sort().join(',');
+
+await scenario('v3.2·开新朝选魏蜀吴', async () => {
+  const cases = [
+    { name: '魏', id: 'wei', seat: 'yingchuan', seatName: '颍川', first: '南阳郡,辽东郡', vow: '北收辽东' },
+    { name: '蜀', id: 'shu', seat: 'bajun', seatName: '巴郡', first: '长沙郡', vow: '北出南阳' },
+    { name: '吴', id: 'wu', seat: 'runan', seatName: '汝南', first: '南阳郡', vow: '固守荆颍' }
+  ];
+  for (const c of cases) {
+    const page = await open(v32({ homeLevel: 6, gold: 50000, legacyPoints: 0, fiefs: holdAll('qun'), fiefTakenAt: takenAll(POOL.qun, Date.now() - 200 * HR) }));
+    await foundVia(page, c.name, ['旧部']);
+    let s = await read(page);
+    check(`开新朝选${c.name}：势力、本府、国号计数、遗泽、宏愿、v3 曲线`, s.faction === c.id && s.seat === c.seat && s.realm === c.id && s.realms[c.id] === 1 && s.paceCurve === 'v3' && JSON.stringify(s.bequests) === '["veterans"]' && s.vow?.id === c.id && s.vow.done === false && s.foundingGold === 21000 && s.pastDynasties.at(-1)?.faction === 'qun', JSON.stringify({ f: s.faction, seat: s.seat, b: s.bequests, v: s.vow, g: s.foundingGold }));
+    check(`${c.name}：择主横幅写「${c.name} · ${c.seatName}」与旧部`, (await page.locator('.dynasty-banner').innerText()).includes(`${c.name} · ${c.seatName}`) && (await page.locator('.dynasty-banner').innerText()).includes('旧部'), await page.locator('.dynasty-banner').innerText());
+    await enterHome(page);
+    s = await read(page);
+    // 遗泽旧部：军令上限 +1、开局满（天下归心本就满）；开国金固定 21,000
+    check(`${c.name}：开国金 21,000、旧部军令满且上限 +1`, s.gold === 21000 && s.orders === (c.id === 'wei' ? 10 : 9) && (await page.locator('.home-hud__chips').innerText()).includes(c.id === 'wei' ? '10/10' : '9/9'), `gold=${s.gold} orders=${s.orders}`);
+    check(`${c.name}：HUD 势力章与宏愿`, (await page.locator('.home-hud__faction').innerText()).includes(`${c.name} · ${c.seatName}`) && (await page.locator('.home-hud__vow').innerText()).includes(c.vow) && !(await page.locator('.ambition-card').isVisible().catch(() => false)));
+    await page.getByRole('button', { name: '出征', exact: true }).click();
+    await page.locator('.conquest-map').waitFor();
+    check(`${c.name}：首批可攻 ${c.first}`, (await attackableNames(page)) === c.first, await attackableNames(page));
+    check(`${c.name}：疆域图本府落在${c.seatName}、挂${c.name}旗`, ((await page.locator('.conquest-node.is-home').getAttribute('aria-label')) ?? '').startsWith(`${c.seatName} 本府 · ${c.name}`) && (await page.locator(`.conquest-map__svg.is-faction-${c.id}`).count()) === 1);
+    await page.context().close();
+  }
+});
+
+await scenario('v3.2·各势力造价按 ladder', async () => {
+  // 侯府（侯门显贵押金 −5%）、押金 = 开拓价 50%；魏另有国号九折
+  const wei = await open(v32({ faction: 'wei', homeLevel: 5, gold: 3000000, orders: 3 }));
+  check('魏：首郡南阳 39.6 万 → 押 169,290（×0.5×0.9×0.95），王城 360,000', (await wei.locator('.chance-bar').textContent()).includes('押 169,290 金') && (await wei.getByRole('button', { name: /升级宅邸/ }).innerText()).includes('360,000'), (await wei.locator('.chance-bar').textContent()).slice(0, 160));
+  await wei.getByRole('button', { name: '出征', exact: true }).click();
+  await wei.locator('.conquest-map g.conquest-node').filter({ hasText: '辽东' }).click({ force: true });
+  check('魏：辽东是第 4 档 184.8 万 → 押 790,020', await wei.getByRole('button', { name: '出兵攻取辽东郡 · 耗 1 军令 · 押 790,020 金' }).isVisible());
+  await wei.context().close();
+  const shu = await open(v32({ faction: 'shu', homeLevel: 5, gold: 3000000, orders: 3, fiefs: { changsha: 'farming' }, fiefTakenAt: { changsha: Date.now() - 200 * HR } }));
+  await shu.getByRole('button', { name: '出征', exact: true }).click();
+  await shu.locator('.conquest-map g.conquest-node').filter({ hasText: '荆州' }).click({ force: true });
+  const panel = await shu.locator('.conquest-panel').innerText();
+  check('蜀：拿下长沙后荆州可攻，守将刘表（生手），特权荆襄九郡', panel.includes('荆州 · 守将 刘表（生手）') && panel.includes('荆襄九郡') && panel.includes('胜利缴获 +10%'), panel.replace(/\n/g, ' '));
+  check('蜀：荆州第 2 档 66 万（群 ×1.2）→ 押 313,500', await shu.getByRole('button', { name: '出兵攻取荆州 · 耗 1 军令 · 押 313,500 金' }).isVisible());
+  await shu.context().close();
+  const shu0 = await open(v32({ faction: 'shu', homeLevel: 5, gold: 3000000, orders: 3 }));
+  check('蜀：首郡长沙 39.6 万 → 押 188,100', (await shu0.locator('.chance-bar').textContent()).includes('押 188,100 金'));
+  await shu0.context().close();
+  const wu = await open(v32({ faction: 'wu', homeLevel: 5, gold: 3000000, orders: 3 }));
+  check('吴：首郡南阳 37.95 万 → 押 180,263，王城 400,000', (await wu.locator('.chance-bar').textContent()).includes('押 180,263 金') && (await wu.getByRole('button', { name: /升级宅邸/ }).innerText()).includes('400,000'));
+  await wu.context().close();
+  // 价格按「势力 × 郡」固定：吴丢了南阳再收复，收复押金仍按南阳那一档（不因第几郡变便宜）
+  const now = Date.now();
+  const lost = await open(v32({ faction: 'wu', homeLevel: 5, gold: 3000000, orders: 3, fiefs: { nanyang: 'farming' }, fiefTakenAt: { nanyang: now - 200 * HR }, lostFiefs: { jingzhou: now - HR }, peakFiefs: 2 }));
+  await lost.getByRole('button', { name: '出征', exact: true }).click();
+  await lost.locator('.conquest-map g.conquest-node').filter({ hasText: '荆州' }).click({ force: true });
+  // 吴荆州第 2 档 63.25 万 × 25% × 0.95 = 150,219
+  check('吴：失守荆州收复押金按荆州档位（150,219）', await lost.getByRole('button', { name: '收复荆州 · 耗 1 军令 · 押 150,219 金' }).isVisible());
+  await lost.context().close();
+});
+
+await scenario('v3.2·势力包与自带特权', async () => {
+  // 魏：势力包军令上限 +1；自带「谋士献策」开局探下家三张
+  const wei = await open(v32({ faction: 'wei', homeLevel: 5, gold: 50000, orders: 3, equippedWeaponId: 'fangtian' }), { bidding: true });
+  check('魏：军令上限 9（势力包）', (await wei.locator('.home-hud__chips').innerText()).includes('/9'));
+  await wei.getByRole('button', { name: '出征', exact: true }).click();
+  await wei.getByRole('button', { name: /初级场/ }).click();
+  await wei.getByRole('button', { name: /^进入斗地主/ }).click();
+  await wei.getByText('斗地主牌局').first().waitFor();
+  check('魏：自带谋士献策（没有颍川郡也探得下家三张）', /谋士探得 .+ 手里有/.test(await wei.locator('.ddz-scout').innerText().catch(() => '')));
+  await wei.context().close();
+  // 吴：缴获 +20%、自带门生故吏（失手减半）
+  const venueOf = async (page) => { await page.getByRole('button', { name: '出征', exact: true }).click(); await page.getByRole('button', { name: /初级场/ }).click(); return page.locator('.venue-summary').first().innerText(); };
+  const wu = await open(v32({ faction: 'wu', homeLevel: 4 }));
+  const wuText = await venueOf(wu);
+  check('吴：选场写明国号吴 +20%、汝南失手减半', wuText.includes('（国号吴 +20%）') && wuText.includes('（汝南：失手减半）'), wuText);
+  await wu.context().close();
+  // 蜀：政务收入 +10%，屯田九折
+  const qunPage = await open(v32({ homeLevel: 3, gold: 100000 }));
+  const qunInc = income(await qunPage.getByRole('button', { name: /^处理政务/ }).innerText());
+  await qunPage.context().close();
+  const shu = await open(v32({ faction: 'shu', homeLevel: 3, gold: 100000 }));
+  const shuInc = income(await shu.getByRole('button', { name: /^处理政务/ }).innerText());
+  check('蜀：政务收入高于群（国号蜀 +10%）', shuInc > qunInc, `${qunInc} → ${shuInc}`);
+  await shu.context().close();
+  // 荆州「荆襄九郡」：蜀拿下荆州后斗地主缴获 +10%
+  const jz = await open(v32({ faction: 'shu', homeLevel: 5, fiefs: { changsha: 'farming', jingzhou: 'farming' } }));
+  check('荆州：选场写明荆州 +10%', (await venueOf(jz)).includes('（荆州 +10%）'));
+  await jz.context().close();
+});
+
+await scenario('v3.2·遗泽', async () => {
+  const unifiedWei = (extra = {}) => v32({ faction: 'wei', homeLevel: 6, gold: 50000, fiefs: holdAll('wei'), fiefTakenAt: takenAll(POOL.wei, Date.now() - 200 * HR), peakFiefs: 6, ownedPartnerIds: ['diaochan', 'zhenji'], ...extra });
+  // 宏愿未竟（魏辽东不在前三郡）：只 1 项，选了一项后其余不可选
+  const one = await open(unifiedWei());
+  await one.getByRole('button', { name: '展开卷轴 →' }).click();
+  await one.getByRole('button', { name: /下一步 · 选遗泽/ }).click();
+  check('宏愿未竟：遗泽 1 项', (await one.locator('.ending-bequests .section-title strong').innerText()).includes('0/1'));
+  await one.getByRole('checkbox', { name: /^府库/ }).click();
+  check('选满 1 项后其余禁用', await one.getByRole('checkbox', { name: /^旧部/ }).isDisabled());
+  await one.context().close();
+  // 宏愿已成 → 2 项；宏愿已成 + 家学渊源 → 3 项；再加旧家风补 1 也封顶 3
+  const two = await open(unifiedWei({ vow: { id: 'wei', done: true }, vowsDone: 1 }));
+  await two.getByRole('button', { name: '展开卷轴 →' }).click();
+  await two.getByRole('button', { name: /下一步 · 选遗泽/ }).click();
+  check('宏愿已成：遗泽 2 项', (await two.locator('.ending-bequests .section-title strong').innerText()).includes('0/2'));
+  await two.context().close();
+  const three = await open(unifiedWei({ vow: { id: 'wei', done: true }, vowsDone: 3, migrationComp: { founding: false, bequest: true } }));
+  await three.getByRole('button', { name: '展开卷轴 →' }).click();
+  await three.getByRole('button', { name: /下一步 · 选遗泽/ }).click();
+  check('家学渊源 + 宏愿 + 旧家风：封顶 3 项', (await three.locator('.ending-bequests .section-title strong').innerText()).includes('0/3'));
+  await three.context().close();
+  // 府库：开国金 = 21,000 + 家业点 12 × 1 万；故地：首郡半价；留贤：留下貂蝉（带心事加成）仍可选开局伴侣
+  const page = await open(unifiedWei({ legacyPoints: 12, vow: { id: 'wei', done: true }, vowsDone: 3, partnerBoosts: { diaochan: { strength: 6 } }, resolvedPartnerEvents: { diaochan: 'a', zhenji: 'b' } }));
+  await foundVia(page, '蜀', ['府库', '故地', '留贤'], '貂蝉');
+  let s = await read(page);
+  check('府库：开国金 141,000（21,000 + 12 万）', s.foundingGold === 141000 && JSON.stringify(s.bequests) === '["treasury","homeland","keeper"]' && s.keptPartnerId === 'diaochan', JSON.stringify({ g: s.foundingGold, b: s.bequests }));
+  await page.getByRole('button', { name: '确认选择' }).click();
+  await page.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  check('留贤：选开局伴侣时不再列出貂蝉', (await page.locator('.partner-select-chip').filter({ hasText: '貂蝉' }).count()) === 0);
+  await page.getByRole('button', { name: '携美人，共创家业' }).click();
+  await page.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  s = await read(page);
+  check('留贤：貂蝉与心事加成都在，另有一位开局伴侣', s.ownedPartnerIds.length === 2 && s.ownedPartnerIds.includes('diaochan') && s.partnerBoosts.diaochan?.strength === 6 && s.resolvedPartnerEvents.diaochan === 'a' && !s.resolvedPartnerEvents.zhenji && s.gold === 141000 && s.keptPartnerId === null, JSON.stringify({ p: s.ownedPartnerIds, b: s.partnerBoosts, g: s.gold }));
+  await page.context().close();
+  // 故地：蜀首郡长沙押 39.6 万 × 50% × 50% × 0.95 = 94,050；拿下一郡后恢复原价
+  const home = await open(v32({ faction: 'shu', bequests: ['homeland'], homeLevel: 5, gold: 3000000, orders: 3 }));
+  check('故地：首郡半价押 94,050', (await home.locator('.chance-bar').textContent()).includes('押 94,050 金'));
+  await home.context().close();
+  const after = await open(v32({ faction: 'shu', bequests: ['homeland'], homeLevel: 5, gold: 3000000, orders: 3, fiefs: { changsha: 'farming' }, peakFiefs: 1 }));
+  check('故地只管第一郡：第二郡荆州照原价押 313,500', (await after.locator('.chance-bar').textContent()).includes('押 313,500 金'));
+  await after.context().close();
+  // 只管下一朝：带旧部开的蜀朝再统一、开吴朝选府库 → 旧部不再生效
+  const next = await open(v32({ faction: 'shu', bequests: ['veterans'], homeLevel: 6, gold: 50000, fiefs: holdAll('shu'), fiefTakenAt: takenAll(POOL.shu, Date.now() - 200 * HR), realms: { wei: 0, shu: 1, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: null, faction: 'qun', generations: 1, days: 30, wins: 20, ambitions: 0 }] }));
+  check('本朝旧部：军令上限 9', (await next.locator('.home-hud__chips').innerText()).includes('/9'));
+  await foundVia(next, '吴', ['府库']);
+  await enterHome(next);
+  s = await read(next);
+  check('开吴朝后旧部失效、只剩府库', JSON.stringify(s.bequests) === '["treasury"]' && (await next.locator('.home-hud__chips').innerText()).includes('/8'), JSON.stringify(s.bequests));
+  await next.context().close();
+});
+
+await scenario('v3.2·宏愿开朝即定', async () => {
+  // 开朝即定：没有三选一、没有「稍后再定」；魏辽东在前三郡内拿下 → 读档即达成
+  const done = await open(v32({ faction: 'wei', homeLevel: 5, fiefs: { liaodong: 'farming' }, fiefTakenAt: { liaodong: Date.now() - 200 * HR } }));
+  let s = await read(done);
+  check('魏宏愿：第一郡拿辽东即达成、累计 +1、纪事一条', s.vow?.done === true && s.vowsDone === 1 && s.eventLog.some((ev) => ev.title === '宏愿达成 · 北收辽东'), JSON.stringify({ v: s.vow, n: s.vowsDone }));
+  check('没有志向卡与稍后再定', !(await done.locator('.ambition-card').isVisible().catch(() => false)) && !(await done.getByRole('button', { name: '稍后再定' }).isVisible().catch(() => false)));
+  await done.context().close();
+  const missed = await open(v32({ faction: 'wei', homeLevel: 5, fiefs: { nanyang: 'farming', runan: 'farming', jingzhou: 'farming' }, peakFiefs: 3 }));
+  await openGoals(missed);
+  check('魏宏愿：前三郡没有辽东即写错过', (await missed.locator('.vow-progress').innerText()).includes('此愿已错过') && (await read(missed)).vow?.done === false);
+  await missed.context().close();
+  // 蜀：南阳 + 守住 2 次反攻；吴：荆州颍川两城城防满 48 小时
+  const shu = await open(v32({ faction: 'shu', homeLevel: 5, frontierWins: 2, fiefs: { changsha: 'farming', jingzhou: 'farming', nanyang: 'farming' } }));
+  check('蜀宏愿：拿下南阳且守住 2 次即达成', (await read(shu)).vow?.done === true);
+  await shu.context().close();
+  const now = Date.now();
+  const wuHalf = await open(v32({ faction: 'wu', homeLevel: 5, fiefs: { nanyang: 'farming', jingzhou: 'farming', yingchuan: 'farming' }, fiefTakenAt: takenAll(['nanyang', 'jingzhou', 'yingchuan'], now - 200 * HR), vow: { id: 'wu', done: false, since: now - 10 * HR } }));
+  check('吴宏愿：两城城防满才 10 小时未达成', (await read(wuHalf)).vow?.done === false && typeof (await read(wuHalf)).vow?.since === 'number');
+  await wuHalf.context().close();
+  const wuDone = await open(v32({ faction: 'wu', homeLevel: 5, fiefs: { nanyang: 'farming', jingzhou: 'farming', yingchuan: 'farming' }, fiefTakenAt: takenAll(['nanyang', 'jingzhou', 'yingchuan'], now - 200 * HR), vow: { id: 'wu', done: false, since: now - 49 * HR } }));
+  check('吴宏愿：两城城防满 48 小时即达成', (await read(wuDone)).vow?.done === true);
+  await wuDone.context().close();
+  const wuAlert = await open(v32({ faction: 'wu', homeLevel: 5, fiefs: { nanyang: 'farming', jingzhou: 'farming', yingchuan: 'farming' }, fiefWalls: { jingzhou: 1 }, fiefTakenAt: takenAll(['nanyang', 'jingzhou', 'yingchuan'], now - 200 * HR), vow: { id: 'wu', done: false, since: now - 49 * HR } }));
+  const wa = await read(wuAlert);
+  check('吴宏愿：荆州城防告急即重新起算', wa.vow?.done === false && wa.vow?.since === undefined, JSON.stringify(wa.vow));
+  await wuAlert.context().close();
+  // 存档里的宏愿 id 对不上势力：按势力重定
+  const bad = await open(v32({ faction: 'shu', vow: { id: 'wei', done: true } }));
+  check('宏愿跟势力走（存档写错按势力重定）', (await read(bad)).vow?.id === 'shu' && (await read(bad)).vow?.done === false);
+  await bad.context().close();
+});
+
+await scenario('v3.2·反攻随本府', async () => {
+  const at = Date.now() - 200 * HR;
+  // 蜀：长沙—荆州—南阳一线，只有南阳是末端（长沙、荆州是腹地）；指定长沙无效
+  const shu = await open(v32({ faction: 'shu', homeLevel: 5, gold: 50000, fiefs: { changsha: 'farming', jingzhou: 'farming', nanyang: 'farming' }, fiefTakenAt: takenAll(['changsha', 'jingzhou', 'nanyang'], at), nextSiegeAt: Date.now() + 40 * HR }), { ls: { 'jiaye-siege-now': '1', 'jiaye-siege-target': 'changsha' } });
+  await shu.waitForTimeout(600);
+  let s = await read(shu);
+  check('蜀：反攻只打南阳（新本府视角的末端郡）', s.siege?.fiefId === 'nanyang' && s.siege.attacker === '张绣', JSON.stringify(s.siege));
+  await shu.context().close();
+  // 魏：南阳、辽东都挨着许都，两郡都是末端；荆州被反攻时来犯将是刘表
+  const wei = await open(v32({ faction: 'wei', homeLevel: 5, fiefs: { nanyang: 'farming', jingzhou: 'farming' }, fiefTakenAt: takenAll(['nanyang', 'jingzhou'], at), nextSiegeAt: Date.now() + 40 * HR }), { ls: { 'jiaye-siege-now': '1', 'jiaye-siege-target': 'jingzhou' } });
+  await wei.waitForTimeout(600);
+  s = await read(wei);
+  check('魏：荆州成末端郡、刘表来犯', s.siege?.fiefId === 'jingzhou' && s.siege.attacker === '刘表', JSON.stringify(s.siege));
+  await wei.context().close();
+  // 本府节点不算封地、不会被反攻：存档里写了巴郡（蜀本府）也剔掉
+  const seat = await open(v32({ faction: 'shu', homeLevel: 5, fiefs: { bajun: 'farming', changsha: 'farming' } }));
+  s = await read(seat);
+  check('本府节点不进封地', !s.fiefs.bajun && s.fiefs.changsha === 'farming' && Object.keys(s.fiefs).length === 1, JSON.stringify(s.fiefs));
+  await seat.context().close();
+  // 成都开局拿下长沙、荆州后刷新：封地仍在（按本府判连通，不当飞地清掉）
+  const keep = await open(v32({ faction: 'shu', homeLevel: 5, fiefs: { changsha: 'farming', jingzhou: 'military' } }));
+  await keep.reload({ waitUntil: 'domcontentloaded' });
+  await keep.locator('.home-v2').waitFor();
+  s = await read(keep);
+  check('蜀拿下长沙、荆州刷新后封地仍在', s.fiefs.changsha === 'farming' && s.fiefs.jingzhou === 'military', JSON.stringify(s.fiefs));
+  await keep.context().close();
+});
+
+await scenario('v3.2·主公旧部', async () => {
+  const pick = await open(v32({ faction: 'wei', screen: 'lordSelect', lastScreen: 'lordSelect', selectedLordId: null, realms: { wei: 1, shu: 0, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: null, faction: 'qun', generations: 1, days: 30, wins: 20, ambitions: 0 }] }));
+  await pick.getByRole('button', { name: '继续家业' }).click();
+  await pick.locator('.lord-grid').waitFor();
+  const badges = await pick.locator('.lord-card').filter({ has: pick.locator('.lord-card__loyal') }).allInnerTexts();
+  check('魏朝择主：曹操、司马懿标旧部', badges.length === 2 && badges.some((t) => t.includes('曹操')) && badges.some((t) => t.includes('司马懿')), JSON.stringify(badges));
+  check('择主详情写旧部三项 +3', (await pick.locator('.camp-line').innerText()).includes('旧部（三项 +3）'));
+  await pick.context().close();
+  const power = async (page) => Number((await page.locator('.home-hud__chips div').nth(1).innerText()).match(/\d+/)[0]);
+  const qun = await open(v32({ selectedLordId: 'caocao' }));
+  const weiLord = await open(v32({ faction: 'wei', selectedLordId: 'caocao' }));
+  const shuLord = await open(v32({ faction: 'shu', selectedLordId: 'caocao' }));
+  const [p0, p1, p2] = [await power(qun), await power(weiLord), await power(shuLord)];
+  check('魏朝曹操武力 +3，蜀朝不加', p1 === p0 + 3 && p2 === p0, `${p0}/${p1}/${p2}`);
+  for (const p of [qun, weiLord, shuLord]) await p.context().close();
+});
+
+await scenario('v3.2·老存档迁移为群', async () => {
+  // 老档：三朝前朝（开国、魏、蜀）、本朝国号魏（计数魏×2 蜀×1）、两郡、5 点、两代家谱（富国家风）、第 3 代富国志向（75 万）未达成
+  const chron = [{ generation: 1, lordId: 'lvbu', days: 40, gold: 250000, wins: 31, fiefs: 0, ambition: 'wealth', ambitionDone: true }, { generation: 2, lordId: 'caocao', days: 36, gold: 620000, wins: 28, fiefs: 1, ambition: 'wealth', ambitionDone: true }];
+  const legacy = { generation: 3, homeLevel: 5, gold: 600000, legacyPoints: 5, realm: 'wei', realms: { wei: 2, shu: 1, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: null, generations: 2, days: 80, wins: 40, ambitions: 1 }, { dynasty: 2, realm: 'wei', generations: 2, days: 70, wins: 30, ambitions: 0 }, { dynasty: 3, realm: 'shu', generations: 1, days: 50, wins: 20, ambitions: 0 }], fiefs: { nanyang: 'military', runan: 'farming' }, fiefTakenAt: { nanyang: Date.now() - 200 * HR, runan: Date.now() - 200 * HR }, chronicle: chron, ambition: { id: 'wealth', target: 1000000, baseFiefs: 0 } };
+  // 迁移前的效果（v3.1 口径）：军令上限 8 + 整军 1 + 魏×2 + 0 = 11；收入：蜀 +10%
+  const page = await open(save(legacy));
+  await page.waitForTimeout(300);
+  let s = await read(page);
+  const count = (st) => st.eventLog.filter((ev) => ev.title === '新朝换势力').length;
+  check('老档迁移：群 · 荆州、schema 4、封地数不变', s.faction === 'qun' && s.seat === 'jingzhou' && s.schema === 4 && Object.keys(s.fiefs).length === 2 && s.paceCurve === 'v2', JSON.stringify({ f: s.faction, sc: s.schema, fiefs: s.fiefs }));
+  check('国号冻结：ancestralRealms = 历朝 − 本朝，军令上限仍 11', JSON.stringify(s.ancestralRealms) === '{"wei":1,"shu":1,"wu":0}' && (await page.locator('.home-hud__chips').innerText()).includes('/11'), JSON.stringify(s.ancestralRealms));
+  // 宏愿累计 = 家谱里 2 次志向 + 本朝群宏愿「首郡入府」（已有两郡，读档即达成）1 次
+  check('进行中的志向：未达成清空（75 万目标、60 万金）、家谱 2 次并入宏愿累计', s.vowsDone === 3 && s.vow?.done === true && s.legacyPoints === 5 && !('ambition' in s && s.ambition), JSON.stringify({ n: s.vowsDone, lp: s.legacyPoints }));
+  check('家风冻结、补偿记下（下次开朝补开国金、遗泽多 1 项）', s.legacyTradition === 'wealth' && s.migrationComp?.founding === true && s.migrationComp?.bequest === true && count(s) === 1, JSON.stringify({ t: s.legacyTradition, c: s.migrationComp }));
+  // 地图与价格不变：v2 旧价，南阳旁的颍川第 3 档 40 万 × 50% × 魏九折² × 侯门 0.95 = 153,900
+  await page.getByRole('button', { name: '出征', exact: true }).click();
+  await page.locator('.conquest-map g.conquest-node').filter({ hasText: '颍川' }).click({ force: true });
+  check('老档仍按旧价（颍川押 153,900）、本府荆州', await page.getByRole('button', { name: '出兵攻取颍川郡 · 耗 1 军令 · 押 153,900 金' }).isVisible() && ((await page.locator('.conquest-node.is-home').getAttribute('aria-label')) ?? '').startsWith('荆州 本府'));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.home-v2').waitFor();
+  await page.waitForTimeout(300);
+  const t = await read(page);
+  check('迁移幂等：再读档字段不变、纪事不重复', count(t) === 1 && JSON.stringify(t.ancestralRealms) === JSON.stringify(s.ancestralRealms) && t.vowsDone === s.vowsDone && t.legacyPoints === s.legacyPoints && t.schema === 4);
+  await page.context().close();
+  // 进行中的志向已达成：当场 +1 家业点并计一次宏愿
+  const done = await open(save({ generation: 2, homeLevel: 5, gold: 600000, legacyPoints: 3, ambition: { id: 'wealth', target: 500000, baseFiefs: 0 } }));
+  s = await read(done);
+  check('志向已达成：当场 +1 家业点、宏愿累计 +1', s.legacyPoints === 4 && s.vowsDone === 1, JSON.stringify({ lp: s.legacyPoints, n: s.vowsDone }));
+  await done.context().close();
+  // 迁移后的老档统一、开新朝：开国金补发前朝旧例差额（三朝前朝 → 第 5 朝旧例 8 万，补 6 万），再立魏不叠加
+  const uni = await open(save({ ...legacy, ambition: null, chronicle: [], homeLevel: 6, fiefs: ALL_FIEFS, fiefTakenAt: allTaken(Date.now() - 200 * HR) }));
+  await foundVia(uni, '魏', ['旧部', '府库']);
+  s = await read(uni);
+  check('前朝旧例补发 6 万：开国金 21,000 + 府库 5 万 + 6 万', s.foundingGold === 21000 + 50000 + 60000 && s.migrationComp.founding === false && s.eventLog[0]?.detail.includes('前朝旧例补发 60,000 金'), JSON.stringify({ g: s.foundingGold, log: s.eventLog[0]?.detail }));
+  await enterHome(uni);
+  s = await read(uni);
+  // 立第三次魏：冻结遗泽魏×1 + 本朝魏 1 = 2（不是 3）；8 + 2 + 旧部 1 = 11
+  check('再立魏：国号计数 3，军令上限只按遗泽 + 本朝（11，不是 12）', s.realms.wei === 3 && (await uni.locator('.home-hud__chips').innerText()).includes('/11'), `${JSON.stringify(s.realms)} ${await uni.locator('.home-hud__chips').innerText()}`);
+  await uni.context().close();
+});
+
+await scenario('v3.2·旧版标签页回写不丢势力', async () => {
+  // v3.2 开的魏朝被发版时还开着的 v3.1 标签页按字段重写（schema 3、丢 faction 等）：读档从旁存补回，辽东不被当飞地清掉
+  const page = await open(v32({ faction: 'wei', homeLevel: 5, fiefs: { liaodong: 'farming', nanyang: 'farming' }, realms: { wei: 1, shu: 0, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: null, faction: 'qun', generations: 1, days: 30, wins: 20, ambitions: 0 }], bequests: ['veterans'] }));
+  await page.waitForTimeout(300);
+  await page.evaluate(([k]) => {
+    const st = JSON.parse(localStorage.getItem(k));
+    for (const key of ['faction', 'seat', 'ancestralRealms', 'bequests', 'vow', 'vowsDone', 'keptPartnerId', 'foundingGold', 'legacyTradition', 'migrationComp']) delete st[key];
+    st.schema = 3;
+    st.pastDynasties = st.pastDynasties.map(({ faction: _f, lords: _l, vow: _v, ...rest }) => rest);
+    localStorage.setItem(k, JSON.stringify(st));
+  }, [KEY]);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('.home-v2').waitFor();
+  const s = await read(page);
+  check('旁存补回：仍是魏、辽东与南阳都在、遗泽在', s.faction === 'wei' && s.fiefs.liaodong === 'farming' && s.fiefs.nanyang === 'farming' && JSON.stringify(s.bequests) === '["veterans"]' && s.schema === 4, JSON.stringify({ f: s.faction, fiefs: s.fiefs, b: s.bequests }));
+  await page.context().close();
+  // 复核：真实 v3.1 normalize 还会按荆州判连通，把荆州和辽东当飞地清掉、抹掉前朝条目的势力；回写两轮也补得回
+  const pruned = await open(v32({ faction: 'wei', homeLevel: 5, fiefs: { liaodong: 'farming', nanyang: 'farming', jingzhou: 'farming', runan: 'farming' }, fiefWalls: { liaodong: 1 }, realms: { wei: 1, shu: 0, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: null, faction: 'qun', generations: 1, days: 30, wins: 20, ambitions: 0 }], bequests: ['veterans'] }));
+  const asV31 = async () => {
+    await pruned.waitForTimeout(300);
+    await pruned.evaluate(([k]) => {
+      const st = JSON.parse(localStorage.getItem(k));
+      for (const key of ['faction', 'seat', 'ancestralRealms', 'bequests', 'vow', 'vowsDone', 'keptPartnerId', 'foundingGold', 'legacyTradition', 'migrationComp']) delete st[key];
+      st.schema = 3;
+      st.pastDynasties = st.pastDynasties.map(({ faction: _f, lords: _l, vow: _v, ...rest }) => rest);
+      st.fiefs = { nanyang: st.fiefs.nanyang, runan: st.fiefs.runan };
+      localStorage.setItem(k, JSON.stringify(st));
+    }, [KEY]);
+    await pruned.reload({ waitUntil: 'domcontentloaded' });
+    await pruned.locator('.home-v2').waitFor();
+    return read(pruned);
+  };
+  const r1 = await asV31();
+  check('旁存补回封地：荆州、辽东回来，辽东城防照旧', r1.faction === 'wei' && Object.keys(r1.fiefs).sort().join(',') === 'jingzhou,liaodong,nanyang,runan' && r1.fiefWalls.liaodong === 1 && r1.pastDynasties[0].faction === 'qun', JSON.stringify({ f: r1.faction, fiefs: r1.fiefs, w: r1.fiefWalls }));
+  const r2 = await asV31();
+  check('旧标签页第二次回写仍补得回（旁存不被改成老档）', r2.faction === 'wei' && Object.keys(r2.fiefs).length === 4 && JSON.stringify(r2.bequests) === '["veterans"]', JSON.stringify({ f: r2.faction, fiefs: r2.fiefs }));
+  await pruned.context().close();
+});
+
+await scenario('v3.2·复核修复', async () => {
+  const now = Date.now();
+  // 吴宏愿：离线期间颍川反攻已逾期（满防第 13 小时就该扣城防），读档不先判宏愿达成
+  const wuBase = { faction: 'wu', homeLevel: 5, fiefs: { nanyang: 'farming', jingzhou: 'farming', yingchuan: 'farming' }, fiefWalls: { nanyang: 2, jingzhou: 2, yingchuan: 2 }, fiefTakenAt: takenAll(['nanyang', 'jingzhou', 'yingchuan'], now - 200 * HR), nextSiegeAt: now + 40 * HR, vow: { id: 'wu', done: false, since: now - 49 * HR } };
+  const wu = await open(v32({ ...wuBase, siege: { fiefId: 'yingchuan', attacker: '曹仁', skill: 'novice', startedAt: now - 60 * HR, dueAt: now - 36 * HR } }));
+  await wu.waitForTimeout(400);
+  let s = await read(wu);
+  check('吴：逾期反攻先扣城防，宏愿不白给', s.vow.done === false && s.vowsDone === 0 && s.fiefWalls.yingchuan === 1 && !s.vow.since, JSON.stringify({ v: s.vow, n: s.vowsDone, w: s.fiefWalls }));
+  await wu.context().close();
+  const wuOk = await open(v32(wuBase));
+  await wuOk.waitForTimeout(400);
+  s = await read(wuOk);
+  check('吴：没有逾期反攻、两城满防 48 小时照常达成', s.vow.done === true && s.vowsDone === 1, JSON.stringify({ v: s.vow, n: s.vowsDone }));
+  await wuOk.context().close();
+
+  // 首页封地格分母按郡池（6）
+  const wei = await open(v32({ faction: 'wei', homeLevel: 5, fiefs: { nanyang: 'farming', liaodong: 'farming' } }));
+  const homeText = await wei.locator('.home-v2').innerText();
+  check('首页封地格写 2/6 郡', homeText.includes('2/6 郡') && !homeText.includes('/7 郡'), homeText.match(/\d+\/\d+ 郡/)?.[0] ?? '');
+  await wei.context().close();
+
+  // 老档：本朝群 · 荆州、国号魏 —— 顶栏标明「国号魏」
+  const legacy = await open(save({ homeLevel: 3, realm: 'wei', realms: { wei: 1, shu: 0, wu: 0 }, pastDynasties: [{ dynasty: 1, realm: null, generations: 1, days: 30, wins: 20, ambitions: 0 }] }));
+  const hud = (await legacy.locator('.home-hud').innerText()).replace(/\s+/g, ' ');
+  check('老档顶栏：群 · 荆州 · 国号魏', /群 · 荆州/.test(hud) && hud.includes('国号魏 · 第 2 朝'), hud.slice(0, 80));
+  await legacy.context().close();
+
+  // 老档迁移：家学渊源的志向奖励按 v3.1 口径 2 点；19 点得 1 点 + 3 万金；满点得 6 万金
+  const chron = [['wealth', 'lvbu'], ['might', 'caocao'], ['wealth', 'liubei']].map(([ambition, lordId], i) => ({ generation: i + 1, lordId, days: 30, gold: 0, wins: 10, fiefs: 0, ambition, ambitionDone: true }));
+  for (const [lp, wantLp, wantGold] of [[5, 7, 1000000], [19, 20, 1030000], [20, 20, 1060000]]) {
+    const m = await open(save({ schema: 3, paceCurve: 'v2', generation: 4, homeLevel: 6, legacyPoints: lp, gold: 1000000, chronicle: chron, ambition: { id: 'wealth', target: 1000000, baseFiefs: 0 } }));
+    await m.waitForTimeout(300);
+    const t = await read(m);
+    check(`家学渊源迁移：${lp} 点 → ${wantLp} 点、${wantGold.toLocaleString()} 金`, t.legacyPoints === wantLp && t.gold === wantGold, JSON.stringify({ lp: t.legacyPoints, g: t.gold, log: t.eventLog.find((e) => e.title === '新朝换势力')?.detail }));
+    await m.context().close();
+  }
+
+  // 留贤：选伴侣页返回改选主公，留下的伴侣还在，也不弹「清空进度」
+  const unified = (extra = {}) => v32({ faction: 'wei', homeLevel: 6, gold: 50000, fiefs: holdAll('wei'), fiefTakenAt: takenAll(POOL.wei, now - 200 * HR), peakFiefs: 6, ownedPartnerIds: ['diaochan', 'zhenji'], ...extra });
+  const keep = await open(unified({ partnerBoosts: { diaochan: { strength: 6 } } }));
+  await foundVia(keep, '蜀', ['留贤'], '貂蝉');
+  // 竖屏择主页：旧部横幅只占自身高度，主公列表至少露出三行
+  const grid = await keep.locator('.lord-grid').boundingBox();
+  const banner = await keep.locator('.lord-screen > .dynasty-banner').boundingBox();
+  check('竖屏择主页：横幅不撑满，主公列表够高', grid && banner && banner.height < 120 && grid.height >= 180, JSON.stringify({ g: grid?.height, b: banner?.height }));
+  const dialogs = [];
+  keep.on('dialog', (d) => { dialogs.push(d.message()); d.accept(); });
+  await keep.getByRole('button', { name: '确认选择' }).click();
+  await keep.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  await keep.getByRole('button', { name: '返回' }).click();
+  await keep.getByText('乱世择主').first().waitFor({ timeout: 8000 });
+  await keep.locator('.lord-card').nth(2).click();
+  await keep.getByRole('button', { name: '确认选择' }).click();
+  await keep.getByText('良缘入府').first().waitFor({ timeout: 8000 });
+  s = await read(keep);
+  check('留贤：回头改选主公，貂蝉与加成仍在、不弹清空确认', s.ownedPartnerIds.includes('diaochan') && s.keptPartnerId === 'diaochan' && s.partnerBoosts.diaochan?.strength === 6 && dialogs.length === 0, JSON.stringify({ p: s.ownedPartnerIds, k: s.keptPartnerId, d: dialogs }));
+  await keep.getByRole('button', { name: '携美人，共创家业' }).click();
+  await keep.getByRole('button', { name: /^处理政务/ }).waitFor({ timeout: 8000 });
+  s = await read(keep);
+  check('留贤：改选后照常进府，两位伴侣', s.ownedPartnerIds.length === 2 && s.ownedPartnerIds.includes('diaochan') && s.keptPartnerId === null, JSON.stringify(s.ownedPartnerIds));
+  await keep.context().close();
+
+  // 横屏开新朝：切到下一步滚回本步开头
+  for (const vp of [{ width: 844, height: 390 }, { width: 667, height: 375 }]) {
+    const land = await open(unified(), { viewport: vp });
+    await land.getByRole('button', { name: '展开卷轴 →' }).click();
+    await land.getByRole('radio', { name: /^魏/ }).click();
+    const body = land.locator('.modal-shell__body');
+    await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await land.getByRole('button', { name: /下一步 · 选遗泽/ }).click();
+    const inView = async (sel) => land.evaluate((q) => {
+      const el = document.querySelector(q);
+      const b = document.querySelector('.modal-shell__body');
+      if (!el || !b) return false;
+      const r = el.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return r.top >= br.top - 1 && r.top < br.bottom - 20;
+    }, sel);
+    const step2 = await inView('.ending-bequests .section-title');
+    await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await land.getByRole('checkbox', { name: /^府库/ }).click({ force: true });
+    await land.getByRole('button', { name: /下一步 · 确认/ }).click();
+    const step3 = await inView('.ending-steps');
+    check(`横屏 ${vp.width}x${vp.height}：切步回到本步开头`, step2 && step3, JSON.stringify({ step2, step3 }));
+    await land.context().close();
+  }
 });
 
 await browser.close();

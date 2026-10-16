@@ -10,13 +10,16 @@ interface PartnerSelectScreenProps {
   lord: Lord;
   onConfirm: (partnerId: string) => void;
   onBack: () => void;
+  /** 已在府中的伴侣（留贤遗泽留下的那位）不再列出 */
+  excludeIds?: string[];
 }
 
-export function PartnerSelectScreen({ lord, onConfirm, onBack }: PartnerSelectScreenProps) {
-  const recommended = useMemo(() => partners.find((partner) => partner.bestMatchLordId === lord.id) ?? partners[0], [lord.id]);
+export function PartnerSelectScreen({ lord, onConfirm, onBack, excludeIds = [] }: PartnerSelectScreenProps) {
+  const pool = useMemo(() => partners.filter((partner) => !excludeIds.includes(partner.id)), [excludeIds]);
+  const recommended = useMemo(() => pool.find((partner) => partner.bestMatchLordId === lord.id) ?? pool[0], [lord.id, pool]);
   const [selectedId, setSelectedId] = useState(recommended.id);
   const selectedPartner = useMemo(
-    () => partners.find((partner) => partner.id === selectedId) ?? recommended,
+    () => pool.find((partner) => partner.id === selectedId) ?? recommended,
     [recommended, selectedId]
   );
   const bonusCopy = describeBonus(selectedPartner, selectedPartner.bestMatchLordId === lord.id);
@@ -56,7 +59,7 @@ export function PartnerSelectScreen({ lord, onConfirm, onBack }: PartnerSelectSc
       </section>
 
       <section className="partner-select-strip" aria-label="伴侣列表">
-        {partners.map((partner) => {
+        {pool.map((partner) => {
           const selected = partner.id === selectedId;
           const best = partner.bestMatchLordId === lord.id;
           return (

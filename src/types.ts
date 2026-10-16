@@ -1,6 +1,7 @@
 import type { FiefPolicyId } from './data/fiefs';
 import type { FiefHoldings } from './data/fiefs';
 import type { AmbitionId } from './data/ambitions';
+import type { BequestId, FactionId } from './data/factions';
 import type { RealmCounts, RealmId } from './data/dynasty';
 import type { AiSkill } from './lib/doudizhu';
 
@@ -66,8 +67,25 @@ export interface GameState {
   orders: number;
   /** 封地：郡 id → 方略，传位随家业传下 */
   fiefs: FiefHoldings;
-  /** 本代志向（第二代起开局三选一）；baseFiefs 记定志向时已有几郡，开疆按新增算（定志向时六郡已满则改为「本代守住 2 次反攻」） */
-  ambition: { id: AmbitionId; target: number; baseFiefs: number } | null;
+  /** v3.2 势力：本朝从哪里起家（老档、新档首朝为群·荆州）；seat 是本府节点，不进郡池 */
+  faction: FactionId;
+  seat: string;
+  /** v3.2 冻结的前朝国号遗泽（老档迁移时 = 历朝计数 − 本朝），只读；国号效果 = 它 + 本朝一份（dynasty.effectiveRealms） */
+  ancestralRealms: RealmCounts;
+  /** v3.2 本朝生效的遗泽（上一朝统一时选，只管这一朝） */
+  bequests: BequestId[];
+  /** v3.2 势力宏愿：开朝即定、不能跳过；since 是吴宏愿「两城城防都满」的起算时刻 */
+  vow: { id: FactionId; done: boolean; since?: number } | null;
+  /** 宏愿累计达成次数（老档迁移时并入家谱里志向达成的次数），家学渊源按它 */
+  vowsDone: number;
+  /** 留贤遗泽留下的伴侣：新朝择主后还可再选一位开局伴侣，选完清空 */
+  keptPartnerId: string | null;
+  /** 本朝开国金（新档 1,000；开新朝 = 1,000 + 2 万 + 府库遗泽 + 老档一次性补发；重开、重选主公按它） */
+  foundingGold: number;
+  /** 老档迁移时冻结的家风（效果只到本朝结束，开新朝或重开清空） */
+  legacyTradition: AmbitionId | null;
+  /** 老档迁移补偿（各只发一次）：founding = 下一次开朝补发旧版按朝累加的开国金差额；bequest = 有家风，下一次统一遗泽多 1 项 */
+  migrationComp: { founding: boolean; bequest: boolean };
   /** 家谱：每代传位时记一笔 */
   chronicle: ChronicleEntry[];
   /** 本朝国号（第一朝无） */
@@ -109,6 +127,10 @@ export interface DynastyEntry {
   dynasty: number;
   /** 该朝的国号（开国第一朝为 null） */
   realm: RealmId | null;
+  /** v3.2 起记：该朝的势力、历任主公（最多 8 位）、宏愿是否达成 */
+  faction?: FactionId;
+  lords?: string[];
+  vow?: boolean;
   generations: number;
   days: number;
   wins: number;

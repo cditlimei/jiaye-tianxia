@@ -1,6 +1,7 @@
 import { ORDER_CAP } from '../types';
 import { emptyRealms, realmOrderBonus, type RealmCounts } from './dynasty';
 import type { AiSkill } from '../lib/doudizhu';
+import { FACTIONS, JINGZHOU, nodeIdOf, type FactionId } from './factions';
 
 /**
  * 封地经略：宅邸升至侯府后，在疆域图上攻取与本府或已有封地相邻的郡。
@@ -17,7 +18,7 @@ export interface Fief {
   /** 疆域图坐标（viewBox 0~100 × 0~72） */
   x: number;
   y: number;
-  /** 相邻的郡（'home' = 本府） */
+  /** 相邻的节点（'home' = 荆州的老别名，见 factions.nodeIdOf） */
   neighbors: string[];
   /** 守将：攻郡牌局里坐在对面的人 */
   garrison: string;
@@ -43,7 +44,12 @@ export const FIEF_STAT_BONUS = 4;
 /** 改弦更张：换方略按开拓价的一成收费 */
 export const FIEF_POLICY_CHANGE_RATE = 0.1;
 
+/**
+ * 疆域图七个节点（v3.2 起荆州也是普通节点）：本府所在的节点不进郡池，六郡 = 七个节点去掉本府。
+ * cost 是 v2 旧价（只给群的 v2 曲线、排序参考用），实际开拓价按「势力 × 郡」的 ladder 取（lib/prices.ts fiefCostOf）。
+ */
 export const fiefs: Fief[] = [
+  { id: JINGZHOU, name: '荆州', cost: 550000, description: '荆襄九郡，沃野千里，刘表坐镇襄阳。', x: 40, y: 46, neighbors: ['nanyang', 'changsha'], garrison: '刘表', skill: 'novice', portrait: 'three-dukes', perk: { name: '荆襄九郡', detail: '牌局胜利缴获 +10%' } },
   { id: 'nanyang', name: '南阳郡', cost: 150000, description: '帝乡沃土，户口殷实，天下第一大郡。', x: 50, y: 34, neighbors: ['home', 'yingchuan', 'runan'], garrison: '张绣', skill: 'novice', portrait: 'enemy-general', perk: { name: '帝乡沃土', detail: '牌局胜利缴获 +20%' } },
   { id: 'runan', name: '汝南郡', cost: 250000, description: '袁氏故里，士族林立，门生遍天下。', x: 68, y: 40, neighbors: ['nanyang'], garrison: '袁术', skill: 'veteran', portrait: 'chaos-warlord', perk: { name: '门生故吏', detail: '牌局失手只付一半' } },
   { id: 'yingchuan', name: '颍川郡', cost: 400000, description: '谋士之乡，荀氏、郭氏皆出于此。', x: 60, y: 22, neighbors: ['nanyang', 'liaodong'], garrison: '荀彧', skill: 'veteran', portrait: 'nine-ministers', perk: { name: '谋士献策', detail: '开局探得下家三张牌' } },
@@ -51,9 +57,6 @@ export const fiefs: Fief[] = [
   { id: 'bajun', name: '巴郡', cost: 1100000, description: '巴山蜀水，关隘险固，盐铁之利。', x: 24, y: 50, neighbors: ['changsha'], garrison: '严颜', skill: 'master', portrait: 'enemy-vanguard', perk: { name: '盐铁之利', detail: '赢牌倍数至少 ×2' } },
   { id: 'liaodong', name: '辽东郡', cost: 1600000, description: '极北之地，胡汉杂居，良马成群。', x: 86, y: 8, neighbors: ['yingchuan'], garrison: '公孙度', skill: 'master', portrait: 'regent', perk: { name: '良马斥候', detail: '叫地主前先看到一张底牌' } }
 ];
-
-/** 本府（荆州）在疆域图上的位置，与南阳、长沙相邻 */
-export const HOME_NODE = { id: 'home', name: '荆州', x: 40, y: 46, neighbors: ['nanyang', 'changsha'] };
 
 /** 攻郡押上的军资占开拓价的比例：胜则得郡，失手则军资没入敌手 */
 export const CONQUEST_STAKE_RATE = 0.5;
@@ -78,25 +81,49 @@ export function isFiefPolicyId(value: unknown): value is FiefPolicyId {
   return value === 'farming' || value === 'military' || value === 'schooling';
 }
 
-/** 可攻的郡：还没拿到、且与本府或已有封地相邻 */
-export function attackableFiefs(holdings: FiefHoldings) {
-  return fiefs.filter((fief) => !holdings[fief.id] && fief.neighbors.some((id) => id === 'home' || Boolean(holdings[id])));
+/** 节点短名：去掉「郡」字，两个字的（巴郡）原样保留，免得只剩一个「巴」 */
+export function nodeShortName(fief: Pick<Fief, 'name'>) {
+  return fief.name.length <= 2 ? fief.name : fief.name.replace(/郡$/, '');
 }
 
-/** 「下一郡」：可攻的郡里最便宜的那个（给首页提示、志向提示用）。目录按开拓价从低到高排，两条造价曲线顺序相同，按目录顺序取即可 */
-export function nextFief(holdings: FiefHoldings) {
-  return [...attackableFiefs(holdings)].sort((a, b) => fiefs.indexOf(a) - fiefs.indexOf(b))[0] ?? null;
+/** 相邻节点（'home' 解析为荆州） */
+export function neighborIds(fief: Pick<Fief, 'neighbors'>) {
+  return fief.neighbors.map(nodeIdOf);
 }
 
-/** 只保留与本府连成一片的封地（旧存档按顺序持有，天然连通） */
-export function connectedHoldings(holdings: FiefHoldings): FiefHoldings {
+/** 疆域：本府 + 已有封地 */
+const inTerritory = (holdings: FiefHoldings, seat: string, id: string) => id === seat || Boolean(holdings[id]);
+
+/** 郡池：七个节点去掉本府 */
+export function fiefPool(seat: string) {
+  return fiefs.filter((fief) => fief.id !== seat);
+}
+
+/** 可攻的郡：郡池里还没拿到、且与本府或已有封地相邻（seat：本府节点，按势力） */
+export function attackableFiefs(holdings: FiefHoldings, seat: string) {
+  return fiefPool(seat).filter((fief) => !holdings[fief.id] && neighborIds(fief).some((id) => inTerritory(holdings, seat, id)));
+}
+
+/** 造价顺序：势力的 ladder（群就是原来的目录顺序） */
+export function ladderIndex(faction: FactionId, fiefId: string) {
+  const index = FACTIONS[faction].ladder.indexOf(fiefId);
+  return index < 0 ? FACTIONS[faction].ladder.length : index;
+}
+
+/** 「下一郡」：可攻的郡里造价档位最低的那个（给首页提示、宏愿提示、econ 用） */
+export function nextFief(holdings: FiefHoldings, faction: FactionId) {
+  return [...attackableFiefs(holdings, FACTIONS[faction].seat)].sort((a, b) => ladderIndex(faction, a.id) - ladderIndex(faction, b.id))[0] ?? null;
+}
+
+/** 只保留与本府连成一片的封地（本府节点不算封地，剔掉）；旧存档按顺序持有，天然连通 */
+export function connectedHoldings(holdings: FiefHoldings, seat: string): FiefHoldings {
   const out: FiefHoldings = {};
   let grew = true;
   while (grew) {
     grew = false;
-    for (const fief of fiefs) {
+    for (const fief of fiefPool(seat)) {
       if (out[fief.id] || !holdings[fief.id]) continue;
-      if (fief.neighbors.some((id) => id === 'home' || Boolean(out[id]))) {
+      if (neighborIds(fief).some((id) => inTerritory(out, seat, id))) {
         out[fief.id] = holdings[fief.id];
         grew = true;
       }

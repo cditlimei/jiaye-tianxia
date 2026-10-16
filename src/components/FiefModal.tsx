@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { ORDER_CAP } from '../types';
 import { FIEF_ORDER_BONUS, FIEF_STAT_BONUS, FIEF_UNLOCK_HOME_LEVEL, fiefIncomePercent, fiefPolicies, fiefStatBonus, fiefs, findFiefPolicy, nextFief, orderCapFor, ownedFiefCount, type FiefPolicyId } from '../data/fiefs';
 import { findHomeLevel } from '../data/gameData';
-import { traditionOf } from '../data/traditions';
+import { activeTradition } from '../data/traditions';
+import { FIEF_POOL_SIZE } from '../data/factions';
 import { fiefCostOf, policyChangeCostOf } from '../lib/prices';
 import type { GameState } from '../types';
 import { GameButton } from './common/GameButton';
@@ -21,14 +22,14 @@ interface FiefModalProps {
 
 export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, onClaim, onChangePolicy }: FiefModalProps) {
   const unlocked = state.homeLevel >= FIEF_UNLOCK_HOME_LEVEL;
-  const next = nextFief(state.fiefs);
+  const next = nextFief(state.fiefs, state.faction);
   const owned = ownedFiefCount(state.fiefs);
   const [policy, setPolicy] = useState<FiefPolicyId>('farming');
   const [editing, setEditing] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const chosen = findFiefPolicy(policy)!;
   const nextCost = next ? fiefCostOf(state, next) : 0;
-  const tradition = traditionOf(state.chronicle);
+  const tradition = activeTradition(state);
   const canClaim = unlocked && next !== null && state.gold >= nextCost;
   // 方略卡第二行按当前状态算具体数，三条量纲不同也能比
   const concrete: Record<FiefPolicyId, string> = {
@@ -62,7 +63,7 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
       <div className="fief-sheet">
         {owned > 0 && (
           <p className="fief-sheet__summary">
-            已开拓 {owned}/{fiefs.length} 郡 · 劝农 +{fiefIncomePercent(state.fiefs)}% 收入 · 整军军令 +{orderCapFor(state.fiefs) - ORDER_CAP} · 教化三项 +{fiefStatBonus(state.fiefs)}
+            已开拓 {owned}/{FIEF_POOL_SIZE} 郡 · 劝农 +{fiefIncomePercent(state.fiefs)}% 收入 · 整军军令 +{orderCapFor(state.fiefs) - ORDER_CAP} · 教化三项 +{fiefStatBonus(state.fiefs)}
           </p>
         )}
         <p className="fief-sheet__intro">
@@ -106,7 +107,7 @@ export function FiefModal({ state, farmingGain, totalPower, orderCap, onClose, o
         {unlocked && !next && <p className="fief-sheet__locked">六郡尽归府下，天下已定。</p>}
 
         <section className="fief-list" aria-label="已有封地">
-          {fiefs.map((fief) => {
+          {fiefs.filter((fief) => fief.id !== state.seat).map((fief) => {
             const held = state.fiefs[fief.id];
             const heldPolicy = held ? findFiefPolicy(held) : null;
             const isEditing = editing === fief.id;

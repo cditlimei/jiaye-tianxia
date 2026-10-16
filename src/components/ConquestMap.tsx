@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AI_SKILL_LABEL } from '../lib/doudizhu';
-import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_UNLOCK_HOME_LEVEL, fiefPolicies, fiefs, findFiefPolicy, HOME_NODE, ownedFiefCount, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
+import { attackableFiefs, CONQUEST_STAKE_RATE, FIEF_UNLOCK_HOME_LEVEL, fiefPolicies, fiefPool, fiefs, findFiefPolicy, ladderIndex, neighborIds, nodeShortName, ownedFiefCount, type Fief, type FiefHoldings, type FiefPolicyId } from '../data/fiefs';
+import { FACTIONS, FIEF_POOL_SIZE, nodeIdOf, type FactionId } from '../data/factions';
 import { formatRemaining } from '../lib/frontier';
 import { FIEF_WALLS, reclaimRemainingMs, type Siege } from '../lib/siege';
 
 interface ConquestMapProps {
   holdings: FiefHoldings;
+  /** v3.2 本朝势力：本府落在哪个节点、插什么颜色的旗、造价顺序 */
+  faction: FactionId;
   homeLevel: number;
   gold: number;
   orders: number;
@@ -36,7 +39,7 @@ interface ConquestMapProps {
 
 type NodeState = 'owned' | 'attackable' | 'far';
 
-const nodeById = (id: string) => (id === 'home' ? HOME_NODE : fiefs.find((fief) => fief.id === id) ?? null);
+const nodeById = (id: string) => fiefs.find((fief) => fief.id === nodeIdOf(id)) ?? null;
 
 /** 地图上的倒计时写短：约 18 时 / 40 分 */
 function shortRemaining(ms: number) {
@@ -45,18 +48,22 @@ function shortRemaining(ms: number) {
 }
 
 /**
- * 疆域图：本府荆州 + 六郡。已归府下的郡染金插旗（旗下两格是城防），与疆域相邻的郡可出兵（红圈），其余待开疆。
+ * 疆域图：本府 + 六郡（v3.2：本府随势力落在荆州/颍川/巴郡/汝南，郡池 = 七个节点去掉本府，荆州不是本府时当普通郡画）。已归府下的郡染金插旗（旗下两格是城防），与疆域相邻的郡可出兵（红圈），其余待开疆。
  * 被反攻的郡红色脉动并写倒计时；城防不满的郡旗色转橙（特权暂停）；失去的郡褪色，72 小时内半价收复。
  * 点城看守将、特权与军资；攻郡打一局斗地主，胜则得郡；守城也打一局斗地主，城主坐庄、不耗军令。
  */
-export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, policyChangeCostFor, repairCostFor, bountyFor, reclaimRate, stakeNotes = [], homeBadge, onConquer, onChangePolicy, escortPicker, fiefWalls = {}, lostFiefs = {}, siege = null, initialFiefId, onDefend, onAbandon, onRepair }: ConquestMapProps) {
-  const attackable = useMemo(() => attackableFiefs(holdings), [holdings]);
+export function ConquestMap({ holdings, faction, homeLevel, gold, orders, stakeFor, policyChangeCostFor, repairCostFor, bountyFor, reclaimRate, stakeNotes = [], homeBadge, onConquer, onChangePolicy, escortPicker, fiefWalls = {}, lostFiefs = {}, siege = null, initialFiefId, onDefend, onAbandon, onRepair }: ConquestMapProps) {
+  const factionInfo = FACTIONS[faction];
+  const seat = factionInfo.seat;
+  const seatNode = nodeById(seat)!;
+  const pool = useMemo(() => fiefPool(seat), [seat]);
+  const attackable = useMemo(() => attackableFiefs(holdings, seat), [holdings, seat]);
   const stateOf = (fief: Fief): NodeState => (holdings[fief.id] ? 'owned' : attackable.some((item) => item.id === fief.id) ? 'attackable' : 'far');
   const [selectedId, setSelectedId] = useState<string>(() => {
-    if (initialFiefId && fiefs.some((fief) => fief.id === initialFiefId)) return initialFiefId;
+    if (initialFiefId && initialFiefId !== seat && fiefs.some((fief) => fief.id === initialFiefId)) return initialFiefId;
     if (siege && holdings[siege.fiefId]) return siege.fiefId;
-    // 目录按开拓价从低到高排：可攻的郡里取最靠前的（两条造价曲线顺序相同）
-    return [...attackable].sort((a, b) => fiefs.indexOf(a) - fiefs.indexOf(b))[0]?.id ?? 'home';
+    // 可攻的郡里取造价档位最低的（势力 ladder）
+    return [...attackable].sort((a, b) => ladderIndex(faction, a.id) - ladderIndex(faction, b.id))[0]?.id ?? 'home';
   });
   const [policyId, setPolicyId] = useState<FiefPolicyId>('farming');
   const [notice, setNotice] = useState('');
@@ -79,7 +86,7 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
     // 只在打开时滚一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const selected = fiefs.find((fief) => fief.id === selectedId) ?? null;
+  const selected = pool.find((fief) => fief.id === selectedId) ?? null;
   const owned = ownedFiefCount(holdings);
   const walls = (id: string) => fiefWalls[id] ?? FIEF_WALLS;
   const besieged = (id: string) => Boolean(siege && siege.fiefId === id && holdings[id]);
@@ -89,17 +96,18 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
   const edges = useMemo(() => {
     const seen = new Set<string>();
     const list: { from: { x: number; y: number }; to: { x: number; y: number }; held: boolean }[] = [];
+    const held = (id: string) => id === seat || Boolean(holdings[id]);
     for (const fief of fiefs) {
-      for (const id of fief.neighbors) {
+      for (const id of neighborIds(fief)) {
         const key = [fief.id, id].sort().join('-');
         const other = nodeById(id);
         if (seen.has(key) || !other) continue;
         seen.add(key);
-        list.push({ from: fief, to: other, held: Boolean(holdings[fief.id]) && (id === 'home' || Boolean(holdings[id])) });
+        list.push({ from: fief, to: other, held: held(fief.id) && held(id) });
       }
     }
     return list;
-  }, [holdings]);
+  }, [holdings, seat]);
 
   const repairButton = (fief: Fief) => {
     const cost = repairCostFor(fief);
@@ -126,10 +134,13 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
 
   const panel = (() => {
     if (!selected) {
+      const near = neighborIds(seatNode).map((id) => nodeById(id)?.name.replace(/郡$/, '')).filter(Boolean).join('、');
+      const seatShort = nodeShortName(seatNode);
       return (
-        <div className="conquest-panel">
-          <strong>荆州 · 本府</strong>
-          <span>家业根基所在。与南阳、长沙相邻，从这里出兵开疆。</span>
+        <div className="conquest-panel is-seat">
+          <strong>{seatShort} · 本府{factionInfo.id !== 'qun' ? `（${factionInfo.name} · ${factionInfo.capital}）` : ''}</strong>
+          <span>家业根基所在。与{near}相邻，从这里出兵开疆。</span>
+          {factionInfo.ownPerk && <span className="conquest-perk">势力自带牌桌特权「{seatNode.perk.name}」：{seatNode.perk.detail}</span>}
         </div>
       );
     }
@@ -188,7 +199,8 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
       );
     }
     if (state === 'far') {
-      const via = selected.neighbors.map((id) => nodeById(id)?.name).filter(Boolean).join('或');
+      // 「经 X 或 Y」按本府生成：本府节点写本府
+      const via = neighborIds(selected).map((id) => (id === seat ? `${nodeShortName(seatNode)}本府` : nodeById(id)?.name)).filter(Boolean).join('或');
       return (
         <div className="conquest-panel is-far">
           <strong>{selected.name} · 尚未接壤</strong>
@@ -230,15 +242,15 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
     );
   })();
 
-  const alertFiefs = fiefs.filter((fief) => holdings[fief.id] && walls(fief.id) < FIEF_WALLS);
+  const alertFiefs = pool.filter((fief) => holdings[fief.id] && walls(fief.id) < FIEF_WALLS);
 
   return (
     <section ref={sectionRef} className="conquest-map" aria-label="天下疆域">
       <div className="section-title">
-        <span>天下疆域 · 已有 {owned}/{fiefs.length} 郡{homeLevel < FIEF_UNLOCK_HOME_LEVEL ? ' · 侯府后可出兵' : ''}{siege && holdings[siege.fiefId] ? ` · ${fiefs.find((fief) => fief.id === siege.fiefId)?.name ?? ''}告急` : alertFiefs.length > 0 ? ` · ${alertFiefs.map((fief) => fief.name).join('、')}城防告急` : ''}</span>
+        <span>天下疆域{factionInfo.id !== 'qun' ? ` · ${factionInfo.name}` : ''} · 已有 {owned}/{FIEF_POOL_SIZE} 郡{homeLevel < FIEF_UNLOCK_HOME_LEVEL ? ' · 侯府后可出兵' : ''}{siege && holdings[siege.fiefId] ? ` · ${pool.find((fief) => fief.id === siege.fiefId)?.name ?? ''}告急` : alertFiefs.length > 0 ? ` · ${alertFiefs.map((fief) => fief.name).join('、')}城防告急` : ''}</span>
         <strong>攻郡押军资 = 开拓价 {Math.round(CONQUEST_STAKE_RATE * 100)}%{stakeNotes.length > 0 ? ` · ${stakeNotes.map((note) => note.replace('国号', '').replace('显贵', '')).join(' · ')}` : ''}</strong>
       </div>
-      <svg className="conquest-map__svg" viewBox="0 0 100 72" role="img" aria-label={`疆域图：已有 ${owned} 郡`}>
+      <svg className={`conquest-map__svg is-faction-${faction}`} viewBox="0 0 100 72" role="img" aria-label={`疆域图：${factionInfo.name} · 本府${nodeShortName(seatNode)} · 已有 ${owned} 郡`} style={{ ['--faction-color' as string]: factionInfo.color }}>
         <defs>
           <radialGradient id="conquest-land" cx="50%" cy="45%" r="70%">
             <stop offset="0" stopColor="#e9d8ae" />
@@ -258,21 +270,19 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
         {edges.map((edge, index) => (
           <line key={index} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} className={edge.held ? 'conquest-edge is-held' : 'conquest-edge'} />
         ))}
-        {/* 本府 */}
-        <g className={`conquest-node is-home ${selectedId === 'home' ? 'is-selected' : ''} ${homeBadge?.golden ? 'is-golden' : ''}`} onClick={() => setSelectedId('home')} role="button" aria-label={`荆州 本府${homeBadge?.realm ? ` · 国号${homeBadge.realm}` : ''}${homeBadge?.golden ? ' · 金汤' : ''}`}>
-          <rect x={HOME_NODE.x - 4} y={HOME_NODE.y - 4} width="8" height="8" rx="1.5" />
-          {homeBadge?.golden && <rect x={HOME_NODE.x - 5} y={HOME_NODE.y - 5} width="10" height="10" rx="2" className="conquest-node__golden" />}
-          {/* 天下归心：本府挂国号小旗（复用郡上插旗的画法） */}
-          {homeBadge?.realm && (
-            <g className="conquest-node__realm">
-              <path d={`M${HOME_NODE.x + 0.4} ${HOME_NODE.y - 3.8} v-7.4`} className="conquest-node__realm-pole" />
-              <path d={`M${HOME_NODE.x + 0.6} ${HOME_NODE.y - 11.2} h5.6 v3.8 h-5.6 Z`} className="conquest-node__realm-flag" />
-              <text x={HOME_NODE.x + 3.4} y={HOME_NODE.y - 8.2} className="conquest-node__realm-text">{homeBadge.realm}</text>
-            </g>
-          )}
-          <text x={HOME_NODE.x} y={HOME_NODE.y + 8.6}>荆州</text>
+        {/* 本府（随势力换位置与旗色） */}
+        <g className={`conquest-node is-home is-seat-${faction} ${selectedId === 'home' ? 'is-selected' : ''} ${homeBadge?.golden ? 'is-golden' : ''}`} onClick={() => setSelectedId('home')} role="button" aria-label={`${nodeShortName(seatNode)} 本府 · ${factionInfo.name}${homeBadge?.realm ? ` · 国号${homeBadge.realm}` : ''}${homeBadge?.golden ? ' · 金汤' : ''}`}>
+          <rect x={seatNode.x - 4} y={seatNode.y - 4} width="8" height="8" rx="1.5" className="conquest-node__seat" />
+          {homeBadge?.golden && <rect x={seatNode.x - 5} y={seatNode.y - 5} width="10" height="10" rx="2" className="conquest-node__golden" />}
+          {/* 势力旗：本府常挂（天下归心后写国号字，未归心写势力字） */}
+          <g className={`conquest-node__realm ${homeBadge?.realm ? 'is-unified' : 'is-faction'}`}>
+            <path d={`M${seatNode.x + 0.4} ${seatNode.y - 3.8} v-7.4`} className="conquest-node__realm-pole" />
+            <path d={`M${seatNode.x + 0.6} ${seatNode.y - 11.2} h5.6 v3.8 h-5.6 Z`} className="conquest-node__realm-flag conquest-node__faction-flag" />
+            <text x={seatNode.x + 3.4} y={seatNode.y - 8.2} className="conquest-node__realm-text">{homeBadge?.realm ?? factionInfo.name}</text>
+          </g>
+          <text x={seatNode.x} y={seatNode.y + 8.6}>{nodeShortName(seatNode)}</text>
         </g>
-        {fiefs.map((fief) => {
+        {pool.map((fief) => {
           const state = stateOf(fief);
           const w = walls(fief.id);
           const underSiege = besieged(fief.id);
@@ -292,7 +302,7 @@ export function ConquestMap({ holdings, homeLevel, gold, orders, stakeFor, polic
                 <rect key={i} x={fief.x - 7.4 + i * 1.9} y={fief.y - 0.75} width="1.5" height="1.5" rx="0.3" className={`conquest-node__wall ${i < w ? 'is-full' : ''}`} />
               ))}
               {underSiege && siege && <text x={fief.x + 2.6} y={fief.y - 10.4} className="conquest-node__timer">{shortRemaining(siege.dueAt - now)}</text>}
-              <text x={fief.x} y={fief.y + 7.6}>{fief.name.replace('郡', '')}</text>
+              <text x={fief.x} y={fief.y + 7.6}>{fief.name.replace(/郡$/, '')}</text>
               {lost && <text x={fief.x} y={fief.y + 11} className="conquest-node__lost">暂归{fief.garrison}</text>}
             </g>
           );

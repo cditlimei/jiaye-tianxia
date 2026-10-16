@@ -2,9 +2,7 @@ import type { GameEvent, GameState } from '../types';
 import { isOrderDay, ORDER_FAST_HOME_LEVEL } from '../types';
 import { findFarmLevel, findHomeLevel, lords, partners } from '../data/gameData';
 import { calculateIntelligence, totalDailyIncome } from './battle';
-import { fiefStatBonus } from '../data/fiefs';
-import { realmStatBonus } from '../data/dynasty';
-import { incomePercentOf, orderCapOf } from './prices';
+import { incomePercentOf, orderCapOf, statBonusOf } from './prices';
 import { choiceGoldValue, getChoiceEvent, getDailyEvent, resolvePendingEvent } from '../data/progression';
 import { isPartnerEventDay, mergePartnerBoost, nextPartnerForEvent } from '../data/partnerEvents';
 import { minorEventFor, minorGoldValue } from '../data/minorEvents';
@@ -88,7 +86,7 @@ export function treasuryStage(days: number, homeLevel: number): 'open' | 'half' 
 export function dailyIncomeOf(state: GameState): number {
   const lord = lords.find((item) => item.id === state.selectedLordId);
   const owned = partners.filter((item) => state.ownedPartnerIds.includes(item.id)).map((item) => mergePartnerBoost(item, state.partnerBoosts[item.id]));
-  const civilExtra = fiefStatBonus(state.fiefs) + realmStatBonus(state.realms) + state.affairTraining.civil;
+  const civilExtra = statBonusOf(state) + state.affairTraining.civil;
   return totalDailyIncome(
     findHomeLevel(state.homeLevel).dailyIncome,
     findFarmLevel(state.farmLevel).incomePercent,

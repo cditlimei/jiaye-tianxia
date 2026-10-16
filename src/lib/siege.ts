@@ -4,6 +4,7 @@ import { connectedHoldings, FIEF_UNLOCK_HOME_LEVEL, fiefs as fiefCatalog, findFi
 import { isEndingReached } from '../data/dynasty';
 import { formatRemaining, RAID_WINDOW_MS } from './frontier';
 import { titleBonuses } from '../data/titleEffects';
+import { factionOf, type FactionId } from '../data/factions';
 
 /**
  * 邻郡反攻守城（v2.2，替代北疆边患）：
@@ -56,7 +57,7 @@ export interface Siege {
 }
 
 type SiegeFields = Pick<GameState, 'siege' | 'nextSiegeAt' | 'fiefWalls' | 'fiefTakenAt' | 'lostFiefs' | 'peakFiefs'>;
-type SiegeState = SiegeFields & Pick<GameState, 'fiefs' | 'homeLevel' | 'legacyPoints' | 'activeBattle' | 'day' | 'firstSiegeDone' | 'battleWins' | 'frontierWins' | 'pastDynasties' | 'realms' | 'chronicle' | 'earnedTitles'>;
+type SiegeState = SiegeFields & Pick<GameState, 'fiefs' | 'homeLevel' | 'legacyPoints' | 'activeBattle' | 'day' | 'firstSiegeDone' | 'battleWins' | 'frontierWins' | 'pastDynasties' | 'realms' | 'chronicle' | 'earnedTitles' | 'seat'>;
 
 export interface SiegeStep {
   siege: Siege | null;
@@ -82,14 +83,14 @@ export function siegeSkill(fief: Fief, policy: FiefPolicyId | undefined): AiSkil
 
 const ownedCount = (holdings: FiefHoldings) => fiefCatalog.filter((fief) => holdings[fief.id]).length;
 
-/** 末端郡：拿掉它，其余的郡仍与本府连成一片（丢它不会连带丢别的郡） */
-export function exposedFiefs(holdings: FiefHoldings): Fief[] {
+/** 末端郡：拿掉它，其余的郡仍与本府连成一片（丢它不会连带丢别的郡）；seat 是本朝本府（v3.2 随势力） */
+export function exposedFiefs(holdings: FiefHoldings, seat: string): Fief[] {
   const total = ownedCount(holdings);
   return fiefCatalog.filter((fief) => {
-    if (!holdings[fief.id]) return false;
+    if (!holdings[fief.id] || fief.id === seat) return false;
     const rest = { ...holdings };
     delete rest[fief.id];
-    return ownedCount(connectedHoldings(rest)) === total - 1;
+    return ownedCount(connectedHoldings(rest, seat)) === total - 1;
   });
 }
 
@@ -98,9 +99,11 @@ export const wallsOf = (state: Pick<GameState, 'fiefWalls'>, fiefId: string) => 
 /** 城防不满：该郡牌桌特权暂停（劝农、整军、教化照常） */
 export const isWallAlert = (state: Pick<GameState, 'fiefWalls' | 'fiefs'>, fiefId: string) => Boolean(state.fiefs[fiefId]) && wallsOf(state, fiefId) < FIEF_WALLS;
 
-/** 牌桌特权生效的郡：已占且城防满 */
-export function activePerkIds(state: Pick<GameState, 'fiefWalls' | 'fiefs'>) {
-  return fiefCatalog.filter((fief) => state.fiefs[fief.id] && wallsOf(state, fief.id) >= FIEF_WALLS).map((fief) => fief.id);
+/** 牌桌特权生效的郡：已占且城防满；v3.2 再加势力自带特权（本府节点的特权，本府不会被反攻，常驻） */
+export function activePerkIds(state: Pick<GameState, 'fiefWalls' | 'fiefs'> & { faction?: FactionId | null }) {
+  const own = factionOf(state).ownPerk;
+  const held = fiefCatalog.filter((fief) => state.fiefs[fief.id] && wallsOf(state, fief.id) >= FIEF_WALLS).map((fief) => fief.id);
+  return own && !held.includes(own) ? [own, ...held] : held;
 }
 
 /** 传入开拓价（按造价曲线，由 lib/prices.ts 的 siegeBountyOf / wallRepairCostOf 取，不直接读 fief.cost） */
@@ -117,8 +120,8 @@ export function reclaimRemainingMs(state: Pick<GameState, 'lostFiefs' | 'fiefs'>
 export const shortName = (fief: Fief) => fief.name.replace(/郡$/, '');
 
 /** 挑反攻目标：末端郡里去掉保护期内的，按城防低、得郡晚排前 */
-export function pickSiegeTarget(state: Pick<GameState, 'fiefs' | 'fiefWalls' | 'fiefTakenAt'>, now: number, opts: { ignoreProtect?: boolean; target?: string | null } = {}): Fief | null {
-  const exposed = exposedFiefs(state.fiefs);
+export function pickSiegeTarget(state: Pick<GameState, 'fiefs' | 'fiefWalls' | 'fiefTakenAt' | 'seat'>, now: number, opts: { ignoreProtect?: boolean; target?: string | null } = {}): Fief | null {
+  const exposed = exposedFiefs(state.fiefs, state.seat);
   if (opts.target) {
     const forced = exposed.find((fief) => fief.id === opts.target);
     if (forced) return forced;
@@ -244,7 +247,7 @@ export function releaseStaleSiege(state: GameState, now = Date.now()): GameState
   const { siege } = state;
   if (!siege || !state.fiefs[siege.fiefId] || state.activeBattle?.conquest?.kind === 'defend') return state;
   const ending = isEndingReached(state);
-  if (!ending && exposedFiefs(state.fiefs).some((fief) => fief.id === siege.fiefId)) return state;
+  if (!ending && exposedFiefs(state.fiefs, state.seat).some((fief) => fief.id === siege.fiefId)) return state;
   const fief = findFief(siege.fiefId);
   const event: GameEvent | null = fief
     ? {
@@ -266,5 +269,5 @@ export function releaseStaleSiege(state: GameState, now = Date.now()): GameState
 
 /** 被围郡这一局失手能不能真的失郡：仍是末端郡、未天下归心；否则城防最低留 1 */
 export function canLoseFief(state: GameState, fiefId: string) {
-  return !isEndingReached(state) && exposedFiefs(state.fiefs).some((fief) => fief.id === fiefId);
+  return !isEndingReached(state) && exposedFiefs(state.fiefs, state.seat).some((fief) => fief.id === fiefId);
 }

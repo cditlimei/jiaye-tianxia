@@ -7,13 +7,11 @@ import { conquestStakeOf, legacyPreview, policyChangeCostOf, reclaimStakeRateOf,
 import { hasTitleId } from './data/titleEffects';
 import { preloadImages } from './lib/assets';
 import { parseImportedGameState } from './lib/storage';
-import { ambitionSummary } from './data/ambitions';
 import { HOME_UNLOCKS } from './data/progression';
-import { bountyScale, DYNASTY_START_GOLD, dynastyCount, findRealm, isHeirPending, realmFarmCost, realmRewardScale } from './data/dynasty';
-import { defaultGameState } from './lib/storage';
-import { LEGACY_START_GOLD_PER_POINT } from './lib/battle';
+import { bountyScale, dynastyCount, effectiveRealms, findRealm, isHeirPending, realmFarmCost, realmRewardScale } from './data/dynasty';
+import { BEQUESTS, FACTIONS, type BequestId, type FactionId } from './data/factions';
 import { findHomeLevel } from './data/gameData';
-import { ownedFiefCount } from './data/fiefs';
+import { findFief, nodeShortName, ownedFiefCount } from './data/fiefs';
 import type { GameState } from './types';
 import { BattleScreen, type RegionId } from './components/BattleScreen';
 import { EffectOverlay } from './components/common/EffectOverlay';
@@ -71,12 +69,14 @@ export function App() {
   const handleContinue = () => {
     audio.unlock();
     audio.playSfx('audio/sfx/sfx_button.mp3');
-    game.setScreen(game.selectedLord ? (game.state.ownedPartnerIds.length > 0 ? 'home' : 'partnerSelect') : 'lordSelect');
+    // 留贤留下的伴侣不占开局伴侣：只有她一位时还要去选开局伴侣
+    const needStarter = game.state.ownedPartnerIds.length === 0 || (game.state.keptPartnerId !== null && game.state.ownedPartnerIds.length === 1 && game.state.ownedPartnerIds[0] === game.state.keptPartnerId);
+    game.setScreen(game.selectedLord ? (needStarter ? 'partnerSelect' : 'home') : 'lordSelect');
   };
 
   const handleNew = () => {
     const dynasties = game.state.pastDynasties.length;
-    if (game.hasSave && !confirmReset(`${game.state.legacyPoints > 0 ? `重开会清空当前家业进度，连同 ${game.state.legacyPoints} 点家业点与第 ${game.state.generation} 代传承一并作废。` : '重开会清空当前家业进度。'}${dynasties > 0 ? ` ${dynasties} 朝国号加成与前朝记录保留。` : ''}`)) {
+    if (game.hasSave && !confirmReset(`${game.state.legacyPoints > 0 ? `重开会清空当前家业进度，连同 ${game.state.legacyPoints} 点家业点与第 ${game.state.generation} 代传承一并作废。` : '重开会清空当前家业进度。'}${dynasties > 0 ? ` 本朝势力${FACTIONS[game.state.faction].name}、${dynasties} 朝国号遗泽与前朝记录保留。` : ''}`)) {
       return;
     }
     audio.unlock();
@@ -95,9 +95,10 @@ export function App() {
       current.homeLevel > 1 ||
       current.battleWins + current.battleLosses > 0 ||
       current.claimedQuestIds.length > 0 ||
-      current.ownedPartnerIds.length > 0
+      // 留贤留下、还没选开局伴侣：她会跟着新主公走，不算要清空的进度
+      current.ownedPartnerIds.some((id) => id !== current.keptPartnerId)
     );
-    if (hasProgress && !confirmReset(`重选主公会清空当前家业进度${current.ambition ? '，本代志向作废' : ''}。`)) return;
+    if (hasProgress && !confirmReset('重选主公会清空当前家业进度。')) return;
     setTransitioning(true);
     try {
       audio.unlock();
@@ -208,9 +209,8 @@ export function App() {
 
   const succeed = () => {
     const preview = legacyPreview(game.state);
-    const note = ambitionSummary(game.state, preview.ambitionPoints);
     const stored = game.state.treasury.gold;
-    if (!window.confirm(`${note && !note.includes('已达成') ? `${note}\n\n` : ''}${stored > 0 ? `府库尚有 ${stored.toLocaleString()} 金未收取，传位时先并入再折家业点。\n\n` : ''}传位只换主公：宅邸、屯田、封地、伴侣、兵器与任务都留给新主。${preview.gained > 0 ? `可折 ${preview.gained} 点家业点（花 ${preview.spent.toLocaleString()} 金，余 ${preview.left.toLocaleString()} 金）。` : '金子不够折家业点，这次只换主公。'}\n\n确定传位吗？`)) {
+    if (!window.confirm(`${stored > 0 ? `府库尚有 ${stored.toLocaleString()} 金未收取，传位时先并入再折家业点。\n\n` : ''}传位只换主公：宅邸、屯田、封地、伴侣、兵器与任务都留给新主。${preview.gained > 0 ? `可折 ${preview.gained} 点家业点（花 ${preview.spent.toLocaleString()} 金，余 ${preview.left.toLocaleString()} 金）。` : '金子不够折家业点，这次只换主公。'}\n\n确定传位吗？`)) {
       return;
     }
     audio.unlock();
@@ -260,13 +260,14 @@ export function App() {
     }
 
     if (game.state.screen === 'lordSelect') {
-      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} banner={dynastyBanner(game.state)} />;
+      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} banner={dynastyBanner(game.state)} faction={game.state.faction} />;
     }
 
     if (game.state.screen === 'partnerSelect' && game.selectedLord) {
       return (
         <PartnerSelectScreen
           lord={game.selectedLord}
+          excludeIds={game.state.keptPartnerId ? [game.state.keptPartnerId] : []}
           onConfirm={handleStarterPartnerConfirm}
           onBack={() => game.setScreen('lordSelect')}
         />
@@ -287,14 +288,14 @@ export function App() {
           orders={game.state.orders}
           orderCap={game.orderCap}
           orderClockAt={game.state.orderClockAt}
-          realmScale={(mode) => realmRewardScale(game.state.realms, mode) * bountyScale(game.state.day, mode)}
+          realmScale={(mode) => realmRewardScale(effectiveRealms(game.state), mode) * bountyScale(game.state.day, mode)}
           titleDdzScale={titleDdzScale(game.state)}
           repairCostFor={(fief) => wallRepairCostOf(game.state, fief)}
           bountyFor={(fief) => siegeBountyOf(game.state, fief)}
           reclaimRate={reclaimStakeRateOf(game.state)}
           stakeNotes={stakeDiscountNotes(game.state)}
           homeBadge={{ realm: hasTitleId(game.state, 'unifier') ? realmChar(game.state) : null, golden: hasTitleId(game.state, 'north-general') }}
-          farmCost={game.nextFarm ? realmFarmCost(game.state.realms, game.nextFarm.cost) : 0}
+          farmCost={game.nextFarm ? realmFarmCost(effectiveRealms(game.state), game.nextFarm.cost) : 0}
           battleBonus={game.state.nextBattleBonus}
           day={game.state.day}
           siege={game.state.siege}
@@ -327,6 +328,7 @@ export function App() {
           onBattleStakeChange={game.updateActiveBattle}
           onReturnHome={() => game.setScreen('home')}
           fiefs={game.state.fiefs}
+          faction={game.state.faction}
           conquestStakeFor={(fief) => conquestStakeOf(game.state, fief)}
           policyChangeCostFor={(fief) => policyChangeCostOf(game.state, fief)}
           onStartConquest={game.startConquest}
@@ -345,7 +347,7 @@ export function App() {
     }
 
     if (!game.selectedLord) {
-      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} banner={dynastyBanner(game.state)} />;
+      return <LordSelectScreen onConfirm={handleLordConfirm} onBack={() => game.setScreen('title')} disabled={transitioning} banner={dynastyBanner(game.state)} faction={game.state.faction} />;
     }
 
     return (
@@ -390,10 +392,6 @@ export function App() {
           // 封地在出征页的疆域图上：看郡、攻郡、改方略都在那里
           onOpenFief={() => handleBattle('jingzhou')}
           onOpenEnding={() => setModal('ending')}
-          onChooseAmbition={(id) => {
-            game.chooseAmbition(id);
-            audio.playSfx('audio/sfx/sfx_button.mp3', 0.3);
-          }}
           onIncomeSfx={() => audio.playSfx('audio/sfx/sfx_coins.mp3', 0.28)}
           onUpgradeEffect={handleUpgradeEffect}
         />
@@ -412,12 +410,14 @@ export function App() {
             dailyIncome={game.dailyIncome}
             orderCap={game.orderCap}
             onClose={() => setModal(null)}
-            onFound={(realm) => {
-              if (!confirmReset('开创新朝会把金币、主公、伴侣、兵器、宅邸、屯田、封地、家业点与家谱全部归入前朝重来，只保留国号加成。')) return;
+            onFound={(faction: FactionId, bequests: BequestId[], keepPartnerId: string | null) => {
+              const info = FACTIONS[faction];
+              const picked = bequests.map((id) => BEQUESTS.find((item) => item.id === id)?.name).filter(Boolean).join('、');
+              if (!confirmReset(`选国号「${info.name}」= 下一朝从${info.capital}（${info.name}本府）起家，换一条路线重新开疆。\n金币、主公、伴侣${bequests.includes('keeper') ? '（留贤留下的一位除外）' : ''}、兵器、宅邸、屯田、封地、家业点与家谱归入前朝重来；家声、前朝国号遗泽保留${picked ? `，遗泽「${picked}」只管下一朝` : ''}。`)) return;
               audio.unlock();
               audio.playSfx('audio/sfx/sfx_home_upgrade.mp3', 0.5);
               setModal(null);
-              game.foundDynasty(realm);
+              game.foundDynasty(faction, bequests, keepPartnerId);
             }}
           />
         )}
@@ -480,8 +480,14 @@ function dynastyBanner(state: GameState) {
     return `第 ${state.generation} 代择主 · 新主承袭${findHomeLevel(state.homeLevel).name}、${ownedFiefCount(state.fiefs)} 郡、${state.ownedPartnerIds.length} 位伴侣 · 家业点 ${state.legacyPoints} · 存金 ${state.gold.toLocaleString()}`;
   }
   const count = dynastyCount(state.realms);
-  if (count === 0) return undefined;
-  return `第 ${count + 1} 朝 · 国号加成 ${(['wei', 'shu', 'wu'] as const).filter((id) => state.realms[id] > 0).map((id) => `${findRealm(id)!.name}×${state.realms[id]}`).join('、')} · 开局 ${(defaultGameState.gold + state.legacyPoints * LEGACY_START_GOLD_PER_POINT + count * DYNASTY_START_GOLD).toLocaleString()} 金`;
+  const faction = FACTIONS[state.faction];
+  if (count === 0 && faction.id === 'qun') return undefined;
+  // v3.2：横幅写本朝势力与本府（「魏 · 颍川」），国号效果按冻结遗泽 + 本朝一份
+  const eff = effectiveRealms(state);
+  const seat = findFief(faction.seat);
+  const seatName = seat ? nodeShortName(seat) : faction.capital;
+  const pack = (['wei', 'shu', 'wu'] as const).filter((id) => eff[id] > 0).map((id) => `${findRealm(id)!.name}×${eff[id]}`).join('、');
+  return `第 ${count + 1} 朝 · ${faction.name} · ${seatName}（${faction.capital}）${pack ? ` · 国号加成 ${pack}` : ''} · 开局 ${state.foundingGold.toLocaleString()} 金${faction.id !== 'qun' ? ` · ${faction.name}营主公为旧部，三项 +3` : ''}`;
 }
 
 function confirmReset(message: string) {
