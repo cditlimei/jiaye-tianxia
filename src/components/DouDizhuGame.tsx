@@ -738,7 +738,8 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
           recentCards={table.recentMoves[1]}
           recentAction={table.recentActions[1]}
           active={table.winner === null && (bidding ? table.bid.turn === 1 : table.currentPlayer === 1)}
-          seat="left"
+          // 逆时针出牌：自己出完轮到下家（1 号位）坐右手边，再到上家（2 号位）坐左手边
+          seat="right"
         />
         <PlayerSeat
           profile={profiles[2]}
@@ -747,7 +748,7 @@ export function DouDizhuGame({ lord, wins, losses, rewardGold: rewardGoldProp, a
           recentCards={table.recentMoves[2]}
           recentAction={table.recentActions[2]}
           active={table.winner === null && (bidding ? table.bid.turn === 2 : table.currentPlayer === 2)}
-          seat="right"
+          seat="left"
         />
         {table.flash && (
           <div key={table.flash.id} className={`ddz-flash ${table.flash.big ? 'is-big' : ''}`} aria-hidden="true">{table.flash.text}</div>

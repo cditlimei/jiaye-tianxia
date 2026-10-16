@@ -1376,7 +1376,7 @@ await scenario('疆域图攻郡', async () => {
   await page.getByText('攻取南阳郡').first().waitFor();
   const s1 = await read(page);
   check('出兵：押 71,250 军资（侯门显贵 −5%）、耗 1 军令、记下攻郡牌局', s0.gold - s1.gold === 71250 && s1.orders === s0.orders - 1 && s1.activeBattle?.conquest?.fiefId === 'nanyang' && s1.activeBattle.conquest.policyId === 'military', JSON.stringify(s1.activeBattle));
-  check('牌桌上下家是守将张绣，按钮是「撤兵」', (await page.locator('.ddz-seat--left .ddz-seat__name').innerText()).includes('张绣') && (await page.getByRole('button', { name: '撤兵' }).isVisible()));
+  check('牌桌上下家是守将张绣，按钮是「撤兵」', (await page.locator('.ddz-seat--right .ddz-seat__name').innerText()).includes('张绣') && (await page.getByRole('button', { name: '撤兵' }).isVisible()));
   const ended = await playOut(page);
   await page.waitForTimeout(400);
   const s2 = await read(page);
@@ -2207,7 +2207,7 @@ await scenario('守城·整局结算', async () => {
     if (seed === 11) {
       const s1 = await read(page);
       check('守城不耗军令、不押军资', s1.orders === 0 && s1.gold === s0.gold && s1.activeBattle?.conquest?.kind === 'defend' && s1.activeBattle.conquest.stake === 0, JSON.stringify(s1.activeBattle));
-      check('城主坐庄：开局即地主先出、对面是来犯将袁术、按钮是弃城', (await page.locator('.ddz-seat--self .ddz-seat__role').innerText()) === '地主' && (await page.locator('.ddz-seat--left .ddz-seat__name').innerText()).includes('袁术') && (await page.getByRole('button', { name: '弃城' }).isVisible()));
+      check('城主坐庄：开局即地主先出、对面是来犯将袁术、按钮是弃城', (await page.locator('.ddz-seat--self .ddz-seat__role').innerText()) === '地主' && (await page.locator('.ddz-seat--right .ddz-seat__name').innerText()).includes('袁术') && (await page.getByRole('button', { name: '弃城' }).isVisible()));
     }
     const ended = await playOut(page);
     await page.waitForTimeout(500);
